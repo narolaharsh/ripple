@@ -1,6 +1,8 @@
 
 import jax
 import jax.numpy as jnp
+from jax import vmap
+
 from .IMRPhenomD_utils import (
     get_coeffs,
     get_delta0,
@@ -41,10 +43,10 @@ Steps to construct the XPHM waveform from relative binning project
         A. lalsim.SimIMRPhenomXPMSAAngles
 
     3. Twist factor ingredients
-        A. Transfer functions
+        A. Transfer functions (Done)
             a. Wigner coefficients
         B. Wigner coefficients
-        C. y2lm
+        C. y2lm (done)
 
 
 ### multiply twisting up factors with the L-frame mode and sum all modes
@@ -78,7 +80,9 @@ def compute_m2ylm(l: int, m: int, theta_jn: float):
 
     return m2ylm
 
-def compute_transfer_function(l: float, m: float, mprime: float, alpha: float, beta: float, theta_jn: float):
+def compute_transfer_function(l: int, m: int, mprime: int, alpha: Array, beta: Array, theta_jn: float):
+
+    ### substitute Atransfer_slow
 
     pos_wigner_coefficient = compute_wigner_coefficient(l, m, mprime, beta)
     neg_wigner_coefficient = compute_wigner_coefficient(l, -m, mprime, beta)
@@ -102,27 +106,30 @@ def compute_wigner_coefficient():
 
 
 def compute_twist_factor_plus_cross(l: float, mprime: float, theta_jn: float, alpha: Array, beta: Array, gamma: Array):
+    ### substitute: twist_factor_slow_plus_cross
 
-    m_array = jnp.arange(1, l+1, 1)
-    plus_summand = 0
-    cross_summand = 0
-
-    for m in m_array:
+    def body(m):
         transfer = compute_transfer_function(l, m, mprime, alpha, beta, theta_jn)
         term_1 = transfer[1] + transfer[3]
-        term_2 = ((-1)**l)*jnp.conj(transfer[0] + transfer[2])
-        plus_summand += term_1 + term_2
-        cross_summand += term_1 - term_2
+        term_2 = ((-1) ** l) * jnp.conj(transfer[0] + transfer[2])
+        plus_contrib = term_1 + term_2
+        cross_contrib = term_1 - term_2
+        return plus_contrib, cross_contrib
 
+    # Vectorize over m
+    plus_vals, cross_vals = vmap(body)(jnp.arange(1, l + 1, 1))
+
+    plus_summand = jnp.sum(plus_vals)
+    cross_summand = jnp.sum(cross_vals)
     
     wigner_coefficient = compute_wigner_coefficient(l, 0, mprime, beta)
 
-    term_1 = ((-1)**l) * wigner_coefficient[1] * compute_m2ylm(l, 0, theta_jn)
-    term_2 = ((-1)**l) * wigner_coefficient[0] * compute_m2ylm(l, 0, theta_jn)
+    term_alpha = ((-1)**l) * wigner_coefficient[1] * compute_m2ylm(l, 0, theta_jn)
+    term_beta = ((-1)**l) * wigner_coefficient[0] * compute_m2ylm(l, 0, theta_jn)
 
 
-    plus_summand += term_1 + term_2
-    cross_summand += term_1 - term_2
+    plus_summand += term_alpha + term_beta
+    cross_summand += term_alpha - term_beta
 
     return 0.5*jnp.exp(1*mprime*gamma)*plus_summand, 1j*0.5*jnp.exp(1*mprime*gamma)*cross_summand
 
