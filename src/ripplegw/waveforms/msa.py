@@ -5,6 +5,14 @@ from ..typing import Array
 
 
 
+"""
+Remaining function in this module:
+
+gsl_sf_elljac_e
+
+This does not exist in numpy or jax.scipy.special.
+"""
+
 def XLALSimIMRPhenomXPMSAAngles(freq: Array, params: Array, f_ref: float, mprime: int):
     ## XLALSimIMRPhenomXPMSAAngles
 
@@ -252,7 +260,11 @@ def IMRPhenomX_psiofv(v: float, v2: float, psi0: float, psi1: float, psi2: float
     """
     return ( psi0 - 0.75*pPrec.g0 * pPrec.delta_qq * (1.0 + psi1*v + psi2*v2) / (v2*v) )
 
-def IMRPhenomX_Return_MSA_Corrections_MSA():
+def IMRPhenomX_Return_MSA_Corrections_MSA(v: float, LNorm: float, JNorm: float, pPrec):
+    """
+    lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#a1aa2393a086fd52c37808975ed9086dc
+    """
+
     return None
 
 
