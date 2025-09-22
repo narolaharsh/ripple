@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 import math
+from ..typing import Array
 
 
 def compute_sminus2_l2(theta, m):
@@ -59,3 +60,6 @@ def compute_sminus2_l4(theta, m):
                                             ))))))))
     
     return harmonics
+
+
+
