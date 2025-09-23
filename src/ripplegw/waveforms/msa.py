@@ -32,7 +32,7 @@ def XLALSimIMRPhenomXPMSAAngles(freq: Array, params: Array, f_ref: float, mprime
     piGM = 1
     pWF = None
     pPrec = None
-    v = freq * piGM * (2/mprime)   ### v is the frequency. Not velocity. To be double checked
+    v = freq * piGM * (2/mprime)   ### v is the frequency. Not velocity. To be checked
     v = v**(1/3)
     vangles = jax.vmap(lambda v_: IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v_, pWF, pPrec))(v)
 
@@ -395,46 +395,54 @@ def IMRPhenomX_Return_Constants_c_MSA(v: float, JNorm: float, pPrec):
     
     JNorm2 = JNorm * JNorm
     
-    vector vout = {0.,0.,0.}
+    vout = jnp.array([0.0, 0.0, 0.0])
     
-    Seff = pPrec->Seff
+    Seff = pPrec.Seff
  
-  if(pPrec->IMRPhenomXPrecVersion != 220)
-  {
-    // Equation B6 of Chatziioannou et al, PRD 95, 104004, (2017)
-    vout.x = JNorm * ( 0.75*(1.0 - Seff*v) * v2 * (pPrec->eta3 + 4.0*pPrec->eta3*Seff*v
-                  - 2.0*pPrec->eta*(JNorm2 - pPrec->Spl2 + 2.0*(pPrec->S1_norm_2 - pPrec->S2_norm_2)*pPrec->delta_qq)*v2
-                  - 4.0*pPrec->eta*Seff*(JNorm2 - pPrec->Spl2)*v3 + (JNorm2 - pPrec->Spl2)*(JNorm2 - pPrec->Spl2)*v4*pPrec->inveta) )
+    ### if ... else statement for pPrec.IMRPhenomXPrecVersion
+
+    ### If terms
+    #Equation B6 of Chatziioannou et al, PRD 95, 104004, (2017)
+    x_not_220 = JNorm * ( 0.75*(1.0 - Seff*v) * v2 * (pPrec.eta3 + 4.0*pPrec.eta3*Seff*v
+                  - 2.0*pPrec.eta*(JNorm2 - pPrec.Spl2 + 2.0*(pPrec.S1_norm_2 - pPrec.S2_norm_2)*pPrec.delta_qq)*v2
+                  - 4.0*pPrec.eta*Seff*(JNorm2 - pPrec.Spl2)*v3 + (JNorm2 - pPrec.Spl2)*(JNorm2 - pPrec.Spl2)*v4*pPrec.inveta) )
  
-    // Equation B7 of Chatziioannou et al, PRD 95, 104004, (2017)
-    vout.y = JNorm * ( -1.5 * pPrec->eta * (pPrec->Spl2 - pPrec->Smi2)*(1.0 + 2.0*Seff*v - (JNorm2 - pPrec->Spl2)*v2*pPrec->inveta2) * (1.0 - Seff*v)*v4 )
+    #Equation B7 of Chatziioannou et al, PRD 95, 104004, (2017)
+    y_not_220 = JNorm * ( -1.5 * pPrec.eta * (pPrec.Spl2 - pPrec.Smi2)*(1.0 + 2.0*Seff*v - (JNorm2 - pPrec.Spl2)*v2*pPrec.inveta2) * (1.0 - Seff*v)*v4 )
  
-    // Equation B8 of Chatziioannou et al, PRD 95, 104004, (2017)
-    vout.z = JNorm * ( 0.75 * pPrec->inveta * (pPrec->Spl2 - pPrec->Smi2)*(pPrec->Spl2 - pPrec->Smi2)*(1.0 - Seff * v)*v6 )
-  }
-  else
-  {
-    /*  This is as implemented in LALSimInspiralFDPrecAngles, should be equivalent to above code.
-        c.f. https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimInspiralFDPrecAngles_internals.c#L578
-    */
-    double v_2    = v * v
-    double v_3    = v * v_2
-    double v_4    = v_2 * v_2
-    double v_6    = v_2 * v_4
-    double J_norm = JNorm
-    double delta  = pPrec->delta_qq
-    double eta    = pPrec->eta
-    double eta_2  = eta * eta
+    #Equation B8 of Chatziioannou et al, PRD 95, 104004, (2017)
+    z_not_220 = JNorm * ( 0.75 * pPrec.inveta * (pPrec.Spl2 - pPrec.Smi2)*(pPrec.Spl2 - pPrec.Smi2)*(1.0 - Seff * v)*v6 )
+
+    #This is as implemented in LALSimInspiralFDPrecAngles, should be equivalent to above code.
+    #c.f. https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimInspiralFDPrecAngles_internals.c#L578
+
+    ### else terms
+    v_2    = v * v
+    v_3    = v * v_2
+    v_4    = v_2 * v_2
+    v_6    = v_2 * v_4
+    J_norm = JNorm
+    delta  = pPrec.delta_qq
+    eta    = pPrec.eta
+    eta_2  = eta * eta
  
-    vout.x = -0.75*((JNorm2-pPrec->Spl2)*(JNorm2-pPrec->Spl2)*v_4/(pPrec->eta) - 4.*(pPrec->eta)*(pPrec->Seff)*(JNorm2-pPrec->Spl2)*v_3-2.*(JNorm2-pPrec->Spl2+2*((pPrec->S1_norm_2)-(pPrec->S2_norm_2))*(delta))*(pPrec->eta)*v_2+(4.*(pPrec->Seff)*v+1)*(pPrec->eta)*(eta_2)) *J_norm*v_2*((pPrec->Seff)*v-1.)
-    vout.y = 1.5*(pPrec->Smi2-pPrec->Spl2)*J_norm*((JNorm2-pPrec->Spl2)/(pPrec->eta)*v_2-2.*(pPrec->eta)*(pPrec->Seff)*v-(pPrec->eta))*((pPrec->Seff)*v-1.)*v_4
-    vout.z = -0.75*J_norm*((pPrec->Seff)*v-1.)*(pPrec->Spl2-pPrec->Smi2)*(pPrec->Spl2-pPrec->Smi2)*v_6/(pPrec->eta)
-  }
+    x_else = -0.75*((JNorm2-pPrec.Spl2)*(JNorm2-pPrec.Spl2)*v_4/(pPrec.eta) - 4.*(pPrec.eta)*(pPrec.Seff)*(JNorm2-pPrec.Spl2)*v_3-2.*(JNorm2-pPrec.Spl2+2*((pPrec.S1_norm_2)-(pPrec.S2_norm_2))*(delta))*(pPrec.eta)*v_2+(4.*(pPrec.Seff)*v+1)*(pPrec.eta)*(eta_2)) *J_norm*v_2*((pPrec.Seff)*v-1.)
+    y_else = 1.5*(pPrec.Smi2-pPrec.Spl2)*J_norm*((JNorm2-pPrec.Spl2)/(pPrec.eta)*v_2-2.*(pPrec.eta)*(pPrec.Seff)*v-(pPrec.eta))*((pPrec.Seff)*v-1.)*v_4
+    z_else = -0.75*J_norm*((pPrec.Seff)*v-1.)*(pPrec.Spl2-pPrec.Smi2)*(pPrec.Spl2-pPrec.Smi2)*v_6/(pPrec.eta)
+    
+
+    x = jnp.where(pPrec.IMRPhenomXPrecVersion!=220, x_not_220, x_else)
+    y = jnp.where(pPrec.IMRPhenomXPrecVersion!=220, y_not_220, y_else)
+    z = jnp.where(pPrec.IMRPhenomXPrecVersion!=220, z_not_220, z_else)
+
+    
+    vout.at[0].set(x)
+    vout.at[1].set(y)
+    vout.at[2].set(z)
  
-  return vout
+    return vout
 
 
-    return None
 
 def IMRPhenomX_Return_Constants_d_MSA():
     """
