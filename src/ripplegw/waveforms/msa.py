@@ -11,12 +11,16 @@ Remaining function in this module:
 gsl_sf_elljac_e
 
 This does not exist in numpy or jax.scipy.special.
+
+FIXME: Check the use of jnp.arctan
 """
 
 def XLALSimIMRPhenomXPMSAAngles(freq: Array, params: Array, f_ref: float, mprime: int):
     ## XLALSimIMRPhenomXPMSAAngles
 
     '''
+    lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/group___l_a_l_sim_i_m_r_phenom_x__c.html#ga66f87de36e00f98e62a04042f918a921
+
     lalsim.SimIMRPhenomXPMSAAngles(f_seq,
                                 params['mass_1'] * lal.MSUN_SI,
                                 params['mass_2'] * lal.MSUN_SI,
@@ -38,9 +42,9 @@ def XLALSimIMRPhenomXPMSAAngles(freq: Array, params: Array, f_ref: float, mprime
 
 
 
-    alpha_of_f = vangles.x - pPrec.alpha_offset
-    gamma_of_f = -1 * (vangles.y - pPrec.epsilon_offset)
-    cosbeta_of_f = vangles.z
+    alpha_of_f = vangles[0] - pPrec.alpha_offset
+    gamma_of_f = -1 * (vangles[1] - pPrec.epsilon_offset)
+    cosbeta_of_f = vangles[2]
 
     return alpha_of_f, gamma_of_f, cosbeta_of_f
 
@@ -53,8 +57,6 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v: Array, pWF, pPrec):
     pWF: IMRPhenomX waveform struct  
     pPrec: IMRPhenomX precession struct
     """
-
-    vout = {0.,0.,0.}
 
     L_norm = pWF.eta / v
     J_norm = IMRPhenomX_JNorm_MSA(L_norm, pPrec)
@@ -73,9 +75,9 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v: Array, pWF, pPrec):
     vRoots = IMRPhenomX_Return_Roots_MSA(L_norm,J_norm,pPrec)
 
 
-    pPrec.S32 = vRoots.x
-    pPrec.Smi2 = vRoots.y
-    pPrec.Spl2 = vRoots.z
+    pPrec.S32 = vRoots[0]
+    pPrec.Smi2 = vRoots[1]
+    pPrec.Spl2 = vRoots[2]
 
     ### define following four from the three above
     pPrec.Spl2mSmi2 
@@ -94,8 +96,8 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v: Array, pWF, pPrec):
  
 
 
-    phiz_MSA     = vMSA.x
-    zeta_MSA     = vMSA.y
+    phiz_MSA     = vMSA[0]
+    zeta_MSA     = vMSA[1]
 
     phiz         = IMRPhenomX_Return_phiz_MSA(v,J_norm,pPrec)
     zeta         = IMRPhenomX_Return_zeta_MSA(v,pPrec)
@@ -106,7 +108,7 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v: Array, pWF, pPrec):
     vout_z = cos_theta_L
 
 
-    return vout_x, vout_y, vout_z
+    return jnp.array([vout_x, vout_y, vout_z])
 
 
 def IMRPhenomX_JNorm_MSA(LNorm: float, pPrec):
@@ -122,7 +124,6 @@ def IMRPhenomX_Return_Roots_MSA(LNorm: float, JNorm: float, pPrec):
     """
     lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#a3d6fc6f6edff39a14e884521a3cd2997
     """
-    vout = None
 
     tmp1 = 0.0
     tmp2 = 0.0
@@ -133,9 +134,9 @@ def IMRPhenomX_Return_Roots_MSA(LNorm: float, JNorm: float, pPrec):
 
     vBCD = IMRPhenomX_Return_Spin_Evolution_Coefficients_MSA(LNorm, JNorm, pPrec)
 
-    B  = vBCD.x
-    C  = vBCD.y
-    D  = vBCD.z
+    B  = vBCD[0]
+    C  = vBCD[1]
+    D  = vBCD[2]
 
     S1Norm2 = pPrec.S1_norm_2
     S2Norm2 = pPrec.S2_norm_2
@@ -186,7 +187,7 @@ def IMRPhenomX_Return_Roots_MSA(LNorm: float, JNorm: float, pPrec):
     Smi2 = jnp.where(condition, S0Norm2, tmp6)
     Spl2 = jnp.where(condition, Smi2 + 1e-9, tmp4)
 
-    return S32, Smi2, Spl2
+    return jnp.array([S32, Smi2, Spl2])
 
 
 
@@ -215,7 +216,7 @@ def IMRPhenomX_Return_Spin_Evolution_Coefficients_MSA(LNorm: float, JNorm: float
     vout_y = J2mL2Sq - 2.0*LNorm*Seff*J2mL2 - 2.0*((1.0 - q)/q)*LNorm2*(S1Norm2 - q*S2Norm2) + 4.0*eta*LNorm2*Seff*Seff - 2.0*delta*(S1Norm2 - S2Norm2)*Seff*LNorm + 2.0*((1.0 - q)/q)*(q*S1Norm2 - S2Norm2)*JNorm2
     vout_z = ((1.0 - q)/q)*(S2Norm2 - q*S1Norm2)*J2mL2Sq + deltaSq*(S1Norm2 - S2Norm2)*(S1Norm2 - S2Norm2)*LNorm2/eta + 2.0*delta*LNorm*Seff*(S1Norm2 - S2Norm2)*J2mL2
 
-    return vout_x, vout_y, vout_z
+    return jnp.array([vout_x, vout_y, vout_z])
 
 
 def IMRPhenomX_L_norm_3PN_of_v(v: float, v2: float, L_norm: float, pPrec):
@@ -351,7 +352,7 @@ def IMRPhenomX_Return_MSA_Corrections_MSA(v: float, LNorm: float, JNorm: float, 
     ######## computing the y part of vMSA #####
     ###  The first MSA correction to \zeta as given in Eq. F19
 
-    case_pflag = A_theta_L*vMSA.x +  2.*B_theta_L*d0*(phiz_0_MSA_Cphi_term/(sd-d2) - phiz_0_MSA_Dphi_term/(sd+d2))
+    case_pflag = A_theta_L*vMSA_x +  2.*B_theta_L*d0*(phiz_0_MSA_Cphi_term/(sd-d2) - phiz_0_MSA_Dphi_term/(sd+d2))
     case_default = ( ( A_theta_L * (Cphi + Dphi) ) + (2.0 * d0 * B_theta_L) * ( ( Cphi / (sd - d2) ) - ( Dphi / (sd + d2) ) ) ) / psi_dot
 
     vMSA_y = jnp.where((pflag==222) | (pflag == 223) | (pflag==224), case_pflag, case_default)
@@ -430,7 +431,6 @@ def IMRPhenomX_Return_Constants_c_MSA(v: float, JNorm: float, pPrec):
     z = jnp.where(pPrec.IMRPhenomXPrecVersion!=220, z_not_220, z_else)
  
     return jnp.array([x, y, z])
-
 
 
 def IMRPhenomX_Return_Constants_d_MSA(LNorm: float, JNorm: float, pPrec):
@@ -533,18 +533,4 @@ def IMRPhenomX_Return_phiz_MSA(v: Array, JNorm, pPrec):
     
     
 
-
-class IMRPhenomXPrecessionStruct:
-    def __init__(self, eta, Omegazeta0_coeff, Omegazeta1_coeff, Omegazeta2_coeff,
-                 Omegazeta3_coeff, Omegazeta4_coeff, Omegazeta5_coeff, zeta_0):
-        self.eta = eta
-        self.Omegazeta0_coeff = Omegazeta0_coeff
-        self.Omegazeta1_coeff = Omegazeta1_coeff
-        self.Omegazeta2_coeff = Omegazeta2_coeff
-        self.Omegazeta3_coeff = Omegazeta3_coeff
-        self.Omegazeta4_coeff = Omegazeta4_coeff
-        self.Omegazeta5_coeff = Omegazeta5_coeff
-        self.zeta_0 = zeta_0
-
-    
 
