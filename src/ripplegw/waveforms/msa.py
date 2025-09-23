@@ -24,7 +24,7 @@ def XLALSimIMRPhenomXPMSAAngles(freq: Array, params: Array, f_ref: float, mprime
                                 params['chi_2x'], params['chi_2y'], params['chi_2z'],
                                 0,   ### this is inclination which is set to zero. It needs to be set to params['inclination'] if you want to use PhenomPNR waveforms
                                 waveform_arugments['reference_frequency'], mprime,
-                                lalDict_MSA);
+                                lalDict_MSA)
 
     '''
 
@@ -264,9 +264,183 @@ def IMRPhenomX_Return_MSA_Corrections_MSA(v: float, LNorm: float, JNorm: float, 
     """
     lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#a1aa2393a086fd52c37808975ed9086dc
     """
+    pflag = pPrec.IMRPhenomXPrecVersion
+    v2    = v * v
+    vMSA  = jnp.array([0., 0., 0.])
+
+    c_vec = IMRPhenomX_Return_Constants_c_MSA(v, JNorm, pPrec)
+    d_vec = IMRPhenomX_Return_Constants_d_MSA(LNorm, JNorm, pPrec)
+
+
+    c0 = c_vec.x
+    c2 = c_vec.y
+    c4 = c_vec.z
+    
+    d0 = d_vec.x
+    d2 = d_vec.y
+    d4 = d_vec.z
+
+    #Pre-cache a bunch of useful variables
+    two_d0    = 2.0 * d0
+
+    #Eq. B20 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    sd        = jnp.sqrt( jnp.abs(d2*d2 - 4.0*d0*d4) )
+
+    #Eq. F20 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    A_theta_L = 0.5 * ( (JNorm/LNorm) + (LNorm/JNorm) - (pPrec.Spl2 / (JNorm * LNorm)) )
+
+    #Eq. F21 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    B_theta_L = 0.5 * pPrec.Spl2mSmi2 / (JNorm * LNorm)
+
+    #Coefficients for B16
+    nc_num    = 2.0*(d0 + d2 + d4)
+    nc_denom  = two_d0 + d2 + sd
+
+    #Equations B16 and B17 respectively
+    nc        = nc_num   / nc_denom
+    nd        = nc_denom / two_d0
+
+    sqrt_nc   = jnp.sqrt(jnp.abs(nc))
+    sqrt_nd   = jnp.sqrt(jnp.abs(nd))
+
+    #Get phase and phase evolution of S
+    psi     = IMRPhenomX_Return_Psi_MSA(v,v2,pPrec) + pPrec.psi0
+    psi_dot = IMRPhenomX_Return_Psi_dot_MSA(v,pPrec)
+
+    #Trigonometric calls are expensive, pre-cache them
+    #// Note: arctan(tan(x)) = 0 if and only if x \in (−pi/2,pi/2).
+    tan_psi     = jnp.tan(psi)
+    atan_psi    = jnp.arctan(tan_psi)    
+
+    #Eq. B18
+    C1 = -0.5 * (c0/d0 - 2.0*(c0+c2+c4)/nc_num)
+    
+    #Eq. B19
+    C2num = c0*( -2.0*d0*d4 + d2*d2 + d2*d4 ) - c2*d0*( d2 + 2.0*d4 ) + c4*d0*( two_d0 + d2 )
+    C2den = 2.0 * d0 * sd * (d0 + d2 + d4)
+    C2    = C2num / C2den
+    
+    #These are defined in Appendix B, B14 and B15 respectively
+    Cphi = (C1 + C2)
+    Dphi = (C1 - C2)
+
+    ########### if...else statment to determine phiz_0_MSA_Cphi_term #####
+    case_nc1 = 0.0
+    case_pflag = jnp.abs( (c4 * d0 * ((2*d0+d2) + sd) - c2 * d0 * ((d2+2.*d4) - sd) - c0 * ((2*d0*d4) - (d2+d4) * (d2 - sd))) / (C2den)) * (sqrt_nc / (nc - 1.) * (atan_psi - jnp.atan(sqrt_nc * tan_psi))) / psi_dot
+    case_default = ( (Cphi / psi_dot) * sqrt_nc / (nc - 1.0) ) * jnp.arctan( ( (1.0 - sqrt_nc) * tan_psi ) / ( 1.0 + (sqrt_nc * tan_psi * tan_psi) ) )
+
+
+    case_else = jnp.where((pflag==222) | (pflag==223), case_pflag, case_default)
+    phiz_0_MSA_Cphi_term = jnp.where(nc==1.0, case_nc1, case_else)
+
+
+    ########### if...else statment to determine phiz_0_MSA_Dphi_term #####
+    case_nd1 = 0.0
+    case_pflag = jnp.abs( (-c4 * d0 * ((2*d0+d2) - sd) + c2 * d0 * ((d2+2.*d4) + sd) - c0 * (-(2*d0*d4) + (d2+d4) * (d2 + sd)))) / (C2den) * (sqrt_nd / (nd - 1.) * (atan_psi - jnp.arctan(sqrt_nd * tan_psi))) / psi_dot
+    case_default = ( (Dphi / psi_dot) * sqrt_nd / (nd - 1.0) ) * jnp.arctan( ( (1.0 - sqrt_nd) * tan_psi ) / ( 1.0 + (sqrt_nd * tan_psi * tan_psi) ) )
+
+    case_else = jnp.where((pflag==222) | (pflag==223), None, None)
+    phiz_0_MSA_Dphi_term = jnp.where(nd==1, case_nd1, case_else)
+
+
+    ################# computing the x part of vMSA #####
+    
+    vMSA_x = (  phiz_0_MSA_Cphi_term + phiz_0_MSA_Dphi_term )
+    vMSA.at[0].set(vMSA_x)
+    
+    ######## computing the y part of vMSA #####
+    ###  The first MSA correction to \zeta as given in Eq. F19
+
+    case_pflag = A_theta_L*vMSA.x +  2.*B_theta_L*d0*(phiz_0_MSA_Cphi_term/(sd-d2) - phiz_0_MSA_Dphi_term/(sd+d2))
+    case_default = ( ( A_theta_L * (Cphi + Dphi) ) + (2.0 * d0 * B_theta_L) * ( ( Cphi / (sd - d2) ) - ( Dphi / (sd + d2) ) ) ) / psi_dot
+
+    vMSA_y = jnp.where((pflag==222) | (pflag == 223) | (pflag==224), case_pflag, case_default)
+
+    vMSA.at[1].set(vMSA_y)
+
+
+    ################# checking for NaNs ####################
+
+    vMSA = jnp.where(jnp.isnan(vMSA), 0.0, vMSA)
+    vMSA = vMSA.at[2].set(0.0)
+    
+    return vMSA
+
+
+
+def IMRPhenomX_Return_Psi_MSA(v: float, v2: flat, pPrec):
+    """
+    lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#a04a087cab1ff0f38f9dfe4f636170531
+    """
+    return  ( -0.75 * pPrec.g0 * pPrec.delta_qq * (1.0 + pPrec.psi1*v + pPrec.psi2*v2) / (v2*v) )
+
+def IMRPhenomX_Return_Psi_dot_MSA(v: float, pPrec):
+    """
+    lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#a15cf6139be84a674e0dd9aa8b06ee234
+    """
+    v2 = v*v
+    A_coeff = -1.5 * (v2 * v2 * v2) * (1.0 - v*pPrec.Seff) * pPrec.sqrt_inveta
+    psi_dot = 0.5 * A_coeff * jnp.sqrt(pPrec.Spl2 - pPrec.S32)
+    return psi_dot
+
+def IMRPhenomX_Return_Constants_c_MSA(v: float, JNorm: float, pPrec):
+    """
+    lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#ac70567f34aaea271a8fddc3638214732
+    """
+
+    v2 = v*v
+    v3 = v*v2
+    v4 = v2*v2
+    v6 = v3*v3
+    
+    JNorm2 = JNorm * JNorm
+    
+    vector vout = {0.,0.,0.}
+    
+    Seff = pPrec->Seff
+ 
+  if(pPrec->IMRPhenomXPrecVersion != 220)
+  {
+    // Equation B6 of Chatziioannou et al, PRD 95, 104004, (2017)
+    vout.x = JNorm * ( 0.75*(1.0 - Seff*v) * v2 * (pPrec->eta3 + 4.0*pPrec->eta3*Seff*v
+                  - 2.0*pPrec->eta*(JNorm2 - pPrec->Spl2 + 2.0*(pPrec->S1_norm_2 - pPrec->S2_norm_2)*pPrec->delta_qq)*v2
+                  - 4.0*pPrec->eta*Seff*(JNorm2 - pPrec->Spl2)*v3 + (JNorm2 - pPrec->Spl2)*(JNorm2 - pPrec->Spl2)*v4*pPrec->inveta) )
+ 
+    // Equation B7 of Chatziioannou et al, PRD 95, 104004, (2017)
+    vout.y = JNorm * ( -1.5 * pPrec->eta * (pPrec->Spl2 - pPrec->Smi2)*(1.0 + 2.0*Seff*v - (JNorm2 - pPrec->Spl2)*v2*pPrec->inveta2) * (1.0 - Seff*v)*v4 )
+ 
+    // Equation B8 of Chatziioannou et al, PRD 95, 104004, (2017)
+    vout.z = JNorm * ( 0.75 * pPrec->inveta * (pPrec->Spl2 - pPrec->Smi2)*(pPrec->Spl2 - pPrec->Smi2)*(1.0 - Seff * v)*v6 )
+  }
+  else
+  {
+    /*  This is as implemented in LALSimInspiralFDPrecAngles, should be equivalent to above code.
+        c.f. https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimInspiralFDPrecAngles_internals.c#L578
+    */
+    double v_2    = v * v
+    double v_3    = v * v_2
+    double v_4    = v_2 * v_2
+    double v_6    = v_2 * v_4
+    double J_norm = JNorm
+    double delta  = pPrec->delta_qq
+    double eta    = pPrec->eta
+    double eta_2  = eta * eta
+ 
+    vout.x = -0.75*((JNorm2-pPrec->Spl2)*(JNorm2-pPrec->Spl2)*v_4/(pPrec->eta) - 4.*(pPrec->eta)*(pPrec->Seff)*(JNorm2-pPrec->Spl2)*v_3-2.*(JNorm2-pPrec->Spl2+2*((pPrec->S1_norm_2)-(pPrec->S2_norm_2))*(delta))*(pPrec->eta)*v_2+(4.*(pPrec->Seff)*v+1)*(pPrec->eta)*(eta_2)) *J_norm*v_2*((pPrec->Seff)*v-1.)
+    vout.y = 1.5*(pPrec->Smi2-pPrec->Spl2)*J_norm*((JNorm2-pPrec->Spl2)/(pPrec->eta)*v_2-2.*(pPrec->eta)*(pPrec->Seff)*v-(pPrec->eta))*((pPrec->Seff)*v-1.)*v_4
+    vout.z = -0.75*J_norm*((pPrec->Seff)*v-1.)*(pPrec->Spl2-pPrec->Smi2)*(pPrec->Spl2-pPrec->Smi2)*v_6/(pPrec->eta)
+  }
+ 
+  return vout
+
 
     return None
 
+def IMRPhenomX_Return_Constants_d_MSA():
+    """
+    lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#a311b7810fd9aff08158a20324384b5d6
+    """
+    return None
 
 def IMRPhenomX_costhetaLJ(L_norm: float, J_norm: float, S_norm: float):
     """
