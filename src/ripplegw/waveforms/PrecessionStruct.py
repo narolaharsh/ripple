@@ -2,11 +2,11 @@ import jax.numpy as jnp
 import math
 from ..typing import Array
 from ..constants import G, MSUN, C
-
+import jax
 
 class IMRPhenomXGetAndSetPrecessionVariables:
 
-    def __init__(self, pWF, m1_SI, m2_SI, chi1x, chi1y, chi1z, chi2x, chi2y, chi2z, lalParams, debug_flag):
+    def __init__(self, pWF: dict, m1_SI: float, m2_SI: float, chi1x: float, chi1y: float, chi1z: float, chi2x: float, chi2y: float, chi2z: float, lalParams: dict, debug_flag: bool):
         """
         lalsuite: https:#lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#af089ef2586c52b12016c0d791b176121
 
@@ -37,6 +37,8 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         # Here we assume m1 > m2, q > 1, dm = m1 - m2 = delta = sqrt(1-4eta) > 0
         self.pWF = pWF
+        self.pWF['LALparams'] = lalParams
+        self.debug_prec = debug_flag
 
         self.IMRPhenomXPrecVersion = lalParams['IMRPhenomXPrecVersion']
 
@@ -56,11 +58,11 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.AntisymmetricWaveform = lalParams['AntisymmetricWaveform']
         self.PolarizationSymmetry = 1.0
 
-
+        #### Skipping the multibanding bookkeeping
 
         ########## Define a number of convenient local parameters #############
-        m1        = m1_SI / pWF['Mtot_SI']   #/* Normalized mass of larger companion:   m1_SI / Mtot_SI */
-        m2        = m2_SI / pWF['Mtot_SI']   #/* Normalized mass of smaller companion:  m2_SI / Mtot_SI */
+        m1        = m1_SI / self.pWF['Mtot_SI']   #/* Normalized mass of larger companion:   m1_SI / Mtot_SI */
+        m2        = m2_SI / self.pWF['Mtot_SI']   #/* Normalized mass of smaller companion:  m2_SI / Mtot_SI */
         M         = (m1 + m2)              #/* Total mass in solar units */
         
         # Useful powers of mass
@@ -74,15 +76,15 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         
         m2_2      = m2 * m2
         
-        pWF['M'] = M
-        pWF['m1_2'] = m1_2
-        pWF['m2_2'] = m2_2
+        self.pWF['M'] = M
+        self.pWF['m1_2'] = m1_2
+        self.pWF['m2_2'] = m2_2
 
         q = m1/m2
 
 
         # Powers of eta
-        eta       = pWF['eta']
+        eta       = self.pWF['eta']
         eta2      = eta*eta
         eta3      = eta*eta2
         eta4      = eta*eta3
@@ -90,7 +92,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         eta6      = eta*eta5
 
         # \delta in terms of q > 1
-        delta     = pWF['delta']
+        delta     = self.pWF['delta']
         delta2    = delta*delta
         delta3    = delta*delta2
 
@@ -106,7 +108,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.inveta4        = 1.0 / eta4
         self.sqrt_inveta    = 1.0 / jnp.sqrt(eta)
 
-        chi_eff   = pWF['chiEff']
+        chi_eff   = self.pWF['chiEff']
 
         self.twopiGM        = 2*jnp.pi * G * (m1_SI + m2_SI) / C / C / C
         self.piGM           = jnp.pi * (m1_SI + m2_SI) * (G / C) / (C * C)
@@ -130,15 +132,8 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         condition = (jnp.logical_not(self.PNRUseTunedAngles)) | (pWF['PNR_SINGLE_SPIN'] != 1)
 
         if condition:
-            kerr_boud_1 = jnp.abs(self.chi1_norm) <= 1.0
-            kerr_boud_2 = jnp.abs(self.chi2_norm) <= 1.0
-            if kerr_boud_1 & kerr_boud_2:
-                Continue running
-            else:
-                Quit
-                print("Error in IMRPhenomXSetPrecessionVariables: |S1/m1^2| must be <= 1.\n")
-        else:
-            continue running
+            assert jnp.abs(self.chi1_norm) <= 1.0
+            assert jnp.abs(self.chi2_norm) <= 1.0
         """
 
         ###/* Calculate dimensionful spins */
@@ -169,35 +164,125 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         ##/* This is called chiTot_perp to distinguish from Sperp used in contrusction of chi_p. For normalization, see Sec. IV D of arXiv:2004.06503 */
         self.chiTot_perp   = self.STot_perp * (M*M) / m1_2
         ##/* Store self.chiTot_perp to pWF so that it can be used in XCP modifications (PNRUseTunedCoprec) */
-        pWF['chiTot_perp'] = self.chiTot_perp
+        self.pWF['chiTot_perp'] = self.chiTot_perp
 
 
         self.PNRUseTunedAngles, lalParams['PNRUseTunedAngles'], self.AntisymmetricWaveform, lalParams['AntisymmetricWaveform'], lalParams['PNRUseTunedCoprec']  = jnp.where((chi_in_plane<1e-7) & (self.PNRUseTunedAngles == 1), jnp.array([False, False, False, False, False]), jnp.array([self.PNRUseTunedAngles, lalParams['PNRUseTunedAngles'], self.AntisymmetricWaveform, lalParams['AntisymmetricWaveform'], lalParams['PNRUseTunedCoprec']]))
             
 
-        ### Implementation up to line 257
+
+        # Calculate the effective precessing spin parameter (Schmidt et al, PRD 91, 024043, 2015): m1 > m2, so body 1 is the larger black hole
+        self.A1             = 2.0 + (3.0 * m2) / (2.0 * m1)
+        self.A2             = 2.0 + (3.0 * m1) / (2.0 * m2)
+        self.ASp1           = self.A1 * self.S1_perp
+        self.ASp2           = self.A2 * self.S2_perp
+
+        #/* S_p = max(A1 S1_perp, A2 S2_perp) */
+        num       = jnp.where(self.ASp2 > self.ASp1, self.ASp2, self.ASp1)
+        den       = jnp.where(m2 > m1 , self.A2*m2_2, self.A1*m1_2)
+
+        #/* chi_p = max(A1 * Sp1 , A2 * Sp2) / (A_i * m_i^2) where i is the index of the larger BH */
+        chip      = num / den
+        chi1L     = chi1z
+        chi2L     = chi2z
+
+
+        self.chi_p          = chip
+        #// (PNRUseTunedCoprec)
+        self.pWF['chi_p']        = self.chi_p
+        self.phi0_aligned   = self.pWF['phi0']
+
+        #/* Effective (dimensionful) aligned spin */
+        self.SL             = chi1L*m1_2 + chi2L*m2_2
+
+        #/* Effective (dimensionful) in-plane spin */
+        self.Sperp          = chip * m1_2                 # /* m1 > m2 */
+
+        self.MSA_ERROR      = 0
+
+        self.pWF22AS = None
+
+
+        #// get first digit of precessing version: this tags the method employed to compute the Euler angles
+        #// 1: NNLO 2: MSA 3: SpinTaylor (numerical)
+        precversionTag = (self.IMRPhenomXPrecVersion-(self.IMRPhenomXPrecVersion%100))/100
+        precversionTag = jnp.int32(precversionTag)
+
+        #/* start of SpinTaylor code */
 
 
 
+        #####################################
         """
-        self.eta = eta
-        self.Omegazeta0_coeff = Omegazeta0_coeff
-        self.Omegazeta1_coeff = Omegazeta1_coeff
-        self.Omegazeta2_coeff = Omegazeta2_coeff
-        self.Omegazeta3_coeff = Omegazeta3_coeff
-        self.Omegazeta4_coeff = Omegazeta4_coeff
-        self.Omegazeta5_coeff = Omegazeta5_coeff
-        self.zeta_0 = zeta_0
+        if precversionTag==3:
+            self.PNarrays = {}
+            self.L_MAX_PNR = self.M_MAX            ### Not defined before. M_MAX?
+            ModeArray = lalParams['ModeArray']
+            LMAX_PNR = 2
+            if ModeArray is not None:
+                if (4, 4) in ModeArray:
+                    LMAX_PNR = 4
+                elif (3, 3) or (3, 2) in ModeArray:
+                    LMAX_PNR = 3
         """
+            
+        flow = self.compute_flow()
+
     
+    def compute_flow(self)->float:
+        """
+        Substitute function for line 324-340 in LALSimIMRPhenomX_precession.c script
+        """
+        
+        def PNRTuned_true(_):
+            
+            return jnp.where(self.pWF['deltaF']==0.0, self.pWF['fMin'], jnp.floor_divide(self.pWF['fMin'], self.pWF['deltaF'])*self.pWF['deltaF'])
+        
+        def PNRTuned_false(_):
+            self.M_MAX = 1.0 #FIXME this is definietly not the right value
+            self.integration_buffer = jnp.where(self.pWF['deltaF']>0.0, 3*self.pWF['deltaF'], 0.5) 
+            return (self.pWF['fMin'] - self.integration_buffer)*2 / self.M_MAX
+        
+        return jax.lax.cond(self.PNRUseTunedAngles, PNRTuned_true, PNRTuned_false, operand = None)
 
 
 
-
-def assert_int(condition: bool, success: int = 0, failure: int = -1) -> int:
+'''
+def get_deltaF_from_wfstruct(pWF: dict):
     """
-    Returns `success` if condition is True, otherwise `failure`.
-
-    Equivalent to a C macro that checks an assertion and returns -1 on failure.
+    To be tested the jnp functions
+    
     """
-    return jnp.where(condition, success, failure)
+    seglen=XLALSimInspiralChirpTimeBound(pWF['fRef'], pWF['m1_SI'], pWF['m2_SI'], pWF['chi1L'],pWF['chi2L'])
+    deltaFv1= 1./jnp.max(4.,jnp.pow(2, jnp.ceil(jnp.log(seglen)/jnp.log(2))))
+    deltaF = jnp.min(deltaFv1,0.1)
+    deltaMF = XLALSimIMRPhenomXUtilsHztoMf(deltaF,pWF['Mtot'])
+    return deltaMF
+'''
+
+def XLALSimIMRPhenomXUtilsHztoMf():
+    return None
+
+def XLALSimInspiralChirpTimeBound():
+
+
+    return None
+
+
+
+
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
