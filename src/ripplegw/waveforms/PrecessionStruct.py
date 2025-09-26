@@ -37,7 +37,8 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         # Here we assume m1 > m2, q > 1, dm = m1 - m2 = delta = sqrt(1-4eta) > 0
         self.pWF = pWF
-        self.pWF['LALparams'] = lalParams
+        #self.pWF['LALparams'] = lalParams
+        self.lalParams = lalParams
         self.debug_prec = debug_flag
 
         self.IMRPhenomXPrecVersion = lalParams['IMRPhenomXPrecVersion']
@@ -213,29 +214,42 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
 
         #####################################
-        """
-        if precversionTag==3:
-            self.PNarrays = {}
-            self.L_MAX_PNR = self.M_MAX            ### Not defined before. M_MAX?
-            ModeArray = lalParams['ModeArray']
-            LMAX_PNR = 2
-            if ModeArray is not None:
-                if (4, 4) in ModeArray:
-                    LMAX_PNR = 4
-                elif (3, 3) or (3, 2) in ModeArray:
-                    LMAX_PNR = 3
-        """
+        precversionTag_3_true = None
+        precversionTag_3_true = False
+        self.precversionTag3()
+
+
             
+            ### up to line 405
+            
+
+    def precversionTag3(self)->None:
+
+        self.L_MAX_PNR = jnp.max(self.lalParams['ModeArray'])
+        self.ModeArray = self.lalParams['ModeArray']
+
+        #self.pWF['deltaMF'] = get_deltaF_from_wfstruct(self.pWF) #FIXME
         flow = self.compute_flow()
 
-    
+        assert flow>0.
+
+        self.PNarrays, self.fmin_integration = IMRPhenomX_InspiralAngles_SpinTaylor(self.chi1x, self.chi1y, self.chi1z, self.chi2x, self.chi2y, self.chi2z, flow, self.IMRPhenomXPrecVersion, self.pWF, self.lalParams)        
+
+        self.Mfmin_integration = XLALSimIMRPhenomXUtilsHztoMf(self.fmin_integration, self.pWF['Mtot'])
+
+
+        
+
+
+        
+        return None
+
     def compute_flow(self)->float:
         """
         Substitute function for line 324-340 in LALSimIMRPhenomX_precession.c script
         """
         
         def PNRTuned_true(_):
-            
             return jnp.where(self.pWF['deltaF']==0.0, self.pWF['fMin'], jnp.floor_divide(self.pWF['fMin'], self.pWF['deltaF'])*self.pWF['deltaF'])
         
         def PNRTuned_false(_):
@@ -247,18 +261,17 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
 
 
-'''
 def get_deltaF_from_wfstruct(pWF: dict):
     """
     To be tested the jnp functions
-    
     """
-    seglen=XLALSimInspiralChirpTimeBound(pWF['fRef'], pWF['m1_SI'], pWF['m2_SI'], pWF['chi1L'],pWF['chi2L'])
-    deltaFv1= 1./jnp.max(4.,jnp.pow(2, jnp.ceil(jnp.log(seglen)/jnp.log(2))))
-    deltaF = jnp.min(deltaFv1,0.1)
-    deltaMF = XLALSimIMRPhenomXUtilsHztoMf(deltaF,pWF['Mtot'])
+    #seglen=XLALSimInspiralChirpTimeBound(pWF['fRef'], pWF['m1_SI'], pWF['m2_SI'], pWF['chi1L'],pWF['chi2L'])
+    #deltaFv1= 1./jnp.max(4.,jnp.pow(2, jnp.ceil(jnp.log(seglen)/jnp.log(2))))
+    #deltaF = jnp.min(deltaFv1,0.1)
+    #deltaMF = XLALSimIMRPhenomXUtilsHztoMf(deltaF,pWF['Mtot'])
+    deltaMF = None
     return deltaMF
-'''
+
 
 def XLALSimIMRPhenomXUtilsHztoMf():
     return None
@@ -269,7 +282,8 @@ def XLALSimInspiralChirpTimeBound():
     return None
 
 
-
+def IMRPhenomX_InspiralAngles_SpinTaylor():
+    return None
 
         
 
