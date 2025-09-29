@@ -237,10 +237,6 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         self.Mfmin_integration = XLALSimIMRPhenomXUtilsHztoMf(self.fmin_integration, self.pWF['Mtot'])
 
-
-        
-
-
         
         return None
 
@@ -282,11 +278,99 @@ def XLALSimInspiralChirpTimeBound():
     return None
 
 
-def IMRPhenomX_InspiralAngles_SpinTaylor():
-    return None
+def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: float, 
+                                         chi2x: float, chi2y: float, chi2z: float,
+                                         fmin: float, PrecVersion: int, pWF: dict, lalParams: dict):
+    
+
+
+    fRef = pWF['fRef']
+    m1_SI = pWF['m1_SI']
+    m2_SI = pWF['m2_SI']
+
+    s1x=chi1x 
+    s1y=chi1y
+    s1z=chi1z
+
+    s2x=chi2x
+    s2y=chi2y
+    s2z=chi2z
+
+    # Unused piGM = jnp.pi * (pWF['m1_SI'] + pWF['m2_SI']) * (G / C) / (C * C)
+
+
+    quadparam1=pWF["quadparam1"]
+    quadparam2=pWF["quadparam2"]
+    lambda1=pWF["lambda1"]
+    lambda2=pWF["lambda2"]
+
+    PrecVersion_cond = (PrecVersion==311) | (PrecVersion==321)
+    quadparam1 = jnp.where(PrecVersion_cond, 1, quadparam1)
+    quadparam2 = jnp.where(PrecVersion_cond, 1, quadparam2)
+    lambda1 = jnp.where(PrecVersion_cond, 0, lambda1)
+    lambda2 = jnp.where(PrecVersion_cond, 0, lambda2)
+
+    phaseO = jnp.where(lalParams['phaseO']==-1, 7, lalParams['phaseO'])
+    spinO = jnp.where(lalParams['spinO']==-1, 6, lalParams['spinO'])
+    tideO = jnp.where(lalParams['tideO']==-1, 12, lalParams['tideO'])
+
+
+    approx = lalParams['approx_name']
+
+    fMECO_Hz = XLALSimIMRPhenomXUtilsMftoHz(pWF['fMECO'], pWF['Mtot'])
+
+    fmin = jax.lax.select((fmin > fMECO_Hz) & ((PrecVersion==320) | (PrecVersion==321)), fMECO_Hz, fmin)
+
+    fCut = XLALSimIMRPhenomXUtilsMftoHz(pWF['fRING']+8 * pWF['fDAMP'], pWF['Mtot'])
+
+    deltaT_coarse = .5 * lalParams['coarse_fac'] / fCut
+
+
+    
+
+
+
+
+
+    FIX = jax.lax.select(True, fRef_equal_to_fmin, fRef_greater_than_fmin)
+
+    if lalParams['coarse_fac'] > 1:
+        'Do something'
+
+    else:
+        'Do something else'
+
+    "Done!"
+    PhenomXPInspiralArrays = None
+    return PhenomXPInspiralArrays, 0
 
         
 
+def fRef_equal_to_fmin(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
+    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+    return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
+
+def fRef_greater_than_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
+    fS =  fRef
+    fE = fmin - 0.5
+
+    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+
+    if len(V['data']) > 1:
+        V2, Phi2, S1x2, S1y2, S1z2, S2x2, S2y2, S2z2, LNhatx2, LNhaty2, LNhatz2, E1x2, E1y2, E1z2, = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, 
+                                                                                                                                            m1_SI, m2_SI, fS, fE, s1x, s1y, s1z, s2x, s2y,
+                                                                                                                                            s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1,lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+        ### append all ###
+
+    else:
+        ### destroy all 
+        pass
+
+    return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
+
+
+def XLALSimInspiralSpinTaylorPNEvolveOrbit():
+    return None
 
 
 
@@ -299,4 +383,5 @@ def IMRPhenomX_InspiralAngles_SpinTaylor():
 
 
 
-
+def XLALSimIMRPhenomXUtilsMftoHz():
+    return None
