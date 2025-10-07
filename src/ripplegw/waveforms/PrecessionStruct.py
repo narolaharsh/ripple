@@ -296,7 +296,9 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
     s2y=chi2y
     s2z=chi2z
 
-    # Unused piGM = jnp.pi * (pWF['m1_SI'] + pWF['m2_SI']) * (G / C) / (C * C)
+
+
+    piGM = jnp.pi * (pWF['m1_SI'] + pWF['m2_SI']) * (G / C) / (C * C)
 
 
     quadparam1=pWF["quadparam1"]
@@ -314,6 +316,14 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
     spinO = jnp.where(lalParams['spinO']==-1, 6, lalParams['spinO'])
     tideO = jnp.where(lalParams['tideO']==-1, 12, lalParams['tideO'])
 
+    lnhatx = 0.0
+    lnhaty = 0.0
+    e1y = 0.0
+    e1z = 0.0
+    lnhatz = 1.0
+    e1x = 1.0
+    lscorr = 0.0
+
 
     approx = lalParams['approx_name']
 
@@ -324,29 +334,87 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
     fCut = XLALSimIMRPhenomXUtilsMftoHz(pWF['fRING']+8 * pWF['fDAMP'], pWF['Mtot'])
 
     deltaT_coarse = .5 * lalParams['coarse_fac'] / fCut
+    fS = fmin
+    fE = fCut
 
 
-    
+    PNEvolveOrbit_operands = [fRef, fmin, deltaT_coarse, m1_SI, m2_SI, fS, fE, s1x, s1y, s1z, s2x, s2y, s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1, lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx]
 
-
-
-
-
-    FIX = jax.lax.select(True, fRef_equal_to_fmin, fRef_greater_than_fmin)
+    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = jax.lax.cond(True, fRef_equal_to_fmin, fRef_greater_than_fmin, operands = PNEvolveOrbit_operands)
 
     if lalParams['coarse_fac'] > 1:
-        'Do something'
+        lenLow = len(V)
+        nbuffer = min(9, lenLow-1)
+
+        if (lenLow-1-nbuffer<0):
+            nbuffer = lenLow-1-nbuffer
+
+        vtrans = V[lenLow-1-nbuffer]
+        ftrans = pow(vtrans, 3)/piGM
+
+        LNhatx_trans=LNhatx[lenLow-1-nbuffer]
+        LNhaty_trans=LNhaty[lenLow-1-nbuffer]
+        LNhatz_trans=LNhatz[lenLow-1-nbuffer]
+
+        E1x_trans = E1x[lenLow-1-nbuffer]
+        E1y_trans = E1y[lenLow-1-nbuffer]
+        E1z_trans = E1z[lenLow-1-nbuffer]
+
+        S1x_trans = S1x[lenLow-1-nbuffer]
+        S1y_trans = S1y[lenLow-1-nbuffer]
+        S1z_trans = S1z[lenLow-1-nbuffer]
+
+        S2x_trans = S2x[lenLow-1-nbuffer]
+        S2y_trans = S2y[lenLow-1-nbuffer]
+        S2z_trans = S2z[lenLow-1-nbuffer]
+                            
+        fS=ftrans
+        fE=fCut
+        deltaT = 0.5/(fCut)
+
+
+        V_PN, Phi_PN, S1x_PN, S1y_PN, S1z_PN, S2x_PN, S2y_PN, S2z_PN, LNhatx_PN, LNhaty_PN, LNhatz_PN, E1x_PN, E1y_PN, E1z_PN, =XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT, m1_SI, m2_SI,fS,fE,S1x_trans,S1y_trans,S1z_trans,S2x_trans,S2y_trans,S2z_trans,LNhatx_trans,LNhaty_trans,LNhatz_trans,E1x_trans, E1y_trans, E1z_trans,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+
+        lenPN=lenLow-nbuffer-1+len(V_PN)
+
+        #if(lenPN < 4):
+        #    XLALPrintError("Error in %s: no. of points is insufficient for spline interpolation",__func__)
+        #    XLAL_ERROR(XLAL_EFUNC)
+                    
+
+        V_PN = V_PN[-(lenLow-nbuffer-1):lenPN]
+        LNhatx = LNhatx[-(lenLow-nbuffer-1):lenPN]
+        LNhaty_PN = LNhaty_PN[-(lenLow-nbuffer-1):lenPN]
+        LNhatz_PN = LNhatz_PN[-(lenLow-nbuffer-1):lenPN]
+        S1x_PN = S1x_PN[-(lenLow-nbuffer-1):lenPN]
+        S1y_PN = S1y_PN[-(lenLow-nbuffer-1):lenPN]
+        S1z_PN = S1z_PN[-(lenLow-nbuffer-1):lenPN]
+
+        S2x_PN = S2x_PN[-(lenLow-nbuffer-1):lenPN]
+        S2y_PN = S2y_PN[-(lenLow-nbuffer-1):lenPN]
+        S2z_PN = S2z_PN[-(lenLow-nbuffer-1):lenPN]
 
     else:
-        'Do something else'
+        copyLength=len(V)-1
+        #if(copyLength < 4) {
+        #XLALPrintError("Error in %s: no. of points is insufficient for spline interpolation",__func__);
+        #XLAL_ERROR(XLAL_EFUNC);
+        ## Just create these arrays..
+    
 
-    "Done!"
+    ## copy coarse-grid data to fine-grid
+    ## destroy coarse-grid
+    ##
+
+    fminPN=jnp.power(V_PN[0],3.)/piGM
+    if (fminPN<0.) | (fminPN>fmin): 
+        return "Failure"
+
     PhenomXPInspiralArrays = None
     return PhenomXPInspiralArrays, 0
 
-        
 
-def fRef_equal_to_fmin(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
+def fRef_equal_to_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
     V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
     return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
 
@@ -357,14 +425,47 @@ def fRef_greater_than_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y
     V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
 
     if len(V['data']) > 1:
-        V2, Phi2, S1x2, S1y2, S1z2, S2x2, S2y2, S2z2, LNhatx2, LNhaty2, LNhatz2, E1x2, E1y2, E1z2, = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, 
+        V2, Phi2, S1x2, S1y2, S1z2, S2x2, S2y2, S2z2, LNhatx2, LNhaty2, LNhatz2, E1x2, E1y2, E1z2 = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, 
                                                                                                                                             m1_SI, m2_SI, fS, fE, s1x, s1y, s1z, s2x, s2y,
                                                                                                                                             s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1,lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
-        ### append all ###
+        V = jnp.append(V, V2)
+        Phi = jnp.append(Phi, Phi2)
+        S1x = jnp.append(S1x, S1x2)
+        S1y = jnp.append(S1y, S1y2)
+        S1z = jnp.append(S1z, S1z2)
+
+        S2x = jnp.append(S2x, S2x2)
+        S2y = jnp.append(S2y, S2y2)
+        S2z = jnp.append(S2z, S2z2)
+
+        LNhatx = jnp.append(LNhatx, LNhatx2)
+        LNhaty = jnp.appnd(LNhaty, LNhaty2)
+        LNhatz = jnp.append(LNhatz, LNhatz2)
+        
+        E1x = jnp.append(E1x, E1x2)
+        E1y = jnp.append(E1y, E1y2)
+        E1z = jnp.append(E1z, E1z2)
 
     else:
-        ### destroy all 
-        pass
+        # This means the generation failed.
+        V = jnp.array([0])
+        Phi = jnp.array([0])
+        S1x = jnp.array([0])
+        S1y = jnp.array([0])
+        S1z = jnp.array([0])
+
+        S2x = jnp.array([0])
+        S2y = jnp.array([0])
+        S2z = jnp.array([0])
+
+        LNhatx =jnp.array([0])
+        LNhaty = jnp.array([0])
+        LNhatz = jnp.array([0])
+        
+        E1x = jnp.array([0])
+        E1y = jnp.array([0])
+        E1z = jnp.array([0])
+
 
     return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
 
