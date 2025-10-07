@@ -282,11 +282,10 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
                                          chi2x: float, chi2y: float, chi2z: float,
                                          fmin: float, PrecVersion: int, pWF: dict, lalParams: dict):
     
-
-
     fRef = pWF['fRef']
     m1_SI = pWF['m1_SI']
     m2_SI = pWF['m2_SI']
+
 
     s1x=chi1x 
     s1y=chi1y
@@ -295,8 +294,6 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
     s2x=chi2x
     s2y=chi2y
     s2z=chi2z
-
-
 
     piGM = jnp.pi * (pWF['m1_SI'] + pWF['m2_SI']) * (G / C) / (C * C)
 
@@ -404,7 +401,6 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
 
     ## copy coarse-grid data to fine-grid
     ## destroy coarse-grid
-    ##
 
     fminPN=jnp.power(V_PN[0],3.)/piGM
     if (fminPN<0.) | (fminPN>fmin): 
