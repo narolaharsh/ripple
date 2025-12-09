@@ -1,14 +1,14 @@
 import jax.numpy as jnp
 import math
 from ..typing import Array
-from ..constants import G, MSUN, C
+from ..constants import G, MSUN, C, MTSUN_SI
 import jax
 
 class IMRPhenomXGetAndSetPrecessionVariables:
 
     def __init__(self, pWF: dict, m1_SI: float, m2_SI: float, chi1x: float, chi1y: float, chi1z: float, chi2x: float, chi2y: float, chi2z: float, lalParams: dict, debug_flag: bool):
         """
-        lalsuite: https:#lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#af089ef2586c52b12016c0d791b176121
+        lalsuite: https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/_l_a_l_sim_i_m_r_phenom_x__precession_8c.html#af089ef2586c52b12016c0d791b176121
 
         Functions to Perform Frame Transformations and Populate Structs
         - Calculates frame transformation
@@ -39,12 +39,24 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.pWF = pWF
         #self.pWF['LALparams'] = lalParams
         self.lalParams = lalParams
+        #Pre-cache useful powers here
+        self.sqrt2   = 1.4142135623730951
+        self.sqrt5   = 2.23606797749978981
+        self.sqrt6   = 2.44948974278317788
+        self.sqrt7   = 2.64575131106459072
+        self.sqrt10  = 3.16227766016838
+        self.sqrt14  = 3.74165738677394133
+        self.sqrt15  = 3.87298334620741702
+        self.sqrt70  = 8.36660026534075563
+        self.sqrt30  = 5.477225575051661
+        self.sqrt2p5 = 1.58113883008419
         self.debug_prec = debug_flag
 
+        # Get IMRPhenomX precession version from LAL dictionary
         self.IMRPhenomXPrecVersion = lalParams['IMRPhenomXPrecVersion']
-
-        ## default to NNLO angles if in-plane spins are negligible and one of the SpinTaylor options has been selected. The solutions would be dominated by numerical noise.
         self.IMRPhenomXPrecVersion = jnp.where(self.IMRPhenomXPrecVersion == 300, 223, self.IMRPhenomXPrecVersion)
+        
+        ## Condition line 109
         chi_in_plane = jnp.sqrt(chi1x*chi1x+chi1y*chi1y+chi2x*chi2x+chi2y*chi2y)
         self.IMRPhenomXPrecVersion = jnp.where((chi_in_plane<1e-6) & (self.IMRPhenomXPrecVersion == 330), 102, self.IMRPhenomXPrecVersion)
         
@@ -59,9 +71,9 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.AntisymmetricWaveform = lalParams['AntisymmetricWaveform']
         self.PolarizationSymmetry = 1.0
 
-        #### Skipping the multibanding bookkeeping
+        #### Skipping the multibanding bookkeeping around line 136
 
-        ########## Define a number of convenient local parameters #############
+        # Define a number of convenient local parameters #############
         m1        = m1_SI / self.pWF['Mtot_SI']   #/* Normalized mass of larger companion:   m1_SI / Mtot_SI */
         m2        = m2_SI / self.pWF['Mtot_SI']   #/* Normalized mass of smaller companion:  m2_SI / Mtot_SI */
         M         = (m1 + m2)              #/* Total mass in solar units */
@@ -129,6 +141,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         """
         FIXME
         ### I will come back to the Kerr bound later line 210 ############
+        I do not know a jax friendly version for assert
 
         condition = (jnp.logical_not(self.PNRUseTunedAngles)) | (pWF['PNR_SINGLE_SPIN'] != 1)
 
@@ -167,8 +180,9 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         ##/* Store self.chiTot_perp to pWF so that it can be used in XCP modifications (PNRUseTunedCoprec) */
         self.pWF['chiTot_perp'] = self.chiTot_perp
 
-
-        self.PNRUseTunedAngles, lalParams['PNRUseTunedAngles'], self.AntisymmetricWaveform, lalParams['AntisymmetricWaveform'], lalParams['PNRUseTunedCoprec']  = jnp.where((chi_in_plane<1e-7) & (self.PNRUseTunedAngles == 1), jnp.array([False, False, False, False, False]), jnp.array([self.PNRUseTunedAngles, lalParams['PNRUseTunedAngles'], self.AntisymmetricWaveform, lalParams['AntisymmetricWaveform'], lalParams['PNRUseTunedCoprec']]))
+        #/* disable tuned PNR angles, tuned coprec and mode asymmetries in low in-plane spin limit */
+        cond = (chi_in_plane<1e-7) & (self.PNRUseTunedAngles == 1) & (self.pWF['PNR_SINGLE_SPIN']!=1)
+        self.PNRUseTunedAngles, lalParams['PNRUseTunedAngles'], self.AntisymmetricWaveform, lalParams['AntisymmetricWaveform'], lalParams['PNRUseTunedCoprec']  = jnp.where(cond, jnp.array([False, False, False, False, False]), jnp.array([lalParams['PNRUseTunedAngles'], self.PNRUseTunedAngles, self.AntisymmetricWaveform, lalParams['AntisymmetricWaveform'], lalParams['PNRUseTunedCoprec']]))
             
 
 
@@ -208,36 +222,531 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         #// 1: NNLO 2: MSA 3: SpinTaylor (numerical)
         precversionTag = (self.IMRPhenomXPrecVersion-(self.IMRPhenomXPrecVersion%100))/100
         precversionTag = jnp.int32(precversionTag)
-
-        #/* start of SpinTaylor code */
-
-
+ 
+        #/* start of SpinTaylor code */ line 294
 
         #####################################
         precversionTag_3_true = None
         precversionTag_3_true = False
         self.precversionTag3()
+        #end of SpinTaylor code
+        # done up to line 484
 
 
-            
-            ### up to line 405
-            
+        # Update the tag to 223 after 330 failed
+        precversionTag = (self.IMRPhenomXPrecVersion-(self.IMRPhenomXPrecVersion%100))/100
+        precversionTag = jnp.int(precversionTag)
+        pflag = self.IMRPhenomXPrecVersion
+        if pflag!= "101, 102, 103, 104, 220, 221, 222, 223, 224, 310, 311, 320, 321, 330":
+            print("Invalid flag")
+        
+        '''
+        switch 
+        
+        cases 101-104
+        break 
+
+        cases 220-224
+        {sanity checks and break}
+
+
+        case 310 - 330
+        break
+
+
+        default
+        not recognised
+
+        switch complete
+        '''
+
+        #line 545
+        self.precessing_tag=precversionTag
+
+        
+
+        #/* Calculate parameter for two-spin to single-spin map used in PNR and XCP */
+        #/* Initialize PNR variables */
+        self.chi_singleSpin = 0.0
+        self.costheta_singleSpin = 0.0
+        self.costheta_final_singleSpin = 0.0
+        self.chi_singleSpin_antisymmetric = 0.0
+        self.theta_antisymmetric = 0.0
+        self.PNR_HM_Mflow = 0.0
+        self.PNR_HM_Mfhigh = 0.0
+
+        self.PNR_q_window_lower = 0.0
+        self.PNR_q_window_upper = 0.0
+        self.PNR_chi_window_lower = 0.0
+        self.PNR_chi_window_upper = 0.0
+        #self.PNRInspiralScaling = 0
+
+        status = IMRPhenomX_PNR_GetAndSetPNRVariables()
+        #status check
+
+        self.alphaPNR = 0.0
+        self.betaPNR = 0.0
+        self.gammaPNR = 0.0
+
+        #/*...#...#...#...#...#...#...#...#...#...#...#...#...#...#.../
+        #/      Get and/or store CoPrec params into pWF and pPrec     /
+        #/...#...#...#...#...#...#...#...#...#...#...#...#...#...#...*/
+
+        status = IMRPhenomX_PNR_GetAndSetCoPrecParams()
+        #status check
+
+        #/*..#...#...#...#...#...#...#...#...#...#...#...#...#...#...*/
+
+        if pflag == "220, 221, 222, 223, 224":
+            IMRPhenomX_Initialize_MSA_System()
+            if self.MSA_ERROR ==1:
+                if pflag=="220, 223, 224":
+                    #XLAL_PRINT_WARNING("Warning: Initialization of MSA system failed. Defaulting to NNLO angles using 3PN aligned-spin approximation.")
+                    pass
+                else:
+                    #XLAL_ERROR(XLAL_EDOM,"Error: IMRPhenomX_Initialize_MSA_System failed to initialize. Terminating.\n")
+                    pass
+
+        if DEBUG==1:
+            pass
+
+        #/*...#...#...#...#...#...#...#...#...#...#...#...#...#...#.../
+        #/      Compute and set final spin and RD frequency           /
+        #/...#...#...#...#...#...#...#...#...#...#...#...#...#...#...*/
+        
+        IMRPhenomX_SetPrecessingRemnantParams(pWF,pPrec,lalParams)
+        #/*..#...#...#...#...#...#...#...#...#...#...#...#...#...#...*/
+
+
+        # /* Useful powers of \chi_p */
+        chip2    = chip * chip
+
+        #/* Useful powers of spins aligned with L */
+        chi1L2   = chi1L * chi1L
+        chi2L2   = chi2L * chi2L
+
+        log16    = 2.772588722239781
+
+        #/*  Cache the orbital angular momentum coefficients for future use.
+
+        #References:
+        #- Kidder, PRD, 52, 821-847, (1995), arXiv:gr-qc/9506022
+        #- Blanchet, LRR, 17, 2, (2014), arXiv:1310.1528
+        #- Bohe et al, 1212.5520v2
+        #- Marsat, CQG, 32, 085008, (2015), arXiv:1411.4118
+
+        switch(pflag)
+
+        case 101:
+        self.L0   = 1.0
+        self.L1   = 0.0
+        self.L2   = ((3.0/2.0) + (eta/6.0))
+        self.L3   = 0.0
+        self.L4   = (81.0 + (-57.0 + eta)*eta)/24.
+        self.L5   = 0.0
+        self.L6   = 0.0
+        self.L7   = 0.0
+        self.L8   = 0.0
+        self.L8L  = 0.0
+        #break
+
+        case 102, 220, 221, 224, 310, 311, 320, 321
+        case 330
+
+        self.L0   = 1.0
+        self.L1   = 0.0
+        self.L2   = 3.0/2. + eta/6.0
+        self.L3   = (5*(chi1L*(-2 - 2*delta + eta) + chi2L*(-2 + 2*delta + eta)))/6.
+        self.L4   = (81 + (-57 + eta)*eta)/24.
+        self.L5   = (-7*(chi1L*(72 + delta*(72 - 31*eta) + eta*(-121 + 2*eta)) + chi2L*(72 + eta*(-121 + 2*eta) + delta*(-72 + 31*eta))))/144.
+        self.L6   = (10935 + eta*(-62001 + eta*(1674 + 7*eta) + 2214*powers_of_lalpi.two))/1296.
+        self.L7   = 0.0
+        self.L8   = 0.0
+
+        #// This is the log(x) term
+        self.L8L  = 0.0
+        #break
+
+        case 222
+
+        case 223
+        self.L0   = 1.0
+        self.L1   = 0.0
+        self.L2   = 3.0/2. + eta/6.0
+        self.L3   = (-7*(chi1L + chi2L + chi1L*delta - chi2L*delta) + 5*(chi1L + chi2L)*eta)/6.
+        self.L4   = (81 + (-57 + eta)*eta)/24.
+        self.L5   = (-1650*(chi1L + chi2L + chi1L*delta - chi2L*delta) + 1336*(chi1L + chi2L)*eta + 511*(chi1L - chi2L)*delta*eta + 28*(chi1L + chi2L)*eta2)/600.
+        self.L6   = (10935 + eta*(-62001 + 1674*eta + 7*eta2 + 2214*powers_of_lalpi.two))/1296.
+        self.L7   = 0.0
+        self.L8   = 0.0
+
+        #// This is the log(x) term
+        self.L8L  = 0.0
+        #break
+
+        case 103:
+            # do something
+        case 104:
+            # do something
+        
+        default:
+            print("Error: IMRPhenomXPrecVersion not recognized. Requires version 101, 102, 103, 104, 220, 221, 222, 223, 224, 310, 311, 320, 321 or 330.\n")
+
+        ## End of pflag line 755
+
+        #/* Reference orbital angular momentum */
+        self.LRef = M * M * XLALSimIMRPhenomXLPNAnsatz(pWF['v_ref'], pWF['eta'] / pWF['v_ref'], self.L0, self.L1, self.L2, self.L3, self.L4, self.L5, self.L6, self.L7, self.L8, self.L8L) 
+
+
+        #/*
+        #In the following code block we construct the convetions that relate the source frame and the LAL frame.
+
+        #A detailed discussion of the conventions can be found in Appendix C and D of arXiv:2004.06503 and https://dcc.ligo.org/LIGO-T1500602
+
+        #/* Get source frame (*_Sf) J = L + S1 + S2. This is an instantaneous frame in which L is aligned with z */
+        self.J0x_Sf = (m1_2)*chi1x + (m2_2)*chi2x
+        self.J0y_Sf = (m1_2)*chi1y + (m2_2)*chi2y
+        self.J0z_Sf = (m1_2)*chi1z + (m2_2)*chi2z + self.LRef
+
+        self.J0     = jnp.sqrt(self.J0x_Sf*self.J0x_Sf + self.J0y_Sf*self.J0y_Sf + self.J0z_Sf*self.J0z_Sf)
+
+        #/* Get angle between J0 and LN (z-direction) */
+        if(self.J0 < 1e-10):
+
+            XLAL_PRINT_WARNING("Warning: |J0| < 1e-10. Setting thetaJ = 0.\n")
+            self.thetaJ_Sf = 0.0
+
+        else:
+        
+            self.thetaJ_Sf = acos(self.J0z_Sf / self.J0)
+        
+
+        phiRef = self.pWF['phiRef_In']
+
+        convention     = self.lalParams['PhenomXPConvention']
+
+        if convention:
+            print('do something') 
+
+        if DEBUG:
+            print(convention)
+
+        #/* Get azimuthal angle of J0 in the source frame */
+        if (fabs(self.J0x_Sf) < MAX_TOL_ATAN & fabs(self.J0y_Sf) < MAX_TOL_ATAN)
+            print('do something')
+        
+        else:
+            self.phiJ_Sf = atan2(self.J0y_Sf, self.J0x_Sf) #/* azimuthal angle of J0 in the source frame */
+
+        self.phi0_aligned = - self.phiJ_Sf
+
+
+        switch(convention)
+            {
+                case 0:
+                {
+                pWF->phi0 = self.phi0_aligned
+                break
+                }
+                case 1:
+                {
+                pWF->phi0 = 0
+                break
+                }
+                case 5:
+                case 6:
+                case 7:
+                {
+                break
+                }
+            }
+
+        
+
+        '''
+        Here we follow the same prescription as in IMRPhenomPv2:
+
+        Now rotate from SF to J frame to compute alpha0, the azimuthal angle of LN, as well as
+        thetaJ, the angle between J and N.
+
+        The J frame is defined by imposing that J points in the z-direction and the line of sight N is in the xz-plane
+        (with positive projection along x).
+
+        The components of any vector in the (new) J-frame can be obtained by rotation from the (old) source frame (SF).
+        This is done by multiplying by: RZ[-kappa].RY[-thetaJ].RZ[-phiJ]
+
+        Note that kappa is determined by rotating N with RY[-thetaJ].RZ[-phiJ], which brings J to the z-axis, and
+        taking the opposite of the azimuthal angle of the rotated N.
+        '''
+
+        #/* Determine kappa via rotations, as above */
+        self.Nx_Sf = jnp.sin(self.pWF['inclination'])*cos((LAL_PI / 2.0) - phiRef)
+        self.Ny_Sf = jnp.sin(self.pWF['inclination'])*sin((LAL_PI / 2.0) - phiRef)
+        self.Nz_Sf = jnp.cos(self.pWF['inclination'])
+
+        tmp_x = self.Nx_Sf
+        tmp_y = self.Ny_Sf
+        tmp_z = self.Nz_Sf
+
+        IMRPhenomX_rotate_z(-self.phiJ_Sf,   &tmp_x, &tmp_y, &tmp_z)
+        IMRPhenomX_rotate_y(-self.thetaJ_Sf, &tmp_x, &tmp_y, &tmp_z)
+
+        #/* Note difference in overall - sign w.r.t PhenomPv2 code */
+        self.kappa = XLALSimIMRPhenomXatan2tol(tmp_y,tmp_x, MAX_TOL_ATAN)
+
+        #/* Now determine alpha0 by rotating LN. In the source frame, LN = {0,0,1} */
+        tmp_x = 0.0
+        tmp_y = 0.0
+        tmp_z = 1.0
+        IMRPhenomX_rotate_z(-self.phiJ_Sf,   tmp_x, tmp_y, tmp_z)
+        IMRPhenomX_rotate_y(-self.thetaJ_Sf, tmp_x, tmp_y, tmp_z)
+        IMRPhenomX_rotate_z(-self.kappa,     tmp_x, tmp_y, tmp_z)
+
+
+        if jnp.abs(tmp_x) < MAX_TOL_ATAN & jnp.abs(tmp_y) < MAX_TOL_ATAN:
+            print('do something')
+        else:
+            print('do something else')
+
+
+        switch(convention)
+
+        case 0
+        case 5 { break}
+        case 1
+        case 6
+        case 7 {break}
+
+        # switch over
+
+
+
+        #Define the polarizations used. This follows the conventions adopted for IMRPhenomPv2.
+
+        #The IMRPhenomP polarizations are defined following the conventions in Arun et al (arXiv:0810.5336),
+        #i.e. projecting the metric onto the P, Q, N triad defining where: P = (N x J) / |N x J|.
+
+        #However, the triad X,Y,N used in LAL (the "waveframe") follows the definition in the
+        #NR Injection Infrastructure (Schmidt et al, arXiv:1703.01076).
+
+        #The triads differ from each other by a rotation around N by an angle \zeta. We therefore need to rotate
+        #the polarizations by an angle 2 \zeta.
+
+        self.Xx_Sf = -jnp.cos(pWF['inclination']) * jnp.sin(phiRef)
+        self.Xy_Sf = -jnp.cos(pWF['inclination']) * jnp.cos(phiRef)
+        self.Xz_Sf = +jnp.sin(pWF['inclination'])
+
+        tmp_x = self.Xx_Sf
+        tmp_y = self.Xy_Sf
+        tmp_z = self.Xz_Sf
+
+        IMRPhenomX_rotate_z(-self.phiJ_Sf,   tmp_x, tmp_y, &tmp_z)
+        IMRPhenomX_rotate_y(-self.thetaJ_Sf, tmp_x, tmp_y, &tmp_z)
+        IMRPhenomX_rotate_z(-self.kappa,     tmp_x, tmp_y, &tmp_z)
+
+
+
+        #The components tmp_i are now the components of X in the J frame.
+
+        #We now need the polar angle of this vector in the P, Q basis of Arun et al:
+
+        #    P = (N x J) / |NxJ|
+
+        #Note, that we put N in the (pos x)z half plane of the J frame   
+
+        switch(convention)
+        {
+            case0
+            case5 {break}
+            case 1
+            case 6
+            case 7 {break}
+
+        } 
+
+
+        #// (X . P)
+        self.XdotPArun = (tmp_x * self.PArunx_Jf) + (tmp_y * self.PAruny_Jf) + (tmp_z * self.PArunz_Jf)
+
+        #// (X . Q)
+        self.XdotQArun = (tmp_x * self.QArunx_Jf) + (tmp_y * self.QAruny_Jf) + (tmp_z * self.QArunz_Jf)
+
+        #/* Now get the angle zeta */
+        self.zeta_polarization = atan2(self.XdotQArun, self.XdotPArun)
+
+        #/* ********** PN Euler Angle Coefficients ********** */
+        #/*
+        #    This uses the single spin PN Euler angles as per IMRPhenomPv2
+        #*/  
+
+        #/* ********** PN Euler Angle Coefficients ********** */
+
+        switch (pflag)
+        case 101
+        case 102
+        case 103
+        case 104 {break}
+
+        case 220:
+        case 221:
+        case 222:
+        case 223:
+        case 224:
+        case 310:
+        case 311:
+        case 320:
+        case 321:
+        case 330: {break}
+        default {print("Error: IMRPhenomXPrecVersion not recognized. Requires version 101, 102, 103, 104, 220, 221, 222, 223, 224, 310, 311, 320, 321 or 330.\n")}
+
+        alpha_offset = 0, epsilon_offset = 0
+
+        if DEBUG == 1:
+            printf("thetaJN             : %e\n",   self.thetaJN)
+            printf("phiJ_Sf             : %e\n", self.phiJ_Sf)
+            printf("alpha0              : %e\n", self.alpha0)
+            printf("pi-kappa            : %e\n", LAL_PI-self.kappa)
+            printf("kappa               : %e\n", self.kappa)
+            printf("pi/2 - phiRef       : %e\n", LAL_PI_2 - phiRef)
+            printf("zeta_polarization   : %.16e\n", self.zeta_polarization)
+            printf("zeta_polarization   : %.16e\n", acos(self.XdotPArun))
+            printf("zeta_polarization   : %.16e\n", asin(self.XdotQArun))
+            printf("zeta_polarization   : %.16e\n\n", LAL_PI_2 - acos(self.XdotQArun))
+            printf("alpha1              : %e\n",  self.alpha1)
+            printf("alpha2              : %e\n",  self.alpha2)
+            printf("alpha3              : %e\n",  self.alpha3)
+            printf("alpha4L             : %e\n",  self.alpha4L)
+            printf("alpha5              : %e\n\n",  self.alpha5)
+
+        
+
+        switch (convention)
+        case 0{break}
+        case 1
+        case 6{break}
+        case 5
+        case 7{break}
+        # end switch
+
+
+        if convention == 5 | convention==7:
+            self.alpha_offset = -self.alpha0
+            self.epsilon_offset = 0
+            self.alpha_offset_1 = -self.alpha0
+            self.epsilon_offset_1 = 0
+            self.alpha_offset_3 = -self.alpha0
+            self.epsilon_offset_3 = 0
+            self.alpha_offset_4 = -self.alpha0
+            self.epsilon_offset_4 = 0
+        
+        else:
+            Get_alphaepsilon_atfref(alpha_offset, epsilon_offset, 2, pPrec, pWF)
+            self.alpha_offset       = alpha_offset
+            self.epsilon_offset     = epsilon_offset
+            self.alpha_offset_1     = alpha_offset
+            self.epsilon_offset_1   = epsilon_offset
+            self.alpha_offset_3     = alpha_offset
+            self.epsilon_offset_3   = epsilon_offset
+            self.alpha_offset_4     = alpha_offset
+            self.epsilon_offset_4   = epsilon_offset
+
+        self.cexp_i_alpha   = 0.
+        self.cexp_i_epsilon = 0.
+        self.cexp_i_betah   = 0.
+
+
+        '''
+        Check whether maximum opening angle becomes larger than \pi/2 or \pi/4.
+
+        If (L + S_L) < 0, then Wigner-d Coefficients will not track the angle between J and L, meaning
+        that the model may become pathological as one moves away from the aligned-spin limit.
+
+        If this does not happen, then max_beta will be the actual maximum opening angle.
+
+        This function uses a 2PN non-spinning approximation to the orbital angular momentum L, as
+        the roots can be analytically derived.
+
+        Returns XLAL_PRINT_WARNING if model is in a pathological regime.
+        '''
+
+
+        #// When L + SL < 0 and q>7, we disable multibanding
+        IMRPhenomXPCheckMaxOpeningAngle(pWF,pPrec,lalParams)
+
+        # Activate multibanding for Euler angles it threshold !=0. Only for PhenomXPHM. */
+        if self.lalParams['PhenomXPHMThresholdMband'] == 0:
+            #/* User switched off multibanding */
+            self.MBandPrecVersion = 0
+        else:
+            print('/* User requested multibanding */')
+
+
+        #/* At high mass ratios, we find there can be numerical instabilities in the model, although the waveforms continue to be well behaved.
+        #* We warn to user of the possibility of these instabilities.
+
+        #//printf(pWF->q)
+        if( self.pWF['q'] > 80 ):
+            print("Very high mass ratio, possibility of numerical instabilities. Waveforms remain well behaved.\n")
+
+        
+        ytheta  = self.thetaJN
+        yphi    = 0.0
+
+        self.Y2m2         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2, -2)
+        self.Y2m1         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2, -1)
+        self.Y20          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2,  0)
+        self.Y21          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2,  1)
+        self.Y22          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2,  2)
+        self.Y3m3         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3, -3)
+        self.Y3m2         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3, -2)
+        self.Y3m1         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3, -1)
+        self.Y30          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3,  0)
+        self.Y31          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3,  1)
+        self.Y32          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3,  2)
+        self.Y33          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3,  3)
+        self.Y4m4         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4, -4)
+        self.Y4m3         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4, -3)
+        self.Y4m2         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4, -2)
+        self.Y4m1         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4, -1)
+        self.Y40          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  0)
+        self.Y41          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  1)
+        self.Y42          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  2)
+        self.Y43          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  3)
+        self.Y44          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  4)
+
+        self.LALparams = lalParams
 
     def precversionTag3(self)->None:
 
-        self.L_MAX_PNR = jnp.max(self.lalParams['ModeArray'])
+        #check mode array to estimate frequency range over which splines will need to be evaluated
         self.ModeArray = self.lalParams['ModeArray']
+        
+        self.L_MAX_PNR = jnp.max(self.lalParams['ModeArray']) # line 305 to 316
+        IMRPhenomX_GetandSetModes(self.ModeArray, None) #FIXME #None should be pPrec
 
-        #self.pWF['deltaMF'] = get_deltaF_from_wfstruct(self.pWF) #FIXME
-        flow = self.compute_flow()
 
-        assert flow>0.
+        self.pWF['deltaMF'] = jnp.where(self.pWF['deltaF']==0.0, get_deltaF_from_wfstruct(self.pWF), self.pWF['deltaMF'])
+
+        # // if PNR angles are disabled, step back accordingly to the waveform's frequency grid step
+        flow = self.compute_flow() #substitute for line 323 to 404
+
+        assert flow>0. # line 405
 
         self.PNarrays, self.fmin_integration = IMRPhenomX_InspiralAngles_SpinTaylor(self.chi1x, self.chi1y, self.chi1z, self.chi2x, self.chi2y, self.chi2z, flow, self.IMRPhenomXPrecVersion, self.pWF, self.lalParams)        
 
         self.Mfmin_integration = XLALSimIMRPhenomXUtilsHztoMf(self.fmin_integration, self.pWF['Mtot'])
 
+
+        if self.IMRPhenomXPrecVersion==330:
+            # do something
+            pass
+
+        if "this fails":
+            self.IMRPhenomXPrecVersion==223
+
         
+        #// if PN numerical integration fails, default to MSA+fallback to NNLO
+        #// end of SpinTaylor code
         return None
 
     def compute_flow(self)->float:
@@ -254,6 +763,8 @@ class IMRPhenomXGetAndSetPrecessionVariables:
             return (self.pWF['fMin'] - self.integration_buffer)*2 / self.M_MAX
         
         return jax.lax.cond(self.PNRUseTunedAngles, PNRTuned_true, PNRTuned_false, operand = None)
+
+
 
 
 
@@ -394,8 +905,8 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
     else:
         copyLength=len(V)-1
         #if(copyLength < 4) {
-        #XLALPrintError("Error in %s: no. of points is insufficient for spline interpolation",__func__);
-        #XLAL_ERROR(XLAL_EFUNC);
+        #XLALPrintError("Error in %s: no. of points is insufficient for spline interpolation",__func__)
+        #XLAL_ERROR(XLAL_EFUNC)
         ## Just create these arrays..
     
 
@@ -466,19 +977,70 @@ def fRef_greater_than_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y
     return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
 
 
-def XLALSimInspiralSpinTaylorPNEvolveOrbit():
+def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: float, fStart: float, fEnd: float,
+                                           s1x: float, s1y: float, s1z: float, s2x: float, s2y: float, s2z: float, 
+                                           lnhatx: float, lnhaty: float, lnhatz: float, e1x: float, e1y: float, e1z: float,
+                                           lambda1: float, lambda2: float, quadparam1: float, quadparam2: float, spin0: int,
+                                           tide0: int, phase0: float, lscorr: int, approx: str):
+    # https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/group___l_a_l_sim_inspiral_spin_taylor__c.html#ga35cfdf3082e09cc97cda9e11ba4c2bff
+
+    """
+    spin0 >= 7 is not allowed.
+    fStart < 0 is not allowed. 
+    fEnd < 0 is not allowed.
+    if fEnd<fStart && fEnd != 0.0, sgn = -1 else sign 1.
+    
+    """
+
+    if approx=='SpinTaylorT4':
+        pass
+    elif approx=='SpinTaylorT5':
+        pass
+    elif approx=='SpinTaylorT1':
+        pass
+    else:
+        pass
+
+    m1sec = m1_SI / MSUN * MTSUN_SI
+    m2sec = m2_SI / MSUN * MTSUN_SI
+    Msec = m1sec + m2sec
+    Mcsec = Msec * pow( m1sec*m2sec/Msec/Msec, 0.6)
+
+
+    #/* Estimate length of waveform using Newtonian t(f) formula */
+    #/* Time from freq. = fStart to infinity */
+    dtStart = (5.0/256.0) * pow(jnp.pi,-8.0/3.0) * pow(Mcsec * fStart,-5.0/3.0) / fStart
+    #/* Time from freq. = fEnd to infinity. Set to zero if fEnd=0 */
+    dtEnd = jnp.where(fEnd==0.0, 0, (5.0/256.0) * pow(jnp.pi,-8.0/3.0) * pow(Mcsec * fEnd,-5.0/3.0) / fEnd)
+    lengths = dtStart - dtEnd
+
+
+    return None
+
+
+def XLALSimIMRPhenomXLPNAnsatz():
+    return None
+
+
+def IMRPhenomX_SetPrecessingRemnantParams():
+    return None
+
+
+def IMRPhenomX_PNR_GetAndSetPNRVariables():
     return None
 
 
 
-
-
-
-
-
-
-
-
+def IMRPhenomX_PNR_GetAndSetCoPrecParams():
+    return None
 
 def XLALSimIMRPhenomXUtilsMftoHz():
+    return None
+
+
+
+def IMRPhenomX_Initialize_MSA_System():
+    return None
+
+def IMRPhenomX_GetandSetModes(ModeArray: list, IMRPhenomXPrecessionStruct: dict):
     return None
