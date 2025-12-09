@@ -3,6 +3,7 @@ import math
 from ..typing import Array
 from ..constants import G, MSUN, C, MTSUN_SI
 import jax
+from spherical_harmonics import *
 
 class IMRPhenomXGetAndSetPrecessionVariables:
 
@@ -93,7 +94,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.pWF['m1_2'] = m1_2
         self.pWF['m2_2'] = m2_2
 
-        q = m1/m2
+        self.q = m1/m2
 
 
         # Powers of eta
@@ -505,74 +506,63 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         if jnp.abs(tmp_x) < MAX_TOL_ATAN & jnp.abs(tmp_y) < MAX_TOL_ATAN:
             print('do something')
+            "Case again"
         else:
+            "Case again"
             print('do something else')
 
 
-        switch(convention)
-
-        case 0
-        case 5 { break}
-        case 1
-        case 6
-        case 7 {break}
-
-        # switch over
+        # Compress line 931-966
+        self.thetaJN, self.Nz_Jf, self.Nx_Jf = jax.lax.cond(jnp.isin(convention, jnp.array([0, 5])), self.thetaJN_Nz_Nx_0_5, self.thetaJN_Nz_Nx_1_6_7, operand = None)
 
 
+        '''
+            Define the polarizations used. This follows the conventions adopted for IMRPhenomPv2.
 
-        #Define the polarizations used. This follows the conventions adopted for IMRPhenomPv2.
+            The IMRPhenomP polarizations are defined following the conventions in Arun et al (arXiv:0810.5336),
+            i.e. projecting the metric onto the P, Q, N triad defining where: P = (N x J) / |N x J|.
 
-        #The IMRPhenomP polarizations are defined following the conventions in Arun et al (arXiv:0810.5336),
-        #i.e. projecting the metric onto the P, Q, N triad defining where: P = (N x J) / |N x J|.
+            However, the triad X,Y,N used in LAL (the "waveframe") follows the definition in the
+            NR Injection Infrastructure (Schmidt et al, arXiv:1703.01076).
 
-        #However, the triad X,Y,N used in LAL (the "waveframe") follows the definition in the
-        #NR Injection Infrastructure (Schmidt et al, arXiv:1703.01076).
-
-        #The triads differ from each other by a rotation around N by an angle \zeta. We therefore need to rotate
-        #the polarizations by an angle 2 \zeta.
-
+            The triads differ from each other by a rotation around N by an angle \zeta. We therefore need to rotate 
+            the polarizations by an angle 2 \zeta.
+        '''
+        #Compressed line 983  to 991
         self.Xx_Sf = -jnp.cos(pWF['inclination']) * jnp.sin(phiRef)
         self.Xy_Sf = -jnp.cos(pWF['inclination']) * jnp.cos(phiRef)
         self.Xz_Sf = +jnp.sin(pWF['inclination'])
 
-        tmp_x = self.Xx_Sf
-        tmp_y = self.Xy_Sf
-        tmp_z = self.Xz_Sf
 
-        IMRPhenomX_rotate_z(-self.phiJ_Sf,   tmp_x, tmp_y, &tmp_z)
-        IMRPhenomX_rotate_y(-self.thetaJ_Sf, tmp_x, tmp_y, &tmp_z)
-        IMRPhenomX_rotate_z(-self.kappa,     tmp_x, tmp_y, &tmp_z)
+        tmp_v = jnp.array([self.Xx_Sf, self.Xy_Sf, self.Xz_Sf])
+        tmp_v = IMRPhenomX_rotate_z(-self.phiJ_Sf, tmp_v)
+        tmp_v = IMRPhenomX_rotate_y(-self.thetaJ_Sf, tmp_v)
+        tmp_v = IMRPhenomX_rotate_z(-self.kappa, tmp_v)
 
 
+        '''
 
-        #The components tmp_i are now the components of X in the J frame.
+            The components tmp_i are now the components of X in the J frame.
 
-        #We now need the polar angle of this vector in the P, Q basis of Arun et al:
+            We now need the polar angle of this vector in the P, Q basis of Arun et al:
 
-        #    P = (N x J) / |NxJ|
+                P = (N x J) / |NxJ|
 
-        #Note, that we put N in the (pos x)z half plane of the J frame   
+            Note, that we put N in the (pos x)z half plane of the J frame 
 
-        switch(convention)
-        {
-            case0
-            case5 {break}
-            case 1
-            case 6
-            case 7 {break}
+        '''
+        #Compress line 1002-1034
+        self.PArunx_Jf, self.PAruny_Jf, self.PArunz_Jf, self.QArunx_Jf, self.QAruny_Jf, self.QArunz_Jf = jax.lax.cond(jnp.isin(convention, jnp.array([0, 5])), self.PQ_Arun_0_5, self.PQ_Arun_1_6_7, operand = None)
 
-        } 
-
-
-        #// (X . P)
+        #As it is line 1035-1043
+        #(X . P)
         self.XdotPArun = (tmp_x * self.PArunx_Jf) + (tmp_y * self.PAruny_Jf) + (tmp_z * self.PArunz_Jf)
 
-        #// (X . Q)
+        #(X . Q)
         self.XdotQArun = (tmp_x * self.QArunx_Jf) + (tmp_y * self.QAruny_Jf) + (tmp_z * self.QArunz_Jf)
 
-        #/* Now get the angle zeta */
-        self.zeta_polarization = atan2(self.XdotQArun, self.XdotPArun)
+        #Now get the angle zeta
+        self.zeta_polarization = jnp.atan2(self.XdotQArun, self.XdotPArun)
 
         #/* ********** PN Euler Angle Coefficients ********** */
         #/*
@@ -580,141 +570,219 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         #*/  
 
         #/* ********** PN Euler Angle Coefficients ********** */
+        # Compress line 1050-1143
+        cond = jnp.isin(pflag, jnp.array([101, 102, 103, 104]))
+        self.alpha1, self.alpha2, self.alpha3, self.alpha4L, self.alpha5, self.epsilon1, self.epsilon2, self.epsilon3, self.epsilon4L, self.epsilon5 = jax.lax.cond(cond, self.compute_alpha_epsilon_101_104, self.compute_alpha_epsilon_220_330, operand = None)
 
-        switch (pflag)
-        case 101
-        case 102
-        case 103
-        case 104 {break}
-
-        case 220:
-        case 221:
-        case 222:
-        case 223:
-        case 224:
-        case 310:
-        case 311:
-        case 320:
-        case 321:
-        case 330: {break}
-        default {print("Error: IMRPhenomXPrecVersion not recognized. Requires version 101, 102, 103, 104, 220, 221, 222, 223, 224, 310, 311, 320, 321 or 330.\n")}
-
-        alpha_offset = 0, epsilon_offset = 0
-
-        if DEBUG == 1:
-            printf("thetaJN             : %e\n",   self.thetaJN)
-            printf("phiJ_Sf             : %e\n", self.phiJ_Sf)
-            printf("alpha0              : %e\n", self.alpha0)
-            printf("pi-kappa            : %e\n", LAL_PI-self.kappa)
-            printf("kappa               : %e\n", self.kappa)
-            printf("pi/2 - phiRef       : %e\n", LAL_PI_2 - phiRef)
-            printf("zeta_polarization   : %.16e\n", self.zeta_polarization)
-            printf("zeta_polarization   : %.16e\n", acos(self.XdotPArun))
-            printf("zeta_polarization   : %.16e\n", asin(self.XdotQArun))
-            printf("zeta_polarization   : %.16e\n\n", LAL_PI_2 - acos(self.XdotQArun))
-            printf("alpha1              : %e\n",  self.alpha1)
-            printf("alpha2              : %e\n",  self.alpha2)
-            printf("alpha3              : %e\n",  self.alpha3)
-            printf("alpha4L             : %e\n",  self.alpha4L)
-            printf("alpha5              : %e\n\n",  self.alpha5)
-
+        #Skipping the #if DEBUG==1 lines 1144-1162
         
+        # Compressed line 1163-1177
+        self.epsilon0 = self.set_epsilon0(convention)
 
-        switch (convention)
-        case 0{break}
-        case 1
-        case 6{break}
-        case 5
-        case 7{break}
-        # end switch
-
-
-        if convention == 5 | convention==7:
-            self.alpha_offset = -self.alpha0
-            self.epsilon_offset = 0
-            self.alpha_offset_1 = -self.alpha0
-            self.epsilon_offset_1 = 0
-            self.alpha_offset_3 = -self.alpha0
-            self.epsilon_offset_3 = 0
-            self.alpha_offset_4 = -self.alpha0
-            self.epsilon_offset_4 = 0
-        
-        else:
-            Get_alphaepsilon_atfref(alpha_offset, epsilon_offset, 2, pPrec, pWF)
-            self.alpha_offset       = alpha_offset
-            self.epsilon_offset     = epsilon_offset
-            self.alpha_offset_1     = alpha_offset
-            self.epsilon_offset_1   = epsilon_offset
-            self.alpha_offset_3     = alpha_offset
-            self.epsilon_offset_3   = epsilon_offset
-            self.alpha_offset_4     = alpha_offset
-            self.epsilon_offset_4   = epsilon_offset
+        ## Compression line 1178-1202
+        cond = (convention == 5) | (convention==7)
+        self.alpha_offset, self.epsilon_offset, self.alpha_offset_1, self.epsilon_offset_1, self.alpha_offset_3, self.epsilon_offset_3, self.alpha_offset_4, self.epsilon_offset_4 =  jax.lax.cond(cond, self.convention_five_or_seven_true, self.convention_five_or_seven_false)
 
         self.cexp_i_alpha   = 0.
         self.cexp_i_epsilon = 0.
         self.cexp_i_betah   = 0.
 
-
-        '''
-        Check whether maximum opening angle becomes larger than \pi/2 or \pi/4.
-
-        If (L + S_L) < 0, then Wigner-d Coefficients will not track the angle between J and L, meaning
-        that the model may become pathological as one moves away from the aligned-spin limit.
-
-        If this does not happen, then max_beta will be the actual maximum opening angle.
-
-        This function uses a 2PN non-spinning approximation to the orbital angular momentum L, as
-        the roots can be analytically derived.
-
-        Returns XLAL_PRINT_WARNING if model is in a pathological regime.
-        '''
-
-
-        #// When L + SL < 0 and q>7, we disable multibanding
-        IMRPhenomXPCheckMaxOpeningAngle(pWF,pPrec,lalParams)
+        # When L + SL < 0 and q>7, we disable multibanding NH: I will skip this function
+        #self.IMRPhenomXPCheckMaxOpeningAngle()
 
         # Activate multibanding for Euler angles it threshold !=0. Only for PhenomXPHM. */
-        if self.lalParams['PhenomXPHMThresholdMband'] == 0:
-            #/* User switched off multibanding */
-            self.MBandPrecVersion = 0
-        else:
-            print('/* User requested multibanding */')
+        self.MBandPrecVersion = jax.lax.cond(self.lalParams['PhenomXPHMThresholdMband']==0, lambda _: 0, lambda _: 1)
+        ## NH: I do not implement PhenomXPHMThresholdMband==1 option. The output of the above line will always be self.MBandPrecVersion = 0. 
 
 
-        #/* At high mass ratios, we find there can be numerical instabilities in the model, although the waveforms continue to be well behaved.
-        #* We warn to user of the possibility of these instabilities.
+        # At high mass ratios, we find there can be numerical instabilities in the model, although the waveforms continue to be well behaved.
+        # We warn to user of the possibility of these instabilities.
+        # printf(pWF->q)
+        jax.lax.cond(pWF["q"] > 80, 
+                     lambda _: jax.debug.print("Very high mass ratio, possibility of numerical instabilities. Waveforms remain well behaved."), 
+                     lambda _: None, 
+                     None)
 
-        #//printf(pWF->q)
-        if( self.pWF['q'] > 80 ):
-            print("Very high mass ratio, possibility of numerical instabilities. Waveforms remain well behaved.\n")
 
-        
-        ytheta  = self.thetaJN
-        yphi    = 0.0
+        self.Y2m2         = compute_sminus2_l2(theta = self.thetaJN, m = -2)
+        self.Y2m1         = compute_sminus2_l2(theta = self.thetaJN, m = -1)
+        self.Y20          = compute_sminus2_l2(theta = self.thetaJN, m = 0)
+        self.Y21          = compute_sminus2_l2(theta = self.thetaJN, m = 1)
+        self.Y22          = compute_sminus2_l2(theta = self.thetaJN, m = 2)
 
-        self.Y2m2         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2, -2)
-        self.Y2m1         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2, -1)
-        self.Y20          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2,  0)
-        self.Y21          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2,  1)
-        self.Y22          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 2,  2)
-        self.Y3m3         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3, -3)
-        self.Y3m2         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3, -2)
-        self.Y3m1         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3, -1)
-        self.Y30          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3,  0)
-        self.Y31          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3,  1)
-        self.Y32          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3,  2)
-        self.Y33          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 3,  3)
-        self.Y4m4         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4, -4)
-        self.Y4m3         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4, -3)
-        self.Y4m2         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4, -2)
-        self.Y4m1         = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4, -1)
-        self.Y40          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  0)
-        self.Y41          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  1)
-        self.Y42          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  2)
-        self.Y43          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  3)
-        self.Y44          = XLALSpinWeightedSphericalHarmonic(ytheta, yphi, -2, 4,  4)
+        self.Y3m3         = compute_sminus2_l3(theta = self.thetaJN, m = -3)
+        self.Y3m2         = compute_sminus2_l3(theta = self.thetaJN, m = -2)
+        self.Y3m1         = compute_sminus2_l3(theta = self.thetaJN, m = -1)
+        self.Y30          = compute_sminus2_l3(theta = self.thetaJN, m = 0)
+        self.Y31          = compute_sminus2_l3(theta = self.thetaJN, m = 1)
+        self.Y32          = compute_sminus2_l3(theta = self.thetaJN, m = 2)
+        self.Y33          = compute_sminus2_l3(theta = self.thetaJN, m = 3)
+
+        self.Y4m4         = compute_sminus2_l4(theta = self.thetaJN, m = -4)
+        self.Y4m3         = compute_sminus2_l4(theta = self.thetaJN, m = -3)
+        self.Y4m2         = compute_sminus2_l4(theta = self.thetaJN, m = -2)
+        self.Y4m1         = compute_sminus2_l4(theta = self.thetaJN, m = -1)
+        self.Y40          = compute_sminus2_l4(theta = self.thetaJN, m = 0)
+        self.Y41          = compute_sminus2_l4(theta = self.thetaJN, m = 1)
+        self.Y42          = compute_sminus2_l4(theta = self.thetaJN, m = 2)
+        self.Y43          = compute_sminus2_l4(theta = self.thetaJN, m = 3)
+        self.Y44          = compute_sminus2_l4(theta = self.thetaJN, m = 4)
 
         self.LALparams = lalParams
+        ## End line 1307
+
+    def convention_five_or_seven_true(self):
+        return -self.alpha0, 0, -self.alpha0, 0, -self.alpha0, 0, -self.alpha0, 0
+    
+    def convention_five_or_seven_false(self):
+        # Get initial Get \alpha and \epsilon offsets at \omega = pi * M * f_{Ref} */
+        alpha_offset, epsilon_offset = self.Get_alphaepsilon_atfref(2)
+        return alpha_offset, epsilon_offset, alpha_offset, epsilon_offset, alpha_offset, epsilon_offset, alpha_offset, epsilon_offset
+    
+    def Get_alphaepsilon_atfref(self, mprime):
+        omega_ref = self.pWF['piM'] * self.pWF['fRef'] * 2 / mprime
+        pflag = self.IMRPhenomXPrecVersion
+
+        #/* Explicitly enumerate MSA flags */
+        cond = (pflag == 220) | (pflag == 221) | (pflag == 222) | (pflag == 223) | (pflag == 224)
+
+        alpha_offset, epsilon_offset = jax.lax.cond(cond, self.Get_alphaepsilon_atfref_pflag_true, self.Get_alphaepsilon_atfref_pflag_false, omega_ref)
+
+        return alpha_offset, epsilon_offset
+    
+    def Get_alphaepsilon_atfref_pflag_true(self, omega_ref):
+
+        v = jnp.cbrt(omega_ref)
+        vangles  = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(self, v) # FIXME
+
+        alpha_offset = vangles['x'] - self.alpha0
+        epsilon_offset = vangles['x'] - self.epsilon0
+        return alpha_offset, epsilon_offset
+    
+    def Get_alphaepsilon_atfref_pflag_false(self, omega_ref):
+        logomega_ref    = jnp.log(omega_ref)
+        omega_ref_cbrt  = jnp.cbrt(omega_ref)
+        omega_ref_cbrt2 = omega_ref_cbrt * omega_ref_cbrt
+
+        alpha_offset = (self.alpha1  / omega_ref 
+                        + self.alpha2  / omega_ref_cbrt2 
+                        + self.alpha3  / omega_ref_cbrt 
+                        + self.alpha4L * logomega_ref 
+                        + self.alpha5  * omega_ref_cbrt - self.alpha0)
+
+        epsilon_offset = (self.epsilon1  / omega_ref 
+                          + self.epsilon2  / omega_ref_cbrt2 
+                          + self.epsilon3  / omega_ref_cbrt 
+                          + self.epsilon4L * logomega_ref 
+                          + self.epsilon5  * omega_ref_cbrt - self.epsilon0)
+
+        return alpha_offset, epsilon_offset
+    
+    def set_epsilon0(self, convention):
+
+        epsilon0 = jax.lax.cond(
+            jnp.isin(convention, jnp.array([1, 6])),
+            lambda _: self.phiJ_Sf - jnp.pi,
+            lambda _: 0.0,
+            operand=None,
+        )
+        
+        return epsilon0
+    
+
+    def compute_alpha_epsilon_101_104(self):
+        #This uses the single spin PN Euler angles as per IMRPhenomPv2
+        #Post-Newtonian Euler Angles: alpha */
+        chiL = (1.0 + self.q) * (self.chi_eff / self.q)
+        chiL2 = chiL * chiL
+
+        alpha1 = -35/192. + (5*self.delta)/(64.*self.m1)
+        alpha2 = ((15*chiL*self.delta*self.m1)/128. - (35*chiL*self.m1_2)/128.) / self.eta
+        alpha3 = (-5515/3072. + self.eta*(-515/384. - (15*self.delta2)/(256.*self.m1_2) 
+                                          + (175*self.delta)/(256.*self.m1)) + (4555*self.delta)/(7168.*self.m1) 
+                                          + ((15*self.chip2*self.delta*self.m1_3)/128. - (35*self.chip2*self.m1_4)/128.) / self.eta2)
+        #This is the term proportional to log(w) */
+
+        alpha4L = ((5*chiL*self.delta2)/16. - (5*chiL*self.delta*self.m1)/3. + (2545*chiL*self.m1_2)/1152.
+                   + ((-2035*chiL*self.delta*self.m1)/21504. 
+                      + (2995*chiL*self.m1_2)/9216.)/self.eta
+                   + ((5*chiL*self.chip2*self.delta*self.m1_5)/128. 
+                      - (35*chiL*self.chip2*self.m1_6)/384.) / self.eta3
+                   - (35*self.LAL_PI)/48. + (5*self.delta*self.LAL_PI)/(16.*self.m1))
+        
+        alpha5 = (5*(-190512*self.delta3*self.eta6 + 2268*self.delta2*self.eta3*self.m1*(self.eta2*(323 + 784*self.eta) + 336*(25*chiL2 + self.chip2)*self.m1_4)
+                + 7*self.m1_3*(8024297*self.eta4 + 857412*self.eta5 + 3080448*self.eta6
+                               + 143640*self.chip2*self.eta2*self.m1_4 - 127008*self.chip2*(-4*chiL2 + self.chip2)*self.m1_8
+                               + 6048*self.eta3*((2632*chiL2 + 115*self.chip2)*self.m1_4 - 672*chiL*self.m1_2*self.LAL_PI))
+                + 3*self.delta*self.m1_2*(-5579177*self.eta4 + 80136*self.eta5 - 3845520*self.eta6
+                                           + 146664*self.chip2*self.eta2*self.m1_4 + 127008*self.chip2*(-4*chiL2 + self.chip2)*self.m1_8
+                                           - 42336*self.eta3*((726*chiL2 + 29*self.chip2)*self.m1_4 - 96*chiL*self.m1_2*self.LAL_PI)))) / (6.5028096e7*self.eta4*self.m1_3)
+
+
+        epsilon1 = -35/192. + (5*self.delta)/(64.*self.m1)
+        epsilon2 = ((15*chiL*self.delta*self.m1)/128. - (35*chiL*self.m1_2)/128.) / self.eta
+        epsilon3 = -5515/3072. + self.eta*(-515/384. - (15*self.delta2)/(256.*self.m1_2) + (175*self.delta)/(256.*self.m1)) + (4555*self.delta)/(7168.*self.m1)
+        epsilon4L = (5*chiL*self.delta2)/16. - (5*chiL*self.delta*self.m1)/3. + (2545*chiL*self.m1_2)/1152. \
+                    + ((-2035*chiL*self.delta*self.m1)/21504. + (2995*chiL*self.m1_2)/9216.) / self.eta \
+                    - (35*self.LAL_PI)/48. + (5*self.delta*self.LAL_PI)/(16.*self.m1)
+        epsilon5 = (5*(-190512*self.delta3*self.eta3 + 2268*self.delta2*self.m1*(self.eta2*(323 + 784*self.eta) + 8400*chiL2*self.m1_4)
+                        - 3*self.delta*self.m1_2*(self.eta*(5579177 + 504*self.eta*(-159 + 7630*self.eta)) + 254016*chiL*self.m1_2*(121*chiL*self.m1_2 - 16*self.LAL_PI))
+                        + 7*self.m1_3*(self.eta*(8024297 + 36*self.eta*(23817 + 85568*self.eta)) + 338688*chiL*self.m1_2*(47*chiL*self.m1_2 - 12*self.LAL_PI)))) / (6.5028096e7*self.eta*self.m1_3)
+
+        return alpha1, alpha2, alpha3, alpha4L, alpha5, epsilon1, epsilon2, epsilon3, epsilon4L, epsilon5
+    
+    def compute_alpha_epsilon_220_330(self):
+        return 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,  
+    
+
+    def PQ_Arun_0_5(self):
+        #Get polar angle of X vector in J frame in the P,Q basis of Arun et al
+        PArunx_Jf = 0.0
+        PAruny_Jf = -1.0
+        PArunz_Jf = 0.0
+
+        #Q = (N x P) by construction
+        QArunx_Jf = self.Nz_Jf
+        QAruny_Jf = 0.0
+        QArunz_Jf = -self.Nx_Jf
+
+        return PArunx_Jf, PAruny_Jf, PArunz_Jf, QArunx_Jf, QAruny_Jf, QArunz_Jf
+
+    def PQ_Arun_1_6_7(self):
+        # Get polar angle of X vector in J frame in the P,Q basis of Arun et al
+        PArunx_Jf = self.Nz_Jf
+        PAruny_Jf = 0.0
+        PArunz_Jf = -self.Nx_Jf
+
+        QArunx_Jf = 0.0
+        QAruny_Jf = 1.0
+        QArunz_Jf = 0.0
+
+        return PArunx_Jf, PAruny_Jf, PArunz_Jf, QArunx_Jf, QAruny_Jf, QArunz_Jf
+    
+
+    def thetaJN_Nz_Nx_0_5(self):
+        # Line 937-952
+        #Now determine thetaJN by rotating N
+        tmp_v = jnp.array([self.Nx_Sf, self.Ny_Sf, self.Nz_Sf])
+        tmp_v = IMRPhenomX_rotate_z(self.phiJ_Sf,   tmp_v)
+        tmp_v = IMRPhenomX_rotate_y(self.thetaJ_Sf, tmp_v)
+        tmp_v = IMRPhenomX_rotate_z(self.kappa,     tmp_v)
+
+        # We don't need the y-component but we will store it anyway
+
+        # This is a unit vector, so no normalization
+        thetaJN = jnp.acos(self.Nz_Jf)
+
+        return thetaJN, tmp_v[2], tmp_v[0]
+
+    def thetaJN_Nz_Nx_1_6_7(self):
+        # Line 957-962
+        J0dotN     = (self.J0x_Sf * self.Nx_Sf) + (self.J0y_Sf * self.Ny_Sf) + (self.J0z_Sf * self.Nz_Sf)
+        thetaJN = jnp.acos( J0dotN / self.J0 )
+        Nz_Jf     = jnp.cos(thetaJN)
+        Nx_Jf     = jnp.sin(thetaJN)
+        return thetaJN, Nz_Jf, Nx_Jf
 
     def precversionTag3(self)->None:
 
@@ -748,6 +816,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         #// if PN numerical integration fails, default to MSA+fallback to NNLO
         #// end of SpinTaylor code
         return None
+        
 
     def compute_flow(self)->float:
         """
@@ -764,6 +833,26 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         
         return jax.lax.cond(self.PNRUseTunedAngles, PNRTuned_true, PNRTuned_false, operand = None)
 
+
+
+
+
+
+
+def IMRPhenomXPCheckMaxOpeningAngle(self):
+
+    #    Helper function to check if maximum opening angle > pi/2 or pi/4 and issues a warning. See discussion in https://dcc.ligo.org/LIGO-T1500602
+
+    '''
+    if L + SL < 0 & chi_p>0: print error
+        if q>7: turn off multibanding
+    elif: max_beta > pi/4
+        print('Pathological waveform')
+    '''
+
+    # This is purely sanity check to disable multibanding. Skipping this funcation for now. 
+
+    return None
 
 
 
@@ -1044,3 +1133,42 @@ def IMRPhenomX_Initialize_MSA_System():
 
 def IMRPhenomX_GetandSetModes(ModeArray: list, IMRPhenomXPrecessionStruct: dict):
     return None
+
+
+def IMRPhenomX_rotate_z(angle, vx, vy, vz): 
+    """
+    Rotate a 3D vector v = (vx, vy, vz) about the z-axis by given angle.
+    Args:
+        angle: scalar angle in radians (JAX array or float)
+        v: array-like of shape (3,) representing [vx, vy, vz]
+    Returns:
+        rotated vector as a JAX array of shape (3,)
+    """
+    cosa = jnp.cos(angle)
+    sina = jnp.sin(angle)
+
+    vx_rot = vx * cosa - vy * sina
+    vy_rot = vx * sina + vy * cosa
+    vz_rot = vz  # unchanged
+
+    return jnp.array([vx_rot, vy_rot, vz_rot])
+
+
+def IMRPhenomX_rotate_y(angle, vx, vy, vz):
+    """
+    Rotate a 3D vector v = (vx, vy, vz) about the y-axis by a given angle.
+    Args:
+        angle: scalar angle in radians (JAX array or float)
+        v: array-like of shape (3,) representing [vx, vy, vz]
+    Returns:
+        rotated vector as a JAX array of shape (3,)
+    """
+
+    cosa = jnp.cos(angle)
+    sina = jnp.sin(angle)
+
+    vx_rot =  vx * cosa + vz * sina
+    vy_rot =  vy  # unchanged
+    vz_rot = -vx * sina + vz * cosa
+
+    return jnp.array([vx_rot, vy_rot, vz_rot])
