@@ -3,8 +3,8 @@ import math
 from ..typing import Array
 from ..constants import G, MSUN, C, MTSUN_SI, GAMMA
 import jax
-from spherical_harmonics import *
-from IMRPhenomXPHM_utils import *
+from .spherical_harmonics import *
+from .IMRPhenomXPHM_utils import *
 
 class IMRPhenomXGetAndSetPrecessionVariables:
 
@@ -90,9 +90,11 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         #### Skipping the multibanding bookkeeping around line 136-142
 
+        self.m1_SI = m1_SI
+        self.m2_SI = m2_SI
         # Define a number of convenient local parameters #############
-        self.m1        = m1_SI / self.pWF['Mtot_SI']   #/* Normalized mass of larger companion:   m1_SI / Mtot_SI */
-        self.m2        = m2_SI / self.pWF['Mtot_SI']   #/* Normalized mass of smaller companion:  m2_SI / Mtot_SI */
+        self.m1        = self.m1_SI / self.pWF['Mtot_SI']   #/* Normalized mass of larger companion:   m1_SI / Mtot_SI */
+        self.m2        = self.m2_SI / self.pWF['Mtot_SI']   #/* Normalized mass of smaller companion:  m2_SI / Mtot_SI */
         self.M         = (self.m1 + self.m2)              #/* Total mass in solar units */
         
         # Useful powers of mass
@@ -340,9 +342,9 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         '''
 
         #Get source frame (*_Sf) J = L + S1 + S2. This is an instantaneous frame in which L is aligned with z */
-        self.J0x_Sf = (self.Mm1_2)*self.Mchi1x + (self.Mm2_2)*self.Mchi2x
-        self.J0y_Sf = (self.Mm1_2)*self.Mchi1y + (self.Mm2_2)*self.Mchi2y
-        self.J0z_Sf = (self.Mm1_2)*self.Mchi1z + (self.Mm2_2)*self.Mchi2z + self.LRef
+        self.J0x_Sf = (self.m1_2)*self.chi1x + (self.m2_2)*self.chi2x
+        self.J0y_Sf = (self.m1_2)*self.chi1y + (self.m2_2)*self.chi2y
+        self.J0z_Sf = (self.m1_2)*self.chi1z + (self.m2_2)*self.chi2z + self.LRef
 
         self.J0     = jnp.sqrt(self.J0x_Sf*self.J0x_Sf + self.J0y_Sf*self.J0y_Sf + self.J0z_Sf*self.J0z_Sf)
 
@@ -381,51 +383,48 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         taking the opposite of the azimuthal angle of the rotated N.
         '''
 
-        #/* Determine kappa via rotations, as above */
+        #Determine kappa via rotations, as above */
         self.Nx_Sf = jnp.sin(self.pWF['inclination'])*jnp.cos((jnp.pi / 2.0) - self.phiRef)
         self.Ny_Sf = jnp.sin(self.pWF['inclination'])*jnp.sin((jnp.pi / 2.0) - self.phiRef)
         self.Nz_Sf = jnp.cos(self.pWF['inclination'])
 
-        tmp_x = self.Nx_Sf
-        tmp_y = self.Ny_Sf
-        tmp_z = self.Nz_Sf
+        v = jnp.array([self.Nx_Sf, self.Ny_Sf, self.Nz_Sf])
 
-        vout = IMRPhenomX_rotate_z(-self.phiJ_Sf, jnp.arrat([tmp_x, tmp_y, tmp_z]))
+        vout = IMRPhenomX_rotate_z(-self.phiJ_Sf, v)
         vout = IMRPhenomX_rotate_y(-self.thetaJ_Sf, vout)
-        tmp_x = vout[0]
-        tmp_y = vout[1]
 
         #/* Note difference in overall - sign w.r.t PhenomPv2 code */
-        self.kappa = XLALSimIMRPhenomXatan2tol(tmp_y,tmp_x, self.MAX_TOL_ATAN)
+        self.kappa = XLALSimIMRPhenomXatan2tol(vout[1],vout[0], self.MAX_TOL_ATAN)
 
         #/* Now determine alpha0 by rotating LN. In the source frame, LN = {0,0,1} */
         tmp_x = 0.0
         tmp_y = 0.0
         tmp_z = 1.0
-        vout = IMRPhenomX_rotate_z(-self.phiJ_Sf,   jnp.array([tmp_x, tmp_y, tmp_z]))
+        v = jnp.array([tmp_x, tmp_y, tmp_z])
+        vout = IMRPhenomX_rotate_z(-self.phiJ_Sf,   v)
         vout = IMRPhenomX_rotate_y(-self.thetaJ_Sf, vout)
         vout = IMRPhenomX_rotate_z(-self.kappa,     vout)
 
         # Compress line 887 - 930
         tol_condition = (jnp.abs(vout[0]) < self.MAX_TOL_ATAN) & (jnp.abs(vout[1]) < self.MAX_TOL_ATAN)
-        self.alpha0 = self.set_alpha0(tol_condition, phenom_xp_convention)
+        self.alpha0 = self.set_alpha0(tol_condition, phenom_xp_convention, vout[0], vout[1])
         
 
         # Compress line 931-966
-        self.thetaJN, self.Nz_Jf, self.Nx_Jf = jax.lax.cond(jnp.isin(phenom_xp_convention, jnp.array([0, 5])), self.thetaJN_Nz_Nx_0_5, self.thetaJN_Nz_Nx_1_6_7, operand = None)
+        self.thetaJN, self.Nz_Jf, self.Nx_Jf = jax.lax.cond(jnp.isin(phenom_xp_convention, jnp.array([0, 5])), self.thetaJN_Nz_Nx_0_5, self.thetaJN_Nz_Nx_1_6_7, operand = vout)
 
 
         '''
-            Define the polarizations used. This follows the conventions adopted for IMRPhenomPv2.
+        Define the polarizations used. This follows the conventions adopted for IMRPhenomPv2.
 
-            The IMRPhenomP polarizations are defined following the conventions in Arun et al (arXiv:0810.5336),
-            i.e. projecting the metric onto the P, Q, N triad defining where: P = (N x J) / |N x J|.
+        The IMRPhenomP polarizations are defined following the conventions in Arun et al (arXiv:0810.5336),
+        i.e. projecting the metric onto the P, Q, N triad defining where: P = (N x J) / |N x J|.
 
-            However, the triad X,Y,N used in LAL (the "waveframe") follows the definition in the
-            NR Injection Infrastructure (Schmidt et al, arXiv:1703.01076).
+        However, the triad X,Y,N used in LAL (the "waveframe") follows the definition in the
+        NR Injection Infrastructure (Schmidt et al, arXiv:1703.01076).
 
-            The triads differ from each other by a rotation around N by an angle \zeta. We therefore need to rotate 
-            the polarizations by an angle 2 \zeta.
+        The triads differ from each other by a rotation around N by an angle zeta. We therefore need to rotate 
+        the polarizations by an angle 2 zeta.
         '''
         #Compressed line 983  to 991
         self.Xx_Sf = -jnp.cos(pWF['inclination']) * jnp.sin(self.phiRef)
@@ -433,10 +432,10 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.Xz_Sf = +jnp.sin(pWF['inclination'])
 
 
-        tmp_v = jnp.array([self.Xx_Sf, self.Xy_Sf, self.Xz_Sf])
-        tmp_v = IMRPhenomX_rotate_z(-self.phiJ_Sf, tmp_v)
-        tmp_v = IMRPhenomX_rotate_y(-self.thetaJ_Sf, tmp_v)
-        tmp_v = IMRPhenomX_rotate_z(-self.kappa, tmp_v)
+        v = jnp.array([self.Xx_Sf, self.Xy_Sf, self.Xz_Sf])
+        vout = IMRPhenomX_rotate_z(-self.phiJ_Sf, v)
+        vout = IMRPhenomX_rotate_y(-self.thetaJ_Sf, vout)
+        vout = IMRPhenomX_rotate_z(-self.kappa, vout)
 
 
         '''
@@ -455,10 +454,10 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         #As it is line 1035-1043
         #(X . P)
-        self.XdotPArun = (tmp_x * self.PArunx_Jf) + (tmp_y * self.PAruny_Jf) + (tmp_z * self.PArunz_Jf)
+        self.XdotPArun = (vout[0] * self.PArunx_Jf) + (vout[1] * self.PAruny_Jf) + (vout[2] * self.PArunz_Jf)
 
         #(X . Q)
-        self.XdotQArun = (tmp_x * self.QArunx_Jf) + (tmp_y * self.QAruny_Jf) + (tmp_z * self.QArunz_Jf)
+        self.XdotQArun = (vout[0] * self.QArunx_Jf) + (vout[1] * self.QAruny_Jf) + (vout[2] * self.QArunz_Jf)
 
         #Now get the angle zeta
         self.zeta_polarization = jnp.atan2(self.XdotQArun, self.XdotPArun)
@@ -657,22 +656,22 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         return PArunx_Jf, PAruny_Jf, PArunz_Jf, QArunx_Jf, QAruny_Jf, QArunz_Jf
     
 
-    def thetaJN_Nz_Nx_0_5(self):
-        # Line 937-952
+    def thetaJN_Nz_Nx_0_5(self, v_in):
+        # Line 937-952 ## FIXME Urgent
         #Now determine thetaJN by rotating N
-        tmp_v = jnp.array([self.Nx_Sf, self.Ny_Sf, self.Nz_Sf])
-        tmp_v = IMRPhenomX_rotate_z(self.phiJ_Sf,   tmp_v)
-        tmp_v = IMRPhenomX_rotate_y(self.thetaJ_Sf, tmp_v)
-        tmp_v = IMRPhenomX_rotate_z(self.kappa,     tmp_v)
+        
+        v = IMRPhenomX_rotate_z(self.phiJ_Sf,   v_in)
+        v = IMRPhenomX_rotate_y(self.thetaJ_Sf, v)
+        v = IMRPhenomX_rotate_z(self.kappa,     v)
 
         # We don't need the y-component but we will store it anyway
 
         # This is a unit vector, so no normalization
         thetaJN = jnp.acos(self.Nz_Jf)
 
-        return thetaJN, tmp_v[2], tmp_v[0]
+        return thetaJN, v[2], v[0]
 
-    def thetaJN_Nz_Nx_1_6_7(self):
+    def thetaJN_Nz_Nx_1_6_7(self, v_in):
         # Line 957-962
         J0dotN     = (self.J0x_Sf * self.Nx_Sf) + (self.J0y_Sf * self.Ny_Sf) + (self.J0z_Sf * self.Nz_Sf)
         thetaJN = jnp.acos( J0dotN / self.J0 )
@@ -685,12 +684,12 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         phi0 = jnp.where(phenom_xp_convention == 1, 0.0, phi0) 
         return phi0
     
-    def set_alpha0(self, tol_condition, phenom_xp_convention):
+    def set_alpha0(self, tol_condition, phenom_xp_convention, tmp_x, tmp_y):
         convention_condition = jnp.isin(phenom_xp_convention, self.check_convention_array)
 
         alpha0 = jax.lax.cond(tol_condition,
             lambda _: jax.lax.cond(convention_condition, lambda _2: jnp.pi, lambda _2: jnp.pi - self.kappa, operand = None),
-            lambda _: jax.lax.cond(convention_condition, lambda _2: jnp.atan2(self.tmp_y, self.tmp_x), lambda _2: jnp.pi - self.kappa, operand = None),
+            lambda _: jax.lax.cond(convention_condition, lambda _2: jnp.atan2(tmp_y, tmp_x), lambda _2: jnp.pi - self.kappa, operand = None),
             operand=None)
         
         return alpha0
@@ -699,7 +698,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         convention_condition = jnp.isin(phenom_xp_convention, self.check_convention_array)
 
         phiJ_Sf = jax.lax.cond(tol_condition, 
-                     lambda _: jax.lax.cond(convention_condition, lambda xx: jnp.pi/2.0 - phiRef, lambda yy: 0, operand = None), 
+                     lambda _: jax.lax.cond(convention_condition, lambda xx: jnp.pi/2.0 - phiRef, lambda yy: 0.0, operand = None), 
                      lambda _: jnp.atan2(self.J0y_Sf, self.J0x_Sf), 
                      operand = None)
         
@@ -835,7 +834,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         MSA_ERROR = 0
 
         MSA_ERROR = jax.lax.cond(MSA_conditions,
-                                      self.IMRPhenomX_Initialize_MSA_System,
+                                      IMRPhenomX_Initialize_MSA_System,
                                       lambda _: MSA_ERROR,
                                       operand = None)
         return MSA_ERROR
@@ -851,7 +850,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
                              operand = None)
 
     
-    def check_prescription_tag(n:int)->int:
+    def check_prescription_tag(self, n:int)->int:
         '''
         Retuns the first digit of a three digit number
         1 means NNLO
@@ -1152,35 +1151,35 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: f
     return None
 
 
-def XLALSimIMRPhenomXLPNAnsatz():
+def XLALSimIMRPhenomXLPNAnsatz(*args):
+    return 0.
+
+
+def IMRPhenomX_SetPrecessingRemnantParams(*args):
     return None
 
 
-def IMRPhenomX_SetPrecessingRemnantParams():
-    return None
-
-
-def IMRPhenomX_PNR_GetAndSetPNRVariables():
-    return None
-
-
-
-def IMRPhenomX_PNR_GetAndSetCoPrecParams():
-    return None
-
-def XLALSimIMRPhenomXUtilsMftoHz():
+def IMRPhenomX_PNR_GetAndSetPNRVariables(*args):
     return None
 
 
 
-def IMRPhenomX_Initialize_MSA_System():
+def IMRPhenomX_PNR_GetAndSetCoPrecParams(*args):
     return None
+
+def XLALSimIMRPhenomXUtilsMftoHz(*args):
+    return None
+
+
+
+def IMRPhenomX_Initialize_MSA_System(*args):
+    return 1
 
 def IMRPhenomX_GetandSetModes(ModeArray: list, IMRPhenomXPrecessionStruct: dict):
     return None
 
 
-def IMRPhenomX_rotate_z(angle, vx, vy, vz): 
+def IMRPhenomX_rotate_z(angle, v): 
     """
     Rotate a 3D vector v = (vx, vy, vz) about the z-axis by given angle.
     Args:
@@ -1191,6 +1190,9 @@ def IMRPhenomX_rotate_z(angle, vx, vy, vz):
     """
     cosa = jnp.cos(angle)
     sina = jnp.sin(angle)
+    vx = v[0]
+    vy = v[1]
+    vz = v[2]
 
     vx_rot = vx * cosa - vy * sina
     vy_rot = vx * sina + vy * cosa
@@ -1199,7 +1201,7 @@ def IMRPhenomX_rotate_z(angle, vx, vy, vz):
     return jnp.array([vx_rot, vy_rot, vz_rot])
 
 
-def IMRPhenomX_rotate_y(angle, vx, vy, vz):
+def IMRPhenomX_rotate_y(angle, v):
     """
     Rotate a 3D vector v = (vx, vy, vz) about the y-axis by a given angle.
     Args:
@@ -1211,6 +1213,9 @@ def IMRPhenomX_rotate_y(angle, vx, vy, vz):
 
     cosa = jnp.cos(angle)
     sina = jnp.sin(angle)
+    vx = v[0]
+    vy = v[1]
+    vz = v[2]
 
     vx_rot =  vx * cosa + vz * sina
     vy_rot =  vy  # unchanged
@@ -1220,5 +1225,5 @@ def IMRPhenomX_rotate_y(angle, vx, vy, vz):
 
 
 
-def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(V):
+def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(*args):
     return None
