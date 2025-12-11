@@ -245,13 +245,69 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         ## SpinTaylor code is from 294 to 484
         #start of SpinTaylor code
+        '''
+        1. Initialize PNarrays
+        2. self.L_MAX_PNR = self.M_MAX
 
-        if  self.manual_prescription_tag == 3:
-            try:
-                print('Using numerical method')
-            except:
-                print('Numerical method failed. Falling back go MSA. 223')
-        #end of SpinTaylor code
+        ModeArray 
+
+        LMAX_PNR = 2
+
+        if mode_array is not none:
+            if 44 is active:
+                LMAX_PNR = 4
+            elif 33 or 32 active:
+                LMAX_PNR = 3
+            GetandSetModes..
+            self.LMAX_PNR = LMAX_PNR
+
+        flow = pWF['fMin']
+        if deltaF is zero: get it from wfstruct
+
+        if PNRUseTunedAngles is flase:
+            flow = update
+        else:
+            flow = update
+
+        self.fmin_HM_inspiral = flow * 2.0 / pPrec->M_MAX;
+
+        make backup of the original precVersion
+
+        create a fake prec version 223
+
+        IMRPhenomX_PNR_GetAndSetPNRVariables(pWF, pPrec);
+
+        IMRPhenomX_PNR_precompute_alpha_coefficients(alphaParams, pWF, pPrec);
+
+        IMRPhenomX_PNR_precompute_beta_coefficients(betaParams, pWF, pPrec);
+
+        IMRPhenomX_PNR_BetaConnectionFrequencies(betaParams);
+
+        revert to original precVersion
+
+        define some new floats based of if
+
+        XLALSimIMRPhenomXUtilsMftoHz(Mf_low_cut * 0.65 * pPrec->M_MAX / 2.0, pWF->Mtot);
+
+
+
+        if...else to adjust flow again
+
+
+        IMRPhenomX_PNR_HMInterpolationDeltaF(flow, pWF, pPrec)
+
+        IMRPhenomX_InspiralAngles_SpinTaylor(function with lots of arguments)
+
+        Mfmin_integration = XLALSimIMRPhenomXUtilsHztoMf(pPrec->fmin_integration,pWF->Mtot);
+
+        if 330:
+            do some rotations
+        
+        if failure:
+            fall back on 223
+        '''
+
+        self.IMRPhenomXPrecVersion = jax.lax.cond(self.IMRPhenomXPrecVersion==self.manual_prescription_tag, self.spin_taylor_code, lambda _: 223, operand = None)
 
         # Compress line 486-490
         pflag = jnp.int32(self.IMRPhenomXPrecVersion)
@@ -552,7 +608,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
     def Get_alphaepsilon_atfref_pflag_true(self, omega_ref):
 
         v = jnp.cbrt(omega_ref)
-        vangles  = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v) # FIXME
+        vangles  = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(self, v, self.pWF) # FIXME
 
         alpha_offset = vangles['x'] - self.alpha0
         epsilon_offset = vangles['x'] - self.epsilon0
@@ -867,7 +923,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         return jnp.int32(n/100)
         
 
-    def compute_flow(self)->float:
+    def compute_flow_spin_taylor(self, PNRUseTunedAngles: int)->float:
         """
         Substitute function for line 324-340 in LALSimIMRPhenomX_precession.c script
         """
@@ -876,59 +932,27 @@ class IMRPhenomXGetAndSetPrecessionVariables:
             return jnp.where(self.pWF['deltaF']==0.0, self.pWF['fMin'], jnp.floor_divide(self.pWF['fMin'], self.pWF['deltaF'])*self.pWF['deltaF'])
         
         def PNRTuned_false(_):
-            self.M_MAX = 1.0 #FIXME this is definietly not the right value
-            self.integration_buffer = jnp.where(self.pWF['deltaF']>0.0, 3*self.pWF['deltaF'], 0.5) 
-            return (self.pWF['fMin'] - self.integration_buffer)*2 / self.M_MAX
+            M_MAX = 1.0 #FIXME this is definietly not the right value
+            integration_buffer = jnp.where(self.pWF['deltaF']>0.0, 3*self.pWF['deltaF'], 0.5) 
+            return (self.pWF['fMin'] - integration_buffer)*2 / M_MAX
         
         return jax.lax.cond(self.PNRUseTunedAngles, PNRTuned_true, PNRTuned_false, operand = None)
 
 
+    def spin_taylor_code():
+        return 330
+
+'''
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+End of IMRPhenomXGetAndSetPrecessionVaraibles
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+'''
 
 
 
 
 
-
-
-def IMRPhenomXPCheckMaxOpeningAngle(self):
-
-    #    Helper function to check if maximum opening angle > pi/2 or pi/4 and issues a warning. See discussion in https://dcc.ligo.org/LIGO-T1500602
-
-    '''
-    if L + SL < 0 & chi_p>0: print error
-        if q>7: turn off multibanding
-    elif: max_beta > pi/4
-        print('Pathological waveform')
-    '''
-
-    # This is purely sanity check to disable multibanding. Skipping this funcation for now. 
-
-    return None
-
-
-
-
-def get_deltaF_from_wfstruct(pWF: dict):
-    """
-    To be tested the jnp functions
-    """
-    #seglen=XLALSimInspiralChirpTimeBound(pWF['fRef'], pWF['m1_SI'], pWF['m2_SI'], pWF['chi1L'],pWF['chi2L'])
-    #deltaFv1= 1./jnp.max(4.,jnp.pow(2, jnp.ceil(jnp.log(seglen)/jnp.log(2))))
-    #deltaF = jnp.min(deltaFv1,0.1)
-    #deltaMF = XLALSimIMRPhenomXUtilsHztoMf(deltaF,pWF['Mtot'])
-    deltaMF = None
-    return deltaMF
-
-
-def XLALSimIMRPhenomXUtilsHztoMf():
-    return None
-
-def XLALSimInspiralChirpTimeBound():
-
-
-    return None
-
-
+#FIXME
 def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: float, 
                                          chi2x: float, chi2y: float, chi2z: float,
                                          fmin: float, PrecVersion: int, pWF: dict, lalParams: dict):
@@ -1060,11 +1084,13 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
     PhenomXPInspiralArrays = None
     return PhenomXPInspiralArrays, 0
 
-
+#FIXME
 def fRef_equal_to_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
     V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
     return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
 
+
+#FIXME
 def fRef_greater_than_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
     fS =  fRef
     fE = fmin - 0.5
@@ -1117,6 +1143,7 @@ def fRef_greater_than_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y
     return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
 
 
+#FIXME
 def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: float, fStart: float, fEnd: float,
                                            s1x: float, s1y: float, s1z: float, s2x: float, s2y: float, s2z: float, 
                                            lnhatx: float, lnhaty: float, lnhatz: float, e1x: float, e1y: float, e1z: float,
@@ -1157,33 +1184,67 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: f
 
     return None
 
-
-def XLALSimIMRPhenomXLPNAnsatz(*args):
-    return 0.
-
-
-def IMRPhenomX_SetPrecessingRemnantParams(*args):
+#FIXME
+def IMRPhenomX_SetPrecessingRemnantParams(pWF, lalParams):
     return None
 
 
+#FIXME
 def IMRPhenomX_PNR_GetAndSetPNRVariables(*args):
     return None
 
 
-
+#FIXME
 def IMRPhenomX_PNR_GetAndSetCoPrecParams(*args):
     return None
 
+#FIXME
 def XLALSimIMRPhenomXUtilsMftoHz(*args):
     return None
 
 
-
+#FIXME
 def IMRPhenomX_Initialize_MSA_System(*args):
     return 1
 
+#FIXME
 def IMRPhenomX_GetandSetModes(ModeArray: list, IMRPhenomXPrecessionStruct: dict):
     return None
+
+
+
+
+def XLALSimIMRPhenomXLPNAnsatz(v, LNorm, L0, L1, L2, L3, L4, L5, L6, L7, L8, L8L):
+    """
+    Computes the PN orbital angular momentum expansion.
+    v : Input velocity.
+    LNorm : Orbital angular momentum normalization (e.g. η / sqrt(x)).
+    L0–L8, L8L : PN coefficients.
+    
+    Returns
+    L : Post-Newtonian angular momentum.
+    """
+
+    x = v * v
+    x2 = x * x
+    x3 = x * x2
+    x4 = x * x3
+    sqx = jnp.sqrt(x)
+
+    L = (
+        L0
+        + L1 * sqx
+        + L2 * x
+        + L3 * (x * sqx)
+        + L4 * x2
+        + L5 * (x2 * sqx)
+        + L6 * x3
+        + L7 * (x3 * sqx)
+        + L8 * x4
+        + L8L * x4 * jnp.log(x)
+    )
+    return LNorm * L
+
 
 
 def IMRPhenomX_rotate_z(angle, v): 
@@ -1232,8 +1293,494 @@ def IMRPhenomX_rotate_y(angle, v):
 
 
 
-def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(*args):
+
+def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, v, pWF):
     # Wrapper to generate \f$\phi_z\f$, \f$\zeta\f$ and \f$\cos \theta_L\f$ at a given frequency
+
+    vout = jnp.array([0, 0, 0])
+    pPrec = None
+
+
+    L_norm = pWF['eta']/v
+    J_norm = IMRPhenomX_JNorm_MSA(L_norm, pPrec)
+
+    L_norm3PN       = 0.0
+
+    # Compressing line 2212 - 2220
+    cond = (pPrec.IMRPhenomXPrecVersion == 222) | (pPrec.IMRPhenomXPrecVersion == 223)
+    L_norm3PN = jax.lax.cond(cond, IMRPhenomX_L_norm_3PN_of_v, XLALSimIMRPhenomXLPNAnsatz, v, L_norm, pPrec)
+
+    '''
+    if (pPrec.IMRPhenomXPrecVersion == 222) | (pPrec.IMRPhenomXPrecVersion == 223):
+        L_norm3PN = IMRPhenomX_L_norm_3PN_of_v(v, v*v, L_norm, pPrec)
+
+    else:
+        L_norm3PN = XLALSimIMRPhenomXLPNAnsatz(v, L_norm, pPrec.L0, pPrec.L1, pPrec.L2, pPrec.L3, pPrec.L4, pPrec.L5, pPrec.L6, pPrec.L7, pPrec.L8, pPrec.L8L)
+    '''
     
 
-    return None
+    J_norm3PN = IMRPhenomX_JNorm_MSA(L_norm3PN, pPrec)
+    vRoots    = IMRPhenomX_Return_Roots_MSA(L_norm, J_norm, pPrec)
+
+
+    pPrec.S32  = vRoots.x
+    pPrec.Smi2 = vRoots.y
+    pPrec.Spl2 = vRoots.z
+
+    pPrec.Spl2mSmi2   = pPrec.Spl2 - pPrec.Smi2
+    pPrec.Spl2pSmi2   = pPrec.Spl2 + pPrec.Smi2
+    pPrec.Spl         = jnp.sqrt(pPrec.Spl2)
+    pPrec.Smi         = jnp.sqrt(pPrec.Smi2)
+
+    SNorm = IMRPhenomX_Return_SNorm_MSA(v, pPrec)
+    pPrec.S_norm      = SNorm
+    pPrec.S_norm_2    = SNorm * SNorm
+
+    vMSA = {0.,0.,0.}
+
+    # Compressing line 2245-2249
+    vMSA_correction = IMRPhenomX_Return_MSA_Corrections_MSA(v, L_norm, J_norm, pPrec)
+    cond = (jnp.abs(pPrec.Smi2 - pPrec.Spl2) > 1.e-5)
+    vMSA = jnp.where(cond, vMSA_correction, vMSA)
+    '''
+    if(jnp.abs(pPrec.Smi2 - pPrec.Spl2) > 1.e-5):
+    
+        #Get phiz_0_MSA and zeta_0_MSA
+        vMSA = IMRPhenomX_Return_MSA_Corrections_MSA(v, L_norm, J_norm, pPrec)
+    '''
+
+    phiz_MSA     = vMSA.x
+    zeta_MSA     = vMSA.y
+
+    phiz         = IMRPhenomX_Return_phiz_MSA(v, J_norm, pPrec)
+    zeta         = IMRPhenomX_Return_zeta_MSA(v, pPrec)
+    cos_theta_L        = IMRPhenomX_costhetaLJ(L_norm3PN, J_norm3PN, SNorm)
+
+    vout[0] = phiz + phiz_MSA
+    vout[1] = zeta + zeta_MSA
+    vout[2] = cos_theta_L
+
+    return vout
+
+
+def IMRPhenomX_JNorm_MSA(LNorm:float, pPrec)->float:
+    JNorm2 = (LNorm * LNorm + 2.0 * LNorm * pPrec.c1_over_eta + pPrec.SAv2)
+    return jnp.sqrt(JNorm2)
+
+
+def IMRPhenomX_L_norm_3PN_of_v(v: jax.Array, L_norm: float, pPrec)->float:
+    v2 = v*v
+    term_4 = pPrec.constants_L[4]
+    term_3 = pPrec.constants_L[3]
+    term_2 = pPrec.constants_L[2]
+    term_1 = pPrec.constants_L[1]
+    term_0 = pPrec.constants_L[0]
+    L_norm3PN = L_norm*(1. + v2*(term_0 + v*term_1 + v2*(term_2 + v*term_3 + v2*(term_4))))
+
+    return L_norm3PN
+
+
+def IMRPhenomX_Return_Roots_MSA(LNorm, JNorm, pPrec):
+    vBCD = IMRPhenomX_Return_Spin_Evolution_Coefficients_MSA(LNorm, JNorm, pPrec)  
+    B, C, D = vBCD[0], vBCD[1], vBCD[2]
+
+    B2 = B * B
+    B3 = B2 * B
+    BC = B * C
+
+    p = C - B2 / 3.0
+    qc = (2.0 / 27.0) * B3 - BC / 3.0 + D
+
+    sqrtarg = jnp.sqrt(-p / 3.0)
+    acosarg = 1.5 * qc / (p * sqrtarg)
+    acosarg = jnp.clip(acosarg, -1.0, 1.0)
+
+    theta = jnp.arccos(acosarg) / 3.0
+    cos_theta = jnp.cos(theta)
+    
+    print(f'{p=}, {sqrtarg=}, {theta=}, {B=}, {B2=}, {C=}')
+    
+    vector_condition = jnp.logical_or(jnp.isnan(theta),
+                                                   (jnp.isnan(sqrtarg)))
+    scalar_condition = jnp.logical_or.reduce(jnp.array([(pPrec.dotS1Ln == 1.0),
+                                                   (pPrec.dotS2Ln == 1.0),
+                                                   (pPrec.dotS1Ln == -1.0),
+                                                   (pPrec.dotS2Ln == -1.0),
+                                                   (pPrec.S1_norm_2 == 0.0),
+                                                   (pPrec.S2_norm_2 == 0.0)]))
+    invalid_case = jnp.logical_or(vector_condition, scalar_condition)
+
+    def roots_when_valid():
+        tmp1 = 2.0 * sqrtarg * jnp.cos(theta - 4.0 * jnp.pi / 3.0) - B / 3.0
+        tmp2 = 2.0 * sqrtarg * jnp.cos(theta - 2.0 * jnp.pi / 3.0) - B / 3.0
+        tmp3 = 2.0 * sqrtarg * cos_theta - B / 3.0
+
+        tmp4 = jnp.maximum(jnp.maximum(tmp1, tmp2), tmp3)
+        tmp5 = jnp.minimum(jnp.minimum(tmp1, tmp2), tmp3)
+
+        tmp6 = jnp.where(
+            (tmp4 - tmp3 > 0.0) & (tmp5 - tmp3 < 0.0),
+            tmp3,
+            jnp.where((tmp4 - tmp1 > 0.0) & (tmp5 - tmp1 < 0.0), tmp1, tmp2)
+        )
+
+        S32 = tmp5
+        Smi2 = jnp.abs(tmp6)
+        Spl2 = jnp.abs(tmp4)
+        return jnp.array([S32, Smi2, Spl2])
+
+    def roots_when_invalid():
+        Smi2 = pPrec.S_0_norm**2 * jnp.ones_like(LNorm)
+        Spl2 = Smi2 + 1e-9
+        S32 = jnp.zeros_like(LNorm)
+        return jnp.array([S32, Smi2, Spl2])
+
+    roots_array = jnp.where(
+        jnp.atleast_1d(invalid_case),
+        roots_when_invalid(),
+        roots_when_valid()
+    )
+    
+    print(f'{roots_array=}')
+
+    return roots_array
+
+
+def IMRPhenomX_Return_Spin_Evolution_Coefficients_MSA(LNorm, JNorm, pPrec):
+    JNorm2 = JNorm * JNorm
+    LNorm2 = LNorm * LNorm
+
+    S1Norm2 = pPrec.S1_norm_2
+    S2Norm2 = pPrec.S2_norm_2
+    q       = pPrec.qq
+    eta     = pPrec.eta
+    delta   = pPrec.delta_qq
+    deltaSq = delta * delta
+    Seff    = pPrec.Seff
+
+    J2mL2   = JNorm2 - LNorm2
+    J2mL2Sq = J2mL2 * J2mL2
+
+    # B coefficient (Eq. B2)
+    B_coeff = ((LNorm2 + S1Norm2) * q +
+               2.0 * LNorm * Seff -
+               2.0 * JNorm2 -
+               S1Norm2 - S2Norm2 +
+               (LNorm2 + S2Norm2) / q)
+
+    # C coefficient (Eq. B3)
+    C_coeff = (J2mL2Sq -
+               2.0 * LNorm * Seff * J2mL2 -
+               2.0 * ((1.0 - q) / q) * LNorm2 * (S1Norm2 - q * S2Norm2) +
+               4.0 * eta * LNorm2 * Seff * Seff -
+               2.0 * delta * (S1Norm2 - S2Norm2) * Seff * LNorm +
+               2.0 * ((1.0 - q) / q) * (q * S1Norm2 - S2Norm2) * JNorm2)
+
+    # D coefficient (Eq. B4)
+    D_coeff = (((1.0 - q) / q) * (S2Norm2 - q * S1Norm2) * J2mL2Sq +
+               deltaSq * (S1Norm2 - S2Norm2)**2 * LNorm2 / eta +
+               2.0 * delta * LNorm * Seff * (S1Norm2 - S2Norm2) * J2mL2)
+
+    return jnp.array([B_coeff, C_coeff, D_coeff])
+
+
+def IMRPhenomX_Return_SNorm_MSA(v, pPrec):
+
+    v2 = v * v
+
+    cancel_condition = jnp.abs(pPrec.Smi2 - pPrec.Spl2) < 1e-5
+
+    def sn_zero(_):
+        sn = jnp.array(0.0)
+        return sn
+
+    def sn_jacobi(_):
+        # Equation 25 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+        m = (pPrec.Smi2 - pPrec.Spl2) / (pPrec.S32 - pPrec.Spl2)
+
+        psi = IMRPhenomX_psiofv(
+            v, v2,
+            pPrec.psi0, pPrec.psi1, pPrec.psi2,
+            pPrec
+        )
+
+        # Jacobi elliptic functions
+        sn, cn, dn = gsl_sf_elljac_e(psi, m) # FIXME
+        return sn
+
+    sn = jax.lax.cond(cancel_condition, sn_zero, sn_jacobi, operand=None)
+
+    # Equation 23 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    SNorm2 = pPrec.Spl2 + (pPrec.Smi2 - pPrec.Spl2) * sn * sn
+
+    return jnp.sqrt(SNorm2)
+
+
+
+def gsl_sf_elljac_e(x, y):
+    """
+    TODO: Not yet implemented
+    """
+    return jnp.array(1.), jnp.array(2.), jnp.array(3.)
+
+def IMRPhenomX_psiofv(v, v2, psi0, psi1, psi2, pPrec):
+    # Equation 51 in arXiv:1703.03967
+    return psi0 - 0.75 * pPrec.g0 * pPrec.delta_qq * (1.0 + psi1 * v + psi2 * v2) / (v2 * v)
+
+
+
+def IMRPhenomX_Return_MSA_Corrections_MSA(
+    v, 
+    LNorm, 
+    JNorm, 
+    pPrec
+    ):
+    
+    v2 = v * v
+
+    # Sets c0, c2 and c4 in pPrec as per Eq. B6-B8 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    c_vec = IMRPhenomX_Return_Constants_c_MSA(v, JNorm, pPrec)
+    # Sets d0, d2 and d4 in pPrec as per Eq. B9-B11 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    d_vec = IMRPhenomX_Return_Constants_d_MSA(LNorm, JNorm, pPrec)  
+
+    c0, c2, c4 = c_vec
+    d0, d2, d4 = d_vec
+
+    two_d0 = 2.0 * d0
+    
+    # Eq. B20 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    sd = jnp.sqrt(jnp.abs(d2 * d2 - 4.0 * d0 * d4))
+
+    # Eq. F20-21 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    A_theta_L = 0.5 * ((JNorm / LNorm) + (LNorm / JNorm) - (pPrec.Spl2 / (JNorm * LNorm)))
+    B_theta_L = 0.5 * pPrec.Spl2mSmi2 / (JNorm * LNorm)
+
+    nc_num = 2.0 * (d0 + d2 + d4)
+    nc_denom = two_d0 + d2 + sd
+
+    nc = nc_num / nc_denom
+    nd = nc_denom / two_d0
+
+    sqrt_nc = jnp.sqrt(jnp.abs(nc))
+    sqrt_nd = jnp.sqrt(jnp.abs(nd))
+
+    psi = IMRPhenomX_Return_Psi_MSA(v, v2, pPrec) + pPrec.psi0
+    psi_dot = IMRPhenomX_Return_Psi_dot_MSA(v, pPrec) 
+
+    tan_psi = jnp.tan(psi)
+    atan_psi = jnp.arctan(tan_psi)
+
+    C1 = -0.5 * (c0 / d0 - 2.0 * (c0 + c2 + c4) / nc_num)
+    C2num = (c0 * (-2.0 * d0 * d4 + d2 * d2 + d2 * d4) -
+             c2 * d0 * (d2 + 2.0 * d4) +
+             c4 * d0 * (two_d0 + d2))
+    C2den = 2.0 * d0 * sd * (d0 + d2 + d4)
+    C2 = C2num / C2den
+
+    Cphi = C1 + C2
+    Dphi = C1 - C2
+
+    def compute_Cphi_term():
+        
+        return jnp.abs((
+            (c4 * d0 * ((2 * d0 + d2) + sd) -
+                c2 * d0 * ((d2 + 2.0 * d4) - sd) -
+                c0 * ((2 * d0 * d4) - (d2 + d4) * (d2 - 
+                sd))) / C2den) * (sqrt_nc / (nc - 1.0)) * (atan_psi - jnp.arctan(sqrt_nc * tan_psi))) / psi_dot
+        
+    def compute_Dphi_term():
+            return jnp.abs((
+                (-c4 * d0 * ((2 * d0 + d2) - sd) +
+                 c2 * d0 * ((d2 + 2.0 * d4) + sd) -
+                 c0 * (-(2 * d0 * d4) + (d2 + d4) * (d2 + sd))) / C2den
+            ) * (sqrt_nd / (nd - 1.0)) * (atan_psi - jnp.arctan(sqrt_nd * tan_psi))) / psi_dot
+
+    phiz_0_MSA_Cphi_term = jnp.where(nc == 1.0, 0.0, compute_Cphi_term())
+    phiz_0_MSA_Dphi_term = jnp.where(nd == 1.0, 0.0, compute_Dphi_term())
+
+    vMSA_x = phiz_0_MSA_Cphi_term + phiz_0_MSA_Dphi_term
+
+    #####  restart from here
+    vMSA_y = A_theta_L * vMSA_x + 2.0 * B_theta_L * d0 * (
+                phiz_0_MSA_Cphi_term / (sd - d2) - phiz_0_MSA_Dphi_term / (sd + d2))
+
+    vMSA_x = jnp.where(jnp.isnan(vMSA_x), 0.0, vMSA_x)
+    vMSA_y = jnp.where(jnp.isnan(vMSA_y), 0.0, vMSA_y)
+
+    return jnp.array([vMSA_x, vMSA_y, 0.0])
+
+
+
+def IMRPhenomX_Return_Psi_MSA(v, v2, pPrec):
+    return -0.75 * pPrec.g0 * pPrec.delta_qq * (1.0 + pPrec.psi1 * v + pPrec.psi2 * v2) / (v2 * v)
+
+def IMRPhenomX_Return_Psi_dot_MSA(v, pPrec):
+    v2 = v * v
+
+    A_coeff = -1.5 * v2 * v2 * v2 * (1.0 - v * pPrec.Seff) * jnp.sqrt(pPrec.inveta)
+    psi_dot = 0.5 * A_coeff * jnp.sqrt(pPrec.Spl2 - pPrec.S32)
+
+    return psi_dot
+
+
+def IMRPhenomX_Return_Constants_c_MSA(v, JNorm, pPrec):
+    v2 = v * v
+    v3 = v * v2
+    v4 = v2 * v2
+    v6 = v3 * v3
+    JNorm2 = JNorm * JNorm
+    Seff = pPrec.Seff
+
+
+    x = JNorm * (
+        0.75 * (1.0 - Seff * v) * v2 * (
+            pPrec.eta3
+            + 4.0 * pPrec.eta3 * Seff * v
+            - 2.0 * pPrec.eta * (
+                JNorm2 - pPrec.Spl2 + 2.0 * (pPrec.S1_norm_2 - pPrec.S2_norm_2) * pPrec.delta_qq
+            ) * v2
+            - 4.0 * pPrec.eta * Seff * (JNorm2 - pPrec.Spl2) * v3
+            + (JNorm2 - pPrec.Spl2) ** 2 * v4 * pPrec.inveta
+        )
+    )
+
+    y = JNorm * (
+        -1.5 * pPrec.eta * (pPrec.Spl2 - pPrec.Smi2)
+        * (1.0 + 2.0 * Seff * v - (JNorm2 - pPrec.Spl2) * v2 * pPrec.inveta**2)
+        * (1.0 - Seff * v) * v4
+    )
+
+    z = JNorm * (
+        0.75 * pPrec.inveta * (pPrec.Spl2 - pPrec.Smi2) ** 2
+        * (1.0 - Seff * v) * v6
+    )
+
+    return jnp.array([x, y, z])
+
+
+
+def IMRPhenomX_Return_Constants_d_MSA(LNorm, JNorm, pPrec):
+    LNorm2 = LNorm * LNorm
+    JNorm2 = JNorm * JNorm
+
+    x = - (JNorm2 - (LNorm + pPrec.Spl)) ** 2 * (JNorm2 - (LNorm - pPrec.Spl)) ** 2
+
+    y = -2.0 * (pPrec.Spl2 - pPrec.Smi2) * (JNorm2 + LNorm2 - pPrec.Spl2)
+
+    z = -(pPrec.Spl2 - pPrec.Smi2) ** 2
+
+    return jnp.array([x, y, z])
+
+
+
+
+def IMRPhenomX_Return_phiz_MSA(
+    v: float, 
+    JNorm: float, 
+    pPrec
+    ) -> float:
+    
+    invv = 1.0 / v
+    invv2 = invv * invv
+    LNewt = pPrec.eta / v
+
+    c1 = pPrec.c1
+    c12 = c1 * c1
+
+    SAv2 = pPrec.SAv2
+    SAv = pPrec.SAv
+    invSAv = pPrec.invSAv
+    invSAv2 = pPrec.invSAv2
+
+    # These are log functions defined in Eq. D27 and D28 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    log1 = jnp.log(jnp.abs(c1 + JNorm * pPrec.eta + pPrec.eta * LNewt))
+    log2 = jnp.log(jnp.abs(c1 + JNorm * SAv * v + SAv2 * v))
+
+    # Eq. D22-D27 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+    phiz_0_coeff = (JNorm * pPrec.inveta**4) * (
+        0.5 * c12 - (c1 * pPrec.eta2 * invv) / 6.0 - (SAv2 * pPrec.eta2) / 3.0 - (pPrec.eta4 * invv2) / 3.0
+    ) - (0.5 * c1 * pPrec.inveta) * (
+        c12 * pPrec.inveta**4 - SAv2 * pPrec.inveta**2
+    ) * log1
+
+    phiz_1_coeff = (
+        -0.5 * JNorm * pPrec.inveta**2 * (c1 + pPrec.eta * LNewt)
+        + 0.5 * pPrec.inveta**3 * (c12 - pPrec.eta2 * SAv2) * log1
+    )
+
+    phiz_2_coeff = -JNorm + SAv * log2 - c1 * log1 * pPrec.inveta
+
+    phiz_3_coeff = JNorm * v - pPrec.eta * log1 + c1 * log2 * invSAv
+
+    phiz_4_coeff = (
+        0.5 * JNorm * invSAv2 * v * (c1 + v * SAv2)
+        - 0.5 * invSAv2 * invSAv * (c12 - pPrec.eta2 * SAv2) * log2
+    )
+
+    phiz_5_coeff = (
+        -JNorm * v * (
+            0.5 * c12 * invSAv2 * invSAv2
+            - c1 * v * invSAv2 / 6.0
+            - v * v / 3.0
+            - pPrec.eta2 * invSAv2 / 3.0
+        )
+        + 0.5 * c1 * invSAv2 * invSAv2 * invSAv * (c12 - pPrec.eta2 * SAv2) * log2
+    )
+
+    # Eq. 66 of Chatziioannou et al, PRD 95, 104004, (2017), arXiv:1703.03967
+ 
+    # \phi_{z,-1} = \sum^5_{n=0} <\Omega_z>^(n) \phi_z^(n) + \phi_{z,-1}^0
+ 
+    # Note that the <\Omega_z>^(n) are given by pPrec->Omegazn_coeff's as in Eqs. D15-D20
+    phiz_out = (
+        phiz_0_coeff * pPrec.Omegaz0_coeff
+        + phiz_1_coeff * pPrec.Omegaz1_coeff
+        + phiz_2_coeff * pPrec.Omegaz2_coeff
+        + phiz_3_coeff * pPrec.Omegaz3_coeff
+        + phiz_4_coeff * pPrec.Omegaz4_coeff
+        + phiz_5_coeff * pPrec.Omegaz5_coeff
+        + pPrec.phiz_0
+    )
+
+    # Ensure no NaN (replace with 0.0 if NaN)
+    phiz_out = jnp.nan_to_num(phiz_out, nan=0.0)
+
+    return phiz_out
+    
+def IMRPhenomX_Return_zeta_MSA(
+    v: float, 
+    pPrec
+    ) -> float:
+    invv = 1.0 / v
+    invv2 = invv * invv
+    invv3 = invv * invv2
+    v2 = v * v
+    logv = jnp.log(v)
+
+    # Compute zeta using precession coefficients
+    zeta_out = pPrec.eta * (
+        pPrec.Omegazeta0_coeff * invv3 +
+        pPrec.Omegazeta1_coeff * invv2 +
+        pPrec.Omegazeta2_coeff * invv +
+        pPrec.Omegazeta3_coeff * logv +
+        pPrec.Omegazeta4_coeff * v +
+        pPrec.Omegazeta5_coeff * v2
+    ) + pPrec.zeta_0
+
+    # Replace NaNs with 0 using jnp.nan_to_num
+    zeta_out = jnp.nan_to_num(zeta_out, nan=0.0)
+
+    return zeta_out
+
+
+def IMRPhenomX_costhetaLJ(
+    L_norm: float, 
+    J_norm: float, 
+    S_norm: float
+    ) -> float:
+    costhetaLJ = 0.5 * (J_norm**2 + L_norm**2 - S_norm**2) / L_norm * J_norm
+
+    # Clamp the value to the interval [-1.0, 1.0]
+    costhetaLJ = jnp.clip(costhetaLJ, -1.0, 1.0)
+
+    return costhetaLJ
