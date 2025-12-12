@@ -407,9 +407,8 @@ def XLALSimInspiralSpinDerivativesAvg(
 # Main JAX function
 # --------------------------
 
-@jax.jit
-def XLALSimInspiralSpinTaylorPNEvolveOrbit(
-    deltaT: float,
+@jax.jit(static_argnames=['n_steps'])
+def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     m1_SI: float,
     m2_SI: float,
     fStart: float,
@@ -435,9 +434,8 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(
     phaseO: int,
     lscorr: int,
     approx: int,
-    n_steps: int,
-    max_len: int = 100000,
-) -> Tuple[REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
+    n_steps:int,
+    max_len: int = 100000) -> Tuple[REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
            REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
            REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
            REAL8TimeSeries, REAL8TimeSeries]:
@@ -501,10 +499,13 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(
     n_steps = jnp.minimum(
         jnp.abs(jnp.floor(lengths / deltaT).astype(int)) + 1,
         max_len
-    )
-    '''
-    print('set up save times', t0, sgn * t1, n_steps)
-    save_ts = jnp.linspace(t0, sgn * t1, n_steps)
+    )'''
+
+    sgnt1 = sgn * t1
+
+    print('set up save times', t0, sgnt1, n_steps)
+
+    save_ts = jnp.linspace(t0, sgnt1, n_steps)
     
     # Run integration
     term = ODETerm(XLALSimInspiralSpinTaylorT4DerivativesAvg)
@@ -599,7 +600,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(
 
 
 
-def compute_n_steps(fStart: float, fEnd: float, Mcsec: float, deltaT: float, max_len: int = 100000):
+def compute_n_steps(fStart: float, fEnd: float, Mcsec: float, deltaT: float, max_len: int = 100000)->int:
 
     dtStart = (5.0/256.0) * jnp.power(LAL_PI, -8.0/3.0) * \
               jnp.power(Mcsec * fStart, -5.0/3.0) / fStart
@@ -616,7 +617,7 @@ def compute_n_steps(fStart: float, fEnd: float, Mcsec: float, deltaT: float, max
         jnp.abs(jnp.floor(lengths / deltaT).astype(int)) + 1,
         max_len
     )
-    return n_steps
+    return int(n_steps)
 
 # Example usage
 #appros: SpinTaylorT4.......key int(4)
