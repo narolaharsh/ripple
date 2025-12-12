@@ -940,6 +940,11 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
 
     def spin_taylor_code():
+        '''
+
+        Output of the spin taylor code is chi1_evolved and chi_2_evolved
+
+        '''
         return 330
 
 '''
@@ -953,10 +958,16 @@ End of IMRPhenomXGetAndSetPrecessionVaraibles
 
 
 #FIXME
+# Wrapper of  XLALSimInspiralSpinTaylorPNEvolveOrbit : if integration is successful, stores arrays containing PN solution in  a PhenomXPInspiralArrays struct
 def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: float, 
                                          chi2x: float, chi2y: float, chi2z: float,
                                          fmin: float, PrecVersion: int, pWF: dict, lalParams: dict):
-    
+    '''
+    Output: PhenomXPInspiralArrays [out] Struct containing solutions returned by PNEvolveOrbit 
+    Output: fmin_PN [out] Minimum frequency in PN solutions array
+    '''
+
+
     fRef = pWF['fRef']
     m1_SI = pWF['m1_SI']
     m2_SI = pWF['m2_SI']
@@ -984,163 +995,66 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
     lambda1 = jnp.where(PrecVersion_cond, 0, lambda1)
     lambda2 = jnp.where(PrecVersion_cond, 0, lambda2)
 
+    #Compress line 4634-4637
     phaseO = jnp.where(lalParams['phaseO']==-1, 7, lalParams['phaseO'])
     spinO = jnp.where(lalParams['spinO']==-1, 6, lalParams['spinO'])
     tideO = jnp.where(lalParams['tideO']==-1, 12, lalParams['tideO'])
+    lscorr = 0.0
+    
+    #Skip 4638-4655
 
     lnhatx = 0.0
     lnhaty = 0.0
+    lnhatz = 1.0
+
+    e1x = 1.0
     e1y = 0.0
     e1z = 0.0
-    lnhatz = 1.0
-    e1x = 1.0
-    lscorr = 0.0
+    
 
+    """
+    If PhenomXPSpinTaylorVersion is None: set it to "SpinTaylorT4"
+    """
 
     approx = lalParams['approx_name']
 
-    fMECO_Hz = XLALSimIMRPhenomXUtilsMftoHz(pWF['fMECO'], pWF['Mtot'])
 
-    fmin = jax.lax.select((fmin > fMECO_Hz) & ((PrecVersion==320) | (PrecVersion==321)), fMECO_Hz, fmin)
+    fMECO_Hz = XLALSimIMRPhenomXUtilsMftoHz(pWF['fMECO'], pWF['Mtot'])
+    fmin_condition = (fmin > fMECO_Hz) & ((PrecVersion==320) | (PrecVersion==321))
+    fmin = jnp.where(fmin_condition, fMECO_Hz, fmin)
 
     fCut = XLALSimIMRPhenomXUtilsMftoHz(pWF['fRING']+8 * pWF['fDAMP'], pWF['Mtot'])
+    
 
     deltaT_coarse = .5 * lalParams['coarse_fac'] / fCut
-    fS = fmin
-    fE = fCut
 
-
-    PNEvolveOrbit_operands = [fRef, fmin, deltaT_coarse, m1_SI, m2_SI, fS, fE, s1x, s1y, s1z, s2x, s2y, s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1, lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx]
-
-    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = jax.lax.cond(True, fRef_equal_to_fmin, fRef_greater_than_fmin, operands = PNEvolveOrbit_operands)
-
-    if lalParams['coarse_fac'] > 1:
-        lenLow = len(V)
-        nbuffer = min(9, lenLow-1)
-
-        if (lenLow-1-nbuffer<0):
-            nbuffer = lenLow-1-nbuffer
-
-        vtrans = V[lenLow-1-nbuffer]
-        ftrans = pow(vtrans, 3)/piGM
-
-        LNhatx_trans=LNhatx[lenLow-1-nbuffer]
-        LNhaty_trans=LNhaty[lenLow-1-nbuffer]
-        LNhatz_trans=LNhatz[lenLow-1-nbuffer]
-
-        E1x_trans = E1x[lenLow-1-nbuffer]
-        E1y_trans = E1y[lenLow-1-nbuffer]
-        E1z_trans = E1z[lenLow-1-nbuffer]
-
-        S1x_trans = S1x[lenLow-1-nbuffer]
-        S1y_trans = S1y[lenLow-1-nbuffer]
-        S1z_trans = S1z[lenLow-1-nbuffer]
-
-        S2x_trans = S2x[lenLow-1-nbuffer]
-        S2y_trans = S2y[lenLow-1-nbuffer]
-        S2z_trans = S2z[lenLow-1-nbuffer]
-                            
-        fS=ftrans
-        fE=fCut
-        deltaT = 0.5/(fCut)
-
-
-        V_PN, Phi_PN, S1x_PN, S1y_PN, S1z_PN, S2x_PN, S2y_PN, S2z_PN, LNhatx_PN, LNhaty_PN, LNhatz_PN, E1x_PN, E1y_PN, E1z_PN, =XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT, m1_SI, m2_SI,fS,fE,S1x_trans,S1y_trans,S1z_trans,S2x_trans,S2y_trans,S2z_trans,LNhatx_trans,LNhaty_trans,LNhatz_trans,E1x_trans, E1y_trans, E1z_trans,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
-
-        lenPN=lenLow-nbuffer-1+len(V_PN)
-
-        #if(lenPN < 4):
-        #    XLALPrintError("Error in %s: no. of points is insufficient for spline interpolation",__func__)
-        #    XLAL_ERROR(XLAL_EFUNC)
-                    
-
-        V_PN = V_PN[-(lenLow-nbuffer-1):lenPN]
-        LNhatx = LNhatx[-(lenLow-nbuffer-1):lenPN]
-        LNhaty_PN = LNhaty_PN[-(lenLow-nbuffer-1):lenPN]
-        LNhatz_PN = LNhatz_PN[-(lenLow-nbuffer-1):lenPN]
-        S1x_PN = S1x_PN[-(lenLow-nbuffer-1):lenPN]
-        S1y_PN = S1y_PN[-(lenLow-nbuffer-1):lenPN]
-        S1z_PN = S1z_PN[-(lenLow-nbuffer-1):lenPN]
-
-        S2x_PN = S2x_PN[-(lenLow-nbuffer-1):lenPN]
-        S2y_PN = S2y_PN[-(lenLow-nbuffer-1):lenPN]
-        S2z_PN = S2z_PN[-(lenLow-nbuffer-1):lenPN]
-
-    else:
-        copyLength=len(V)-1
-        #if(copyLength < 4) {
-        #XLALPrintError("Error in %s: no. of points is insufficient for spline interpolation",__func__)
-        #XLAL_ERROR(XLAL_EFUNC)
-        ## Just create these arrays..
     
+    #Line 4681
+    #if(coarse_fac  < 1) { XLAL_ERROR(XLAL_EDOM, "Coarse factor must be >= 1!\n");}
+
+    #Line 4685-4686
+    #fS = fmin
+    #fE = fCut
+
+    fref_zero_or_same_to_fmin = (fRef < 1e-10) | (jnp.abs(fRef-fmin) < 1e-10)
+
+    #Compress line 4688-4780
+    PhenomXPInspiralArrays = jax.lax.cond(fref_zero_or_same_to_fmin, integrate_forward, integrate_both_sides, fRef, fmin, fCut, deltaT_coarse, m1_SI, m2_SI, s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+    #V_PN, Phi_PN, S1x_PN, S1y_PN, S1z_PN, S2x_PN, S2y_PN, S2z_PN, LNhatx_PN, LNhaty_PN, LNhatz_PN, E1x_PN, E1y_PN, E1z_PN
+
+    #Line 4782
+    #if lalParams['coarse_fac'] > 1: # ignoring this flag. I force it to be ==1.  
 
     ## copy coarse-grid data to fine-grid
     ## destroy coarse-grid
 
-    fminPN=jnp.power(V_PN[0],3.)/piGM
-    if (fminPN<0.) | (fminPN>fmin): 
-        return "Failure"
+    #check that the first frequency node returned is indeed below the fmin requested, to avoid interpolation errors. If not return an error which will trigger the fallback to MSA
 
-    PhenomXPInspiralArrays = None
-    return PhenomXPInspiralArrays, 0
+    fminPN=jnp.power(PhenomXPInspiralArrays[0][0],3.)/piGM
 
-#FIXME
-def fRef_equal_to_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
-    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
-    return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
-
-
-#FIXME
-def fRef_greater_than_fmin(fRef, fmin, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
-    fS =  fRef
-    fE = fmin - 0.5
-
-    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
-
-    if len(V['data']) > 1:
-        V2, Phi2, S1x2, S1y2, S1z2, S2x2, S2y2, S2z2, LNhatx2, LNhaty2, LNhatz2, E1x2, E1y2, E1z2 = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, 
-                                                                                                                                            m1_SI, m2_SI, fS, fE, s1x, s1y, s1z, s2x, s2y,
-                                                                                                                                            s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1,lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
-        V = jnp.append(V, V2)
-        Phi = jnp.append(Phi, Phi2)
-        S1x = jnp.append(S1x, S1x2)
-        S1y = jnp.append(S1y, S1y2)
-        S1z = jnp.append(S1z, S1z2)
-
-        S2x = jnp.append(S2x, S2x2)
-        S2y = jnp.append(S2y, S2y2)
-        S2z = jnp.append(S2z, S2z2)
-
-        LNhatx = jnp.append(LNhatx, LNhatx2)
-        LNhaty = jnp.appnd(LNhaty, LNhaty2)
-        LNhatz = jnp.append(LNhatz, LNhatz2)
-        
-        E1x = jnp.append(E1x, E1x2)
-        E1y = jnp.append(E1y, E1y2)
-        E1z = jnp.append(E1z, E1z2)
-
-    else:
-        # This means the generation failed.
-        V = jnp.array([0])
-        Phi = jnp.array([0])
-        S1x = jnp.array([0])
-        S1y = jnp.array([0])
-        S1z = jnp.array([0])
-
-        S2x = jnp.array([0])
-        S2y = jnp.array([0])
-        S2z = jnp.array([0])
-
-        LNhatx =jnp.array([0])
-        LNhaty = jnp.array([0])
-        LNhatz = jnp.array([0])
-        
-        E1x = jnp.array([0])
-        E1y = jnp.array([0])
-        E1z = jnp.array([0])
-
-
-    return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
+    spin_taylor_success_check = (fminPN<0.0) | (fminPN>fmin)
+    status = jnp.where(spin_taylor_success_check, 0, 1)
+    return PhenomXPInspiralArrays, status
 
 
 #FIXME
@@ -1184,6 +1098,63 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: f
 
     return None
 
+
+def integrate_forward(fRef, fmin, fCut, deltaT_coarse, m1_SI, m2_SI, s1x, s1y, s1z, s2x, s2y, s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1, lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
+    '''
+    If fRef is zero or is equal to fmin, we only need to integrate from fmin to fCut, i.e., forward. 
+    This function is called to perform forward integration. 
+    Line 4690-4697
+    '''
+
+    fS = fmin
+    fE = fCut
+
+    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+    return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
+
+
+def integrate_both_sides(fRef, fmin, fCut, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
+    '''
+    If fRef > fmin, we first integrate from fRef to fmin and then fRef to fCut. 
+    This function is called to integrate on both sides
+    FIXME: We may want to get rid of jnp.append by making arrays of zeros and populating them. 
+    Line 4701-4773
+    '''
+
+    fS =  fRef
+    fE = fmin - 0.5
+
+    # Backward integration
+    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+
+
+    fS = fRef
+    fE = fCut
+    #Skipping the sanity check of if...else. Just jump to forward integration. 
+    V_forward, Phi_forward, S1x_forward, S1y_forward, S1z_forward, S2x_forward, S2y_forward, S2z_forward, LNhatx_forward, LNhaty_forward, LNhatz_forward, E1x_forward, E1y_forward, E1z_forward = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, 
+                                                                                                                                            m1_SI, m2_SI, fS, fE, s1x, s1y, s1z, s2x, s2y,
+                                                                                                                                            s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1,lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+    V = jnp.append(V, V_forward)
+    Phi = jnp.append(Phi, Phi_forward)
+    S1x = jnp.append(S1x, S1x_forward)
+    S1y = jnp.append(S1y, S1y_forward)
+    S1z = jnp.append(S1z, S1z_forward)
+
+    S2x = jnp.append(S2x, S2x_forward)
+    S2y = jnp.append(S2y, S2y_forward)
+    S2z = jnp.append(S2z, S2z_forward)
+
+    LNhatx = jnp.append(LNhatx, LNhatx_forward)
+    LNhaty = jnp.appnd(LNhaty, LNhaty_forward)
+    LNhatz = jnp.append(LNhatz, LNhatz_forward)
+    
+    E1x = jnp.append(E1x, E1x_forward)
+    E1y = jnp.append(E1y, E1y_forward)
+    E1z = jnp.append(E1z, E1z_forward)
+
+
+    return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
+
 #FIXME
 def IMRPhenomX_SetPrecessingRemnantParams(pWF, lalParams):
     return None
@@ -1191,6 +1162,7 @@ def IMRPhenomX_SetPrecessingRemnantParams(pWF, lalParams):
 
 #FIXME
 def IMRPhenomX_PNR_GetAndSetPNRVariables(*args):
+    #https://github.com/GW-JAX-Team/ripple/blob/f46fe3610bce9b0c82927f1de966190cf5e0ae53/src/ripplegw/waveforms/imr_phenom_xphm/lal_sim_imr_phenom_x_pnr_internals.py#L25
     return None
 
 
@@ -1198,9 +1170,9 @@ def IMRPhenomX_PNR_GetAndSetPNRVariables(*args):
 def IMRPhenomX_PNR_GetAndSetCoPrecParams(*args):
     return None
 
-#FIXME
-def XLALSimIMRPhenomXUtilsMftoHz(*args):
-    return None
+
+def XLALSimIMRPhenomXUtilsMftoHz(Mf, Mtot_Msun):
+    return Mf / (MTSUN_SI*Mtot_Msun)
 
 
 #FIXME

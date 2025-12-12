@@ -10,6 +10,9 @@ MSUN = 1.988409902147041637325262574352366540e30  # kg
 MRSUN = 1.476625038050124729627979840144936351e3
 """Geometrized nominal solar mass, m"""
 
+MTSUN_SI = 4.925490947641267e-06
+"""Solar mass in seconds"""
+
 G = 6.67430e-11  # m^3 / kg / s^2
 """Newton's gravitational constant"""
 
@@ -30,6 +33,9 @@ m_per_Mpc = 3.085677581491367278913937957796471611e22
 """
 Meters per Mpc.
 """
+
+## lal.GAMMA
+GAMMA = 0.5772156649015329
 
 clightGpc = C / 3.0856778570831e22
 """
