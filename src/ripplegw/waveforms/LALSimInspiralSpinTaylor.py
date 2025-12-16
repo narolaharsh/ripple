@@ -17,7 +17,7 @@ LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-11
 LAL_ST4_RELATIVE_TOLERANCE = 1.0e-9
 LAL_NUM_ST4_VARIABLES = 14
 
-@dataclass
+@dataclass(frozen=True)
 class XLALSimInspiralSpinTaylorTxCoeffs:
     """Parameters for SpinTaylor evolution (replaces C struct)"""
     m1_SI: float
@@ -41,6 +41,29 @@ class XLALSimInspiralSpinTaylorTxCoeffs:
     norm1: float
     norm2: float
 
+    def to_dict(self):
+        return {
+            'm1_SI': self.m1_SI,
+            'm2_SI': self.m2_SI,
+            'fStart': self.fStart,
+            'fEnd': self.fEnd,
+            'lambda1': self.lambda1,
+            'lambda2': self.lambda2,
+            'quadparam1': self.quadparam1,
+            'quadparam2': self.quadparam2,
+            'spinO': self.spinO,
+            'tideO': self.tideO,
+            'phaseO': self.phaseO,
+            'lscorr': self.lscorr,
+            'm1sec': self.m1sec,
+            'm2sec': self.m2sec,
+            'Msec': self.Msec,
+            'Mcsec': self.Mcsec,
+            'eta': self.eta,
+            'norm1': self.norm1,
+            'norm2': self.norm2,
+        }
+
 def XLALSimInspiralSpinTaylorT4Setup(
     m1_SI: float,
     m2_SI: float,
@@ -63,6 +86,10 @@ def XLALSimInspiralSpinTaylorT4Setup(
     Mcsec = Msec * jnp.power(eta, 0.6)
     norm1 = m1sec * m1sec / Msec / Msec
     norm2 = m2sec * m2sec / Msec / Msec
+
+    wdotnewt = 96. / 5. * eta
+    wdotcoeff_0 = 
+    
     
     return XLALSimInspiralSpinTaylorTxCoeffs(
         m1_SI=m1_SI, m2_SI=m2_SI, fStart=fStart, fEnd=fEnd,
@@ -407,7 +434,6 @@ def XLALSimInspiralSpinDerivativesAvg(
 # Main JAX function
 # --------------------------
 
-@jax.jit(static_argnames=['n_steps'])
 def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     m1_SI: float,
     m2_SI: float,
@@ -434,7 +460,6 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     phaseO: int,
     lscorr: int,
     approx: int,
-    n_steps:int,
     max_len: int = 100000) -> Tuple[REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
            REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
            REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
@@ -452,6 +477,8 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         m1_SI, m2_SI, fStart, fEnd, lambda1, lambda2,
         quadparam1, quadparam2, spinO, tideO, phaseO, lscorr
     )
+
+    params_dict = params.to_dict()
     
     m1sec = params.m1sec
     m2sec = params.m2sec
@@ -495,11 +522,11 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     dt0 = sgn * deltaT / Msec
     
     # Determine number of steps
-    '''
+
     n_steps = jnp.minimum(
         jnp.abs(jnp.floor(lengths / deltaT).astype(int)) + 1,
         max_len
-    )'''
+    )
 
     sgnt1 = sgn * t1
 
@@ -520,7 +547,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         term, solver,
         t0=t0, t1=sgn * t1, dt0=dt0,
         y0=yinit,
-        args=params,
+        args=params_dict,
         saveat=saveat,
         stepsize_controller=stepsize_controller,
         max_steps=max_len * 10
@@ -656,7 +683,6 @@ def example():
             tideO=12,
             phaseO=7,
             lscorr=0,
-            n_steps = n_steps,
             approx=4
         )
     
