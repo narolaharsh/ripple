@@ -16,8 +16,8 @@ LAL_G_SI = 6.67430e-11
 LAL_C_SI = 299792458.0
 LAL_GAMMA = 0.5772156649015329
 
-LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-12
-LAL_ST4_RELATIVE_TOLERANCE = 1.0e-12
+LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-5
+LAL_ST4_RELATIVE_TOLERANCE = 1.0e-5
 LAL_NUM_ST4_VARIABLES = 14
 
 
@@ -950,6 +950,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     # Estimate length using Newtonian t(f) formula
     dtStart = (5.0/256.0) * jnp.power(LAL_PI, -8.0/3.0) * \
               jnp.power(Mcsec * fStart, -5.0/3.0) / fStart
+
     dtEnd = jnp.where(
         fEnd == 0.,
         0.,
@@ -986,7 +987,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         jnp.abs(jnp.floor(lengths / deltaT).astype(int)) + 1,
         max_len
     )
-
+    print('nsteps', n_steps)
     sgnt1 = sgn * t1
     save_ts = jnp.linspace(t0, sgnt1, n_steps)
 
@@ -1001,6 +1002,8 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         atol=LAL_ST4_ABSOLUTE_TOLERANCE
     )
     print('Before Diffeqslove....')
+    print("Max steps", max_len * 10)
+
     sol = diffeqsolve(
         term, solver,
         t0=t0, t1=sgn * t1, dt0=dt0,
@@ -1009,7 +1012,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         saveat=saveat,
         stepsize_controller=stepsize_controller,
         max_steps=max_len * 10, 
-        event=Event(cond_fn = stopping_event)
+        #event=Event(cond_fn = stopping_event)
     )
 
     print('Diffeq solved')
@@ -1106,13 +1109,11 @@ def compute_n_steps(fStart: float, fEnd: float, Mcsec: float, deltaT: float, max
     )
     return int(n_steps)
 
-# Example usage
-#appros: SpinTaylorT4.......key int(4)
 def example():
     """Example matching C API style"""
     
-    m1_SI = 1.4 * LAL_MSUN_SI
-    m2_SI = 1.4 * LAL_MSUN_SI
+    m1_SI = 36 * LAL_MSUN_SI
+    m2_SI = 29 * LAL_MSUN_SI
 
     m1sec = m1_SI / LAL_MSUN_SI * LAL_MTSUN_SI
     m2sec = m2_SI / LAL_MSUN_SI * LAL_MTSUN_SI
@@ -1120,7 +1121,6 @@ def example():
     eta = m1sec * m2sec / (Msec * Msec)
     Mcsec = Msec * jnp.power(eta, 0.6)
 
-    n_steps = compute_n_steps(fStart = 20.0, fEnd = 1000.0, Mcsec=Mcsec, deltaT = 0.1)
    
 
     # Call function
@@ -1140,9 +1140,9 @@ def example():
             lambda2=0.0,
             quadparam1=1.0,
             quadparam2=1.0,
-            spinO=6,
-            tideO=12,
-            phaseO=7,
+            spinO=-1,
+            tideO=-1,
+            phaseO=-1,
             lscorr=0,
             approx=4
         )
