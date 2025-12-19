@@ -16,9 +16,11 @@ LAL_G_SI = 6.67430e-11
 LAL_C_SI = 299792458.0
 LAL_GAMMA = 0.5772156649015329
 
-LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-5
-LAL_ST4_RELATIVE_TOLERANCE = 1.0e-5
+LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-9
+LAL_ST4_RELATIVE_TOLERANCE = 1.0e-10
 LAL_NUM_ST4_VARIABLES = 14
+
+LAL_REAL4_EPS = jnp.float32(2.0 ** -23)
 
 
 @dataclass
@@ -288,6 +290,7 @@ def XLALSimInspiralSpinTaylorT4DerivativesAvg(t, values, params):
     # In JAX, we cannot "return" early, we must use jnp.where
     omega = jnp.where(omega <= 0, 1e-20, omega)
 
+
     # Basic quantities
     v = jnp.cbrt(omega)
     v2 = v * v
@@ -374,7 +377,8 @@ def XLALSimInspiralSpinTaylorT4DerivativesAvg(t, values, params):
         dLNhx, dLNhy, dLNhz,
         dS1x,  dS1y,  dS1z,
         dS2x,  dS2y,  dS2z,
-        dE1x,  dE1y,  dE1z
+        dE1x,  dE1y,  dE1z,
+        domega
     ])
 
 
@@ -401,6 +405,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
     LNhx, LNhy, LNhz = y[2], y[3], y[4]
     S1x, S1y, S1z = y[5], y[6], y[7]
     S2x, S2y, S2z = y[8], y[9], y[10]
+    prev_domega = y[14]
     
     # Compute dot products
     LNhdotS1 = cdot(LNhx, LNhy, LNhz, S1x, S1y, S1z)
@@ -424,9 +429,24 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
     )
     
     # Get energy coefficients
-    Ecoeff = _get(params, 'Ecoeff', jnp.zeros(8))
-    Etidal10 = _get(params, 'Etidal10', 0.0)
-    Etidal12 = _get(params, 'Etidal12', 0.0)
+    #print(params['energy_PNTermsAvg'])
+    _energy_coeffs = _get(params, 'energy_PNTermsAvg', {})
+    Ecoeff = _get(_energy_coeffs, 'Ecoeff', jnp.zeros(8))
+    '''Ecoeff = jnp.array([
+        energy_coeffs.get(0, 1.0),
+        energy_coeffs.get(1, 0.0),
+        energy_coeffs.get(2, 0.0),
+        energy_coeffs.get(3, 0.0),
+        energy_coeffs.get(4, 0.0),
+        energy_coeffs.get(5, 0.0),
+        energy_coeffs.get(6, 0.0),
+        energy_coeffs.get(7, 0.0)
+    ])
+    '''
+    jax.debug.print('Espin: {} {} {} {} {}', Espin3, Espin4, Espin5, Espin6, Espin7)
+
+    Etidal10 = _get(_energy_coeffs, 'Etidal10', 0.0)
+    Etidal12 = _get(_energy_coeffs, 'Etidal12', 0.0)
     
     # Energy test: dE/domega
     # If test < 0, energy is increasing (unphysical)
@@ -453,10 +473,12 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
             )
         )
     )
-    
+    jax.debug.print('t={} omega={} v={} test={}', t, omega, v, test)
+
     # Check d^2omega/dt^2 > 0
-    prev_domega = _get(params, 'prev_domega', 0.0)
-    ddomega = dvalues[1] - prev_domega
+    #prev_domega = _get(params, 'prev_domega', 0.0)
+    current_domega = dvalues[1]
+    ddomega = current_domega - prev_domega
     
     # Account for backward integration
     ddomega = jnp.where(
@@ -469,7 +491,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
     # Positive = continue, negative values encode different failure modes
     
     # Test 1: frequency bound (upper)
-    freq_above = (jnp.abs(omegaEnd) > 1e-6) & (omegaEnd > omegaStart) & (omega > omegaEnd)
+    freq_above = (jnp.abs(omegaEnd) > LAL_REAL4_EPS) & (omegaEnd > omegaStart) & (omega > omegaEnd)
     
     # Test 2: frequency bound (lower)
     freq_below = (jnp.abs(omegaEnd) > 1e-6) & (omegaEnd < omegaStart) & (omega < omegaEnd)
@@ -484,7 +506,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
     large_v = v >= 1.0
     
     # Test 6: d^2omega/dt^2 <= 0
-    omegadot_fail = ddomega <= 0.0
+    omegadot_fail = (ddomega <= 0.0) & (prev_domega != 0.0)
     
     # Combine tests: return negative if any test fails, positive otherwise
     # Using different negative values to encode which test failed
@@ -496,6 +518,8 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
              jnp.where(omegadot_fail, -6.0,
              1.0))))))  # Success = 1.0
     
+    jax.debug.print('Result {}\n', result)
+
     return result
 
 
@@ -686,7 +710,7 @@ def  compute_XLALSimInspiralSetEnergyPNTermsAvg(m1M, m2M, eta, lambda1, lambda2,
     return output
 
 
-@jit
+
 def XLALSimInspiralSpinDerivativesAvg(
     v,
     LNhx, LNhy, LNhz,
@@ -973,7 +997,8 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         norm2 * s2x,                # S2
         norm2 * s2y,
         norm2 * s2z,
-        e1x, e1y, e1z               # E1
+        e1x, e1y, e1z,
+        0.0 #prev_domega              # E1
     ])
     
     # Time span in dimensionless units \hat{t} = t/M
@@ -1011,8 +1036,8 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         args=params_dict,
         saveat=saveat,
         stepsize_controller=stepsize_controller,
-        max_steps=max_len * 10, 
-        #event=Event(cond_fn = stopping_event)
+        max_steps=max_len * 1000, 
+        event=Event(cond_fn = stopping_event)
     )
 
     print('Diffeq solved')
@@ -1127,7 +1152,7 @@ def example():
 
     V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = \
         XLALSimInspiralSpinTaylorPNEvolveOrbit(
-            deltaT=0.1,
+            deltaT=0.05,
             m1_SI=m1_SI,
             m2_SI=m2_SI,
             fStart=20.0,
