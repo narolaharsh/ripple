@@ -16,8 +16,8 @@ LAL_G_SI = 6.67430e-11
 LAL_C_SI = 299792458.0
 LAL_GAMMA = 0.5772156649015329
 
-LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-9
-LAL_ST4_RELATIVE_TOLERANCE = 1.0e-10
+LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-11/2
+LAL_ST4_RELATIVE_TOLERANCE = 1.0e-11/2
 LAL_NUM_ST4_VARIABLES = 14
 
 LAL_REAL4_EPS = jnp.float32(2.0 ** -23)
@@ -443,7 +443,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
         energy_coeffs.get(7, 0.0)
     ])
     '''
-    jax.debug.print('Espin: {} {} {} {} {}', Espin3, Espin4, Espin5, Espin6, Espin7)
+    
 
     Etidal10 = _get(_energy_coeffs, 'Etidal10', 0.0)
     Etidal12 = _get(_energy_coeffs, 'Etidal12', 0.0)
@@ -473,7 +473,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
             )
         )
     )
-    jax.debug.print('t={} omega={} v={} test={}', t, omega, v, test)
+    
 
     # Check d^2omega/dt^2 > 0
     #prev_domega = _get(params, 'prev_domega', 0.0)
@@ -506,7 +506,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
     large_v = v >= 1.0
     
     # Test 6: d^2omega/dt^2 <= 0
-    omegadot_fail = (ddomega <= 0.0) & (prev_domega != 0.0)
+    omegadot_fail = False#(ddomega <= 0.0) & (prev_domega != 0.0)
     
     # Combine tests: return negative if any test fails, positive otherwise
     # Using different negative values to encode which test failed
@@ -518,7 +518,10 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
              jnp.where(omegadot_fail, -6.0,
              1.0))))))  # Success = 1.0
     
-    jax.debug.print('Result {}\n', result)
+
+    #jax.debug.print('t={} omega={} v={} test={} result={}', t, omega, v, test, result)
+    #jax.debug.print('Ecoeff: {}', Ecoeff)
+    #jax.debug.print('Espin: {} {} {} {} {}\n', Espin3, Espin4, Espin5, Espin6, Espin7)
 
     return result
 
@@ -1012,12 +1015,10 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         jnp.abs(jnp.floor(lengths / deltaT).astype(int)) + 1,
         max_len
     )
-    print('nsteps', n_steps)
     sgnt1 = sgn * t1
     save_ts = jnp.linspace(t0, sgnt1, n_steps)
 
     # Run integration
-    print('Run Integration')
     term = ODETerm(XLALSimInspiralSpinTaylorT4DerivativesAvg)
    
     solver = Tsit5()
@@ -1026,9 +1027,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         rtol=LAL_ST4_RELATIVE_TOLERANCE,
         atol=LAL_ST4_ABSOLUTE_TOLERANCE
     )
-    print('Before Diffeqslove....')
-    print("Max steps", max_len * 10)
-
+    jax.debug.print("t= {} and ... t1 = {} ..... dt = {}", t0, t1, dt0)
     sol = diffeqsolve(
         term, solver,
         t0=t0, t1=sgn * t1, dt0=dt0,
@@ -1040,7 +1039,6 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         event=Event(cond_fn = stopping_event)
     )
 
-    print('Diffeq solved')
     yout = sol.ys  # shape: (len, 14)
     len_result = yout.shape[0]
     
