@@ -513,7 +513,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
              jnp.where(large_v, -5.0,
              jnp.where(omegadot_fail, -6.0,
              1.0))))))  # Success = 1.0
-    #jax.debug.print("JAX Time {} Energy evolution {} Result {}", t, test, result)
+    jax.debug.print("JAX Time {} Energy evolution {} Result {}", t, test, result)
     return result
 
 
@@ -945,7 +945,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     lscorr: int,
     approx: int,
     phenomtp: bool,
-    max_len: int = 100000) -> Tuple[REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
+    max_len: int = 1000) -> Tuple[REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
            REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
            REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries, REAL8TimeSeries,
            REAL8TimeSeries, REAL8TimeSeries]:
@@ -1014,8 +1014,9 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         jnp.abs(jnp.floor(lengths / deltaT).astype(int)) + 1,
         max_len
     )
+    jax.debug.print('n_steps {}',n_steps)
     sgnt1 = sgn * t1
-    save_ts = jnp.linspace(t0, sgnt1, n_steps)
+    save_ts = jnp.linspace(t0, sgnt1, max_len) 
 
     # Run integration
     term = ODETerm(XLALSimInspiralSpinTaylorT4DerivativesAvg)
@@ -1034,16 +1035,16 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         args=params_dict,
         saveat=saveat,
         stepsize_controller=stepsize_controller,
-        max_steps=max_len * 100000, 
+        max_steps=max_len * 100, 
         event=Event(cond_fn = stopping_event)
     )
 
-    yout = sol.ys  # shape: (len, 14)
+    yout = sol.ys  
 
     valid_mask = jnp.all(jnp.isfinite(yout), axis=1)
     n_invalid = jnp.sum(~valid_mask)
     
-    debug = True
+    jax.debug.print('Final time values {}', sol.ts)
    
 
     if n_invalid > 0:
@@ -1051,12 +1052,8 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         yout = yout[valid_mask]
         len_result = yout.shape[0]    
     
-    ts_array = sol.ts[valid_mask]
-    t_final = ts_array[-1]
     omega_final = yout[-1, 1]
     V_final = jnp.cbrt(omega_final)
-
-    print(f'JAX Final: t={t_final:.4f} omega={omega_final:.8f} V={V_final:.8f}')
 
     # Handle cutoff at fEnd
     cutlen = len_result
