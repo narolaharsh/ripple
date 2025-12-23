@@ -1,4 +1,5 @@
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from dataclasses import dataclass
 from typing import Tuple
@@ -9,15 +10,15 @@ from . import LALSimInspiralPNCoefficients as pncoefficients
 from functools import partial
 
 # Constants (from LAL)
-LAL_PI = jnp.pi
-LAL_MSUN_SI = 1.98892e30
-LAL_MTSUN_SI = 4.925491025543576e-06
+LAL_MSUN_SI = 1.988409870698050731911960804878414216e30
+LAL_MTSUN_SI = 4.925490947641266978197229498498379006e-6
+
 LAL_G_SI = 6.67430e-11
 LAL_C_SI = 299792458.0
 LAL_GAMMA = 0.5772156649015329
 
-LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-11/2
-LAL_ST4_RELATIVE_TOLERANCE = 1.0e-11/2
+LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-14
+LAL_ST4_RELATIVE_TOLERANCE = 1.0e-14
 LAL_NUM_ST4_VARIABLES = 14
 
 LAL_REAL4_EPS = jnp.float32(2.0 ** -23)
@@ -82,6 +83,7 @@ class XLALSimInspiralSpinTaylorTxCoeffs:
     norm1: float
     norm2: float
     wdotcoeff: dict
+    intermediate_wdotspin: dict
     wdotnewt: float
     omegashiftS1: float
     omegashiftS2: float
@@ -131,6 +133,7 @@ class XLALSimInspiralSpinTaylorTxCoeffs:
             'norm1': self.norm1,
             'norm2': self.norm2,
             'wdotcoeff': self.wdotcoeff,
+            'intermediate_wdotspin': self.intermediate_wdotspin,
             'wdotnewt': self.wdotnewt,
             'omegashiftS1': self.omegashiftS1,
             'omegashiftS2': self.omegashiftS2,
@@ -204,7 +207,7 @@ def XLALSimInspiralSpinTaylorT4Setup(
     wdotcoeff[10_1] = lambda1 * pncoefficients.XLALSimInspiralTaylorT4wdot_10PNTidalCoeff(m1M) + lambda2 * pncoefficients.XLALSimInspiralTaylorT4wdot_10PNTidalCoeff(m2M)
     wdotcoeff[12_1] = lambda1 * pncoefficients.XLALSimInspiralTaylorT4wdot_12PNTidalCoeff(m1M) + lambda2 * pncoefficients.XLALSimInspiralTaylorT4wdot_12PNTidalCoeff(m2M)
 
-
+    intermediate_wdotspin = pncoefficients.add_wdot_spin_coefficients_to_setup(m1M, m2M, eta, quadparam1, quadparam2)
     omegashiftS1 = pncoefficients.XLALSimInspiralLDot_3PNSOCoeff(m1M)
     omegashiftS2 = pncoefficients.XLALSimInspiralLDot_3PNSOCoeff(m2M)
 
@@ -247,6 +250,7 @@ def XLALSimInspiralSpinTaylorT4Setup(
         spinO=spinO, tideO=tideO, phaseO=phaseO, lscorr=lscorr,
         m1sec=m1sec, m2sec=m2sec, Msec=Msec, Mcsec=Mcsec,
         eta=eta, norm1=norm1, norm2=norm2, wdotcoeff = wdotcoeff, wdotnewt = wdotnewt, 
+        intermediate_wdotspin = intermediate_wdotspin,
         omegashiftS1 = omegashiftS1, omegashiftS2 = omegashiftS2,
         S1dot6S2Avg = S1dot6S2Avg,
         S2dot6S1Avg = S2dot6S1Avg,
@@ -302,15 +306,20 @@ def XLALSimInspiralSpinTaylorT4DerivativesAvg(t, values, params):
     S1dotS2  = cdot(S1x, S1y, S1z, S2x, S2y, S2z)
     S1sq     = cdot(S1x, S1y, S1z, S1x, S1y, S1z)
     S2sq     = cdot(S2x, S2y, S2z, S2x, S2y, S2z)
+    
 
     # -----------------------------------------------------
     # Spin contributions (stubbed as zero)
     # You can later insert the switch-case logic here.
     # -----------------------------------------------------
-    wspin3 = 0.0
-    wspin4 = 0.0
-    wspin5 = 0.0
-    wspin6 = 0.0
+    wspin_dict = pncoefficients.compute_wdotspin(params['intermediate_wdotspin'], LNhdotS1, LNhdotS2, S1dotS2, S1sq, S2sq, params['spinO'])
+
+    wspin3 = wspin_dict['wspin3']
+
+    wspin4Avg = wspin_dict['wspin4Avg']
+    wspin5 = wspin_dict['wspin5']
+
+    wspin6Avg = wspin_dict['wspin6Avg']
 
     # -----------------------------------------------------
     # domega
@@ -324,11 +333,11 @@ def XLALSimInspiralSpinTaylorT4DerivativesAvg(t, values, params):
                 + v * (
                     params['wdotcoeff'][3] + wspin3
                     + v * (
-                        params['wdotcoeff'][4] + wspin4
+                        params['wdotcoeff'][4] + wspin4Avg
                         + v * (
                             params['wdotcoeff'][5] + wspin5
                             + v * (
-                                params['wdotcoeff'][6] + wspin6
+                                params['wdotcoeff'][6] + wspin6Avg
                                 + params['wdotcoeff'][6_1] * jnp.log(v)
                                 + v * (
                                     params['wdotcoeff'][7]
@@ -372,6 +381,11 @@ def XLALSimInspiralSpinTaylorT4DerivativesAvg(t, values, params):
     # -----------------------------------------------------
     # Output vector (matches dvalues in C)
     # -----------------------------------------------------
+
+    #jax.debug.print("[t={:.1f}] omega={:.8f} domega={:.8e}", t, omega, domega)
+
+    #jax.debug.print("jax dphi {}", dphi)
+
     return jnp.array([
         dphi, domega,
         dLNhx, dLNhy, dLNhz,
@@ -420,8 +434,8 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
     fEnd = _get(params, 'fEnd', 0.0)
     
     # omega = PI G M f_GW / c^3
-    omegaStart = LAL_PI * M * LAL_MTSUN_SI * fStart
-    omegaEnd = LAL_PI * M * LAL_MTSUN_SI * fEnd
+    omegaStart = jnp.pi * M * LAL_MTSUN_SI * fStart
+    omegaEnd = jnp.pi * M * LAL_MTSUN_SI * fEnd
     
     # Get spin corrections to energy
     Espin3, Espin4, Espin5, Espin6, Espin7 = XLALSimInspiralSetEnergyPNTermsAvg(
@@ -517,12 +531,6 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
              jnp.where(large_v, -5.0,
              jnp.where(omegadot_fail, -6.0,
              1.0))))))  # Success = 1.0
-    
-
-    #jax.debug.print('t={} omega={} v={} test={} result={}', t, omega, v, test, result)
-    #jax.debug.print('Ecoeff: {}', Ecoeff)
-    #jax.debug.print('Espin: {} {} {} {} {}\n', Espin3, Espin4, Espin5, Espin6, Espin7)
-
     return result
 
 
@@ -746,13 +754,19 @@ def XLALSimInspiralSpinDerivativesAvg(
     # LN magnitude baseline as in C: LN0mag = eta / v
     eta = params['eta']
     LN0mag = eta / v
-    LNmag = LN0mag
+    #LNmag = LN0mag
 
     # Read spin-order and flags as runtime JAX values
     # spinO may be negative for "all" in C; support that by treating negative -> True in masks
     spinO = jnp.asarray(params['spinO'])
     lscorr = jnp.asarray(params['lscorr'])
     phenomtp = params['phenomtp']
+
+    LNmag = LN0mag
+    # Add 1PN correction if spinO >= 5
+    include_1PN = (spinO >= 5) | (spinO < 0)
+    L1PN = pncoefficients.XLALSimInspiralL_2PN(eta)  
+    LNmag = jnp.where(include_1PN, LNmag + LN0mag * v2 * L1PN, LNmag)
 
     # boolean masks (0.0 or 1.0 floats) for each PN spin-order level
     m3 = jnp.where((spinO >= 3) | (spinO < 0), 1.0, 0.0)   # include LO spin (v^5)
@@ -806,7 +820,7 @@ def XLALSimInspiralSpinDerivativesAvg(
     v7 = omega2 * v
     dS1_v7 = S1dot5 * v7 * LNh_x_S1 * m5
     dS2_v7 = S2dot5 * v7 * LNh_x_S2 * m5
-    dLNhat_v7 = -(dS1_v7 + dS2_v7)
+    dLNhat_v7 = -(dS1_v7 + dS2_v7) 
 
     # lscorr corrections (applied within certain orders in C) -> treat as v^2 * eta factor times some combos
     cS1 = params["cS1"]
@@ -831,14 +845,14 @@ def XLALSimInspiralSpinDerivativesAvg(
         # compute v^8 contributions (v8 = omega2 * v2)
         v8 = omega2 * v2
         # read coefficients
-        S1dot6S2Avg = _get(params, "S1dot6S2Avg", 0.0)
-        S1dot6S1OAvg = _get(params, "S1dot6S1OAvg", 0.0)
-        S1dot6S2OAvg = _get(params, "S1dot6S2OAvg", 0.0)
-        S2dot6S1Avg = _get(params, "S2dot6S1Avg", 0.0)
-        S2dot6S1OAvg = _get(params, "S2dot6S1OAvg", 0.0)
-        S2dot6S2OAvg = _get(params, "S2dot6S2OAvg", 0.0)
-        S1dot6QMS1OAvg = _get(params, "S1dot6QMS1OAvg", 0.0)
-        S2dot6QMS2OAvg = _get(params, "S2dot6QMS2OAvg", 0.0)
+        S1dot6S2Avg = params["S1dot6S2Avg"]
+        S1dot6S1OAvg = params["S1dot6S1OAvg"]
+        S1dot6S2OAvg = params["S1dot6S2OAvg"]
+        S2dot6S1Avg = params["S2dot6S1Avg"]
+        S2dot6S1OAvg = params["S2dot6S1OAvg"]
+        S2dot6S2OAvg = params["S2dot6S2OAvg"]
+        S1dot6QMS1OAvg = params["S1dot6QMS1OAvg"]
+        S2dot6QMS2OAvg = params["S2dot6QMS2OAvg"]
 
         dS1_v8 = v8 * (-S1dot6S2Avg * S1_x_S2 + (S1dot6S1OAvg * LNhdotS1 + S1dot6S2OAvg * LNhdotS2) * LNh_x_S1)
         dS2_v8 = v8 * ( S2dot6S1Avg * S1_x_S2 + (S2dot6S1OAvg * LNhdotS1 + S2dot6S2OAvg * LNhdotS2) * LNh_x_S2)
@@ -846,9 +860,10 @@ def XLALSimInspiralSpinDerivativesAvg(
         dS1_v8 = dS1_v8 + v8 * (S1dot6QMS1OAvg * LNhdotS1 * LNh_x_S1)
         dS2_v8 = dS2_v8 + v8 * (S2dot6QMS2OAvg * LNhdotS2 * LNh_x_S2)
 
-        dLNhat_v8 = -(dS1_v8 + dS2_v8)
+        dLNhat_v8 = jnp.array([0.0, 0.0, 0.0])#-(dS1_v8 + dS2_v8)
         # additional lscorr terms included in non-phenom branch:
         dLNhat_v8_lscorr = - lscorr_pref * (cS1 * dS1_v6 + cS2 * dS2_v6 + (cS1L * LNhdotS1 + cS2L * LNhdotS2) * dLNhat_lo / LN0mag) * m6 * lscorr
+
         return dS1_v8 * m6, dS2_v8 * m6, dLNhat_v8 * m6, dLNhat_v8_lscorr
 
     def phenom_branch(args):
@@ -898,6 +913,9 @@ def XLALSimInspiralSpinDerivativesAvg(
     # dS1_total and dS2_total are length-3 arrays
     # Return order as in C: dLNhx,dLNhy,dLNhz, dE1x,dE1y,dE1z, dS1x,dS1y,dS1z, dS2x,dS2y,dS2z
     out = jnp.concatenate([dLNh, dE1, dS1_total, dS2_total])
+
+    #jax.debug.print("JAX dLNh {} \n dE1 {} \n dS1_total {} \n dS2_total {}\n\n", dLNh, dE1, dS1_total, dS2_total)
+
     return out
 
 
@@ -975,15 +993,16 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     sgn = jnp.where((fEnd < fStart) & (fEnd != 0.), -1, 1)
     
     # Estimate length using Newtonian t(f) formula
-    dtStart = (5.0/256.0) * jnp.power(LAL_PI, -8.0/3.0) * \
+    dtStart = (5.0/256.0) * jnp.power(jnp.pi, -8.0/3.0) * \
               jnp.power(Mcsec * fStart, -5.0/3.0) / fStart
 
     dtEnd = jnp.where(
         fEnd == 0.,
         0.,
-        (5.0/256.0) * jnp.power(LAL_PI, -8.0/3.0) * \
+        (5.0/256.0) * jnp.power(jnp.pi, -8.0/3.0) * \
         jnp.power(Mcsec * fEnd, -5.0/3.0) / fEnd
     )
+
     lengths = dtStart - dtEnd
     
     # Put initial values into array
@@ -992,7 +1011,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     
     yinit = jnp.array([
         0.,                          # phi: initial orbital phase = 0
-        LAL_PI * Msec * fStart,     # omega: \hat{omega} = pi M f
+        jnp.pi * Msec * fStart,     # omega: \hat{omega} = pi M f
         lnhatx, lnhaty, lnhatz,     # LNhat
         norm1 * s1x,                # S1 (normalized by M^2)
         norm1 * s1y,
@@ -1027,7 +1046,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         rtol=LAL_ST4_RELATIVE_TOLERANCE,
         atol=LAL_ST4_ABSOLUTE_TOLERANCE
     )
-    jax.debug.print("t= {} and ... t1 = {} ..... dt = {}", t0, t1, dt0)
+
     sol = diffeqsolve(
         term, solver,
         t0=t0, t1=sgn * t1, dt0=dt0,
@@ -1035,17 +1054,34 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         args=params_dict,
         saveat=saveat,
         stepsize_controller=stepsize_controller,
-        max_steps=max_len * 1000, 
+        max_steps=max_len * 100000, 
         event=Event(cond_fn = stopping_event)
     )
 
     yout = sol.ys  # shape: (len, 14)
-    len_result = yout.shape[0]
+
+    valid_mask = jnp.all(jnp.isfinite(yout), axis=1)
+    n_invalid = jnp.sum(~valid_mask)
     
+    debug = True
+   
+
+    if n_invalid > 0:
+        print(f'Removing {n_invalid} points with inf/nan')
+        yout = yout[valid_mask]
+        len_result = yout.shape[0]    
+    
+    ts_array = sol.ts[valid_mask]
+    t_final = ts_array[-1]
+    omega_final = yout[-1, 1]
+    V_final = jnp.cbrt(omega_final)
+
+    print(f'JAX Final: t={t_final:.4f} omega={omega_final:.8f} V={V_final:.8f}')
+
     # Handle cutoff at fEnd
     cutlen = len_result
     if fEnd != 0.:
-        wEnd = LAL_PI * Msec * fEnd
+        wEnd = jnp.pi * Msec * fEnd
         omega_series = yout[:, 1]
         
         if fEnd < fStart:
@@ -1108,6 +1144,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     E1y = REAL8TimeSeries(data=E1y_data, deltaT=deltaT)
     E1z = REAL8TimeSeries(data=E1z_data, deltaT=deltaT)
     
+
     return (V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, 
             LNhatx, LNhaty, LNhatz, E1x, E1y, E1z)
 
@@ -1115,12 +1152,12 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
 
 def compute_n_steps(fStart: float, fEnd: float, Mcsec: float, deltaT: float, max_len: int = 100000)->int:
 
-    dtStart = (5.0/256.0) * jnp.power(LAL_PI, -8.0/3.0) * \
+    dtStart = (5.0/256.0) * jnp.power(jnp.pi, -8.0/3.0) * \
               jnp.power(Mcsec * fStart, -5.0/3.0) / fStart
     dtEnd = jnp.where(
         fEnd == 0.,
         0.,
-        (5.0/256.0) * jnp.power(LAL_PI, -8.0/3.0) * \
+        (5.0/256.0) * jnp.power(jnp.pi, -8.0/3.0) * \
         jnp.power(Mcsec * fEnd, -5.0/3.0) / fEnd
     )
 
@@ -1174,3 +1211,13 @@ def example():
     print(f"Final V: {V.data[-1]:.6f}")
     
     return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
+
+
+
+#-1.1270493097 0.0358329850 -1.4194513987 -13.0249912073
+#wdotspins four values... -1.1270493096646943 0.03583298496055225 -1.4194513986827415 -13.024991207348954
+
+
+#-1.1320704670 0.0710770890 -1.4548400623 -13.2207779975
+
+#-1.1321081507 0.0713704444 -1.4552037264 -13.2223704447

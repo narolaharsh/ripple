@@ -184,3 +184,220 @@ def XLALSimInspiralPNEnergy_4PNCoeff(eta):
 
 def XLALSimInspiralPNEnergy_6PNCoeff(eta):
      return -(67.5/6.4 - (344.45/5.76 - 20.5/9.6 * LAL_PI*LAL_PI) * eta + 15.5/9.6 * eta*eta + 3.5/518.4 * eta*eta*eta)
+
+
+def compute_wdotspin(params, LNhdotS1, LNhdotS2, S1dotS2, S1sq, S2sq, spinO):
+    """
+    Compute spin corrections to domega based on spin order.
+    
+    Args:
+        params: dictionary containing wdot spin coefficients
+        LNhdotS1, LNhdotS2: LNhat · S1, LNhat · S2
+        S1dotS2: S1 · S2
+        S1sq, S2sq: |S1|², |S2|²
+        spinO: spin PN order
+        
+    Returns:
+        dict with wspin3, wspin4Avg, wspin5, wspin6Avg
+    """
+    
+    # Initialize all to zero
+    wspin3 = 0.0
+    wspin4Avg = 0.0
+    wspin5 = 0.0
+    wspin6Avg = 0.0
+    
+    # Define spin order constants (matching LAL)
+    LAL_SIM_INSPIRAL_SPIN_ORDER_ALL = -1
+    LAL_SIM_INSPIRAL_SPIN_ORDER_35PN = 7
+    LAL_SIM_INSPIRAL_SPIN_ORDER_3PN = 6
+    LAL_SIM_INSPIRAL_SPIN_ORDER_25PN = 5
+    LAL_SIM_INSPIRAL_SPIN_ORDER_2PN = 4
+    LAL_SIM_INSPIRAL_SPIN_ORDER_15PN = 3
+    LAL_SIM_INSPIRAL_SPIN_ORDER_1PN = 2
+    LAL_SIM_INSPIRAL_SPIN_ORDER_05PN = 1
+    LAL_SIM_INSPIRAL_SPIN_ORDER_0PN = 0
+    
+    # Check which orders to include (mimics switch-case with fallthrough)
+    include_3PN = (spinO >= LAL_SIM_INSPIRAL_SPIN_ORDER_3PN) | (spinO == LAL_SIM_INSPIRAL_SPIN_ORDER_ALL)
+    include_25PN = (spinO >= LAL_SIM_INSPIRAL_SPIN_ORDER_25PN) | (spinO == LAL_SIM_INSPIRAL_SPIN_ORDER_ALL)
+    include_2PN = (spinO >= LAL_SIM_INSPIRAL_SPIN_ORDER_2PN) | (spinO == LAL_SIM_INSPIRAL_SPIN_ORDER_ALL)
+    include_15PN = (spinO >= LAL_SIM_INSPIRAL_SPIN_ORDER_15PN) | (spinO == LAL_SIM_INSPIRAL_SPIN_ORDER_ALL)
+    
+    # 1.5PN spin-orbit (wspin3)
+    wspin3 = jnp.where(
+        include_15PN,
+        params['wdot3S1O'] * LNhdotS1 + params['wdot3S2O'] * LNhdotS2,
+        wspin3
+    )
+    
+    # 2PN spin-spin and quadrupole-monopole (wspin4Avg)
+    wspin4_SO = params['wdot4S1S2Avg'] * S1dotS2 + params['wdot4S1OS2OAvg'] * LNhdotS1 * LNhdotS2
+    wspin4_QM = ((params['wdot4S1S1Avg'] + params['wdot4QMS1S1Avg']) * S1sq +
+                 (params['wdot4S2S2Avg'] + params['wdot4QMS2S2Avg']) * S2sq +
+                 (params['wdot4S1OS1OAvg'] + params['wdot4QMS1OS1OAvg']) * LNhdotS1 * LNhdotS1 +
+                 (params['wdot4S2OS2OAvg'] + params['wdot4QMS2OS2OAvg']) * LNhdotS2 * LNhdotS2)
+    
+    wspin4Avg = jnp.where(
+        include_2PN,
+        wspin4_SO + wspin4_QM,
+        wspin4Avg
+    )
+    
+    # 2.5PN spin-orbit (wspin5)
+    wspin5 = jnp.where(
+        include_25PN,
+        params['wdot5S1O'] * LNhdotS1 + params['wdot5S2O'] * LNhdotS2,
+        wspin5
+    )
+    
+    # 3PN spin-spin (wspin6Avg)
+    wspin6_val = (params['wdot6S1O'] * LNhdotS1 + params['wdot6S2O'] * LNhdotS2 +
+                  params['wdot6S1S2Avg'] * S1dotS2 + params['wdot6S1OS2OAvg'] * LNhdotS1 * LNhdotS2 +
+                  (params['wdot6S1S1Avg'] + params['wdot6QMS1S1Avg']) * S1sq +
+                  (params['wdot6S2S2Avg'] + params['wdot6QMS2S2Avg']) * S2sq +
+                  (params['wdot6S1OS1OAvg'] + params['wdot6QMS1OS1OAvg']) * LNhdotS1 * LNhdotS1 +
+                  (params['wdot6S2OS2OAvg'] + params['wdot6QMS2OS2OAvg']) * LNhdotS2 * LNhdotS2)
+    
+    wspin6Avg = jnp.where(
+        include_3PN,
+        wspin6_val,
+        wspin6Avg
+    )
+    
+    return {'wspin3': wspin3, 'wspin4Avg': wspin4Avg, 'wspin5': wspin5, 'wspin6Avg': wspin6Avg}
+
+
+# Then in your setup function, add these coefficients:
+def add_wdot_spin_coefficients_to_setup(m1M, m2M, eta, quadparam1, quadparam2):
+    """
+    Add wdot spin coefficients to params dictionary.
+    These should be added in XLALSimInspiralSpinTaylorT4Setup.
+    
+    Args:
+        params_dict: existing params dictionary
+        m1M: m1/M
+        m2M: m2/M  
+        eta: symmetric mass ratio
+        quadparam1, quadparam2: quadrupole parameters
+    """
+    
+    # 1.5PN spin-orbit coefficients
+
+    params_dict = {}
+    params_dict['wdot3S1O'] = XLALSimInspiralTaylorT4wdot_3PNSOCoeff(m1M)
+    params_dict['wdot3S2O'] = XLALSimInspiralTaylorT4wdot_3PNSOCoeff(m2M)
+    
+    # 2PN spin-spin coefficients
+    params_dict['wdot4S1S2Avg'] = XLALSimInspiralTaylorT4wdot_4PNS1S2CoeffAvg(eta)
+    params_dict['wdot4S1OS2OAvg'] = XLALSimInspiralTaylorT4wdot_4PNS1OS2OCoeffAvg(eta)
+    
+    params_dict['wdot4S1S1Avg'] = XLALSimInspiralTaylorT4wdot_4PNS1S1CoeffAvg(m1M)
+    params_dict['wdot4S2S2Avg'] = XLALSimInspiralTaylorT4wdot_4PNS1S1CoeffAvg(m2M)  # Note: uses S1S1 function
+    
+    params_dict['wdot4QMS1S1Avg'] = quadparam1 * XLALSimInspiralTaylorT4wdot_4PNQMS1S1CoeffAvg(m1M)
+    params_dict['wdot4QMS2S2Avg'] = quadparam2 * XLALSimInspiralTaylorT4wdot_4PNQMS1S1CoeffAvg(m2M)
+    
+    params_dict['wdot4S1OS1OAvg'] = XLALSimInspiralTaylorT4wdot_4PNS1OS1OCoeffAvg(m1M)
+    params_dict['wdot4S2OS2OAvg'] = XLALSimInspiralTaylorT4wdot_4PNS1OS1OCoeffAvg(m2M)
+    
+    params_dict['wdot4QMS1OS1OAvg'] = quadparam1 * XLALSimInspiralTaylorT4wdot_4PNQMS1OS1OCoeffAvg(m1M)
+    params_dict['wdot4QMS2OS2OAvg'] = quadparam2 * XLALSimInspiralTaylorT4wdot_4PNQMS1OS1OCoeffAvg(m2M)
+    
+    # 2.5PN spin-orbit coefficients
+    params_dict['wdot5S1O'] = XLALSimInspiralTaylorT4wdot_5PNSOCoeff(m1M)
+    params_dict['wdot5S2O'] = XLALSimInspiralTaylorT4wdot_5PNSOCoeff(m2M)
+    
+    # 3PN spin-spin coefficients
+    params_dict['wdot6S1O'] = XLALSimInspiralTaylorT4wdot_6PNSOCoeff(m1M)
+    params_dict['wdot6S2O'] = XLALSimInspiralTaylorT4wdot_6PNSOCoeff(m2M)
+    
+    params_dict['wdot6S1S2Avg'] = XLALSimInspiralTaylorT4wdot_6PNS1S2CoeffAvg(eta)
+    params_dict['wdot6S1OS2OAvg'] = XLALSimInspiralTaylorT4wdot_6PNS1OS2OCoeffAvg(eta)
+    
+    params_dict['wdot6S1S1Avg'] = XLALSimInspiralTaylorT4wdot_6PNS1S1CoeffAvg(m1M)
+    params_dict['wdot6S2S2Avg'] = XLALSimInspiralTaylorT4wdot_6PNS1S1CoeffAvg(m2M)
+    
+    params_dict['wdot6QMS1S1Avg'] = quadparam1 * XLALSimInspiralTaylorT4wdot_6PNQMS1S1CoeffAvg(m1M)
+    params_dict['wdot6QMS2S2Avg'] = quadparam2 * XLALSimInspiralTaylorT4wdot_6PNQMS1S1CoeffAvg(m2M)
+    
+    params_dict['wdot6S1OS1OAvg'] = XLALSimInspiralTaylorT4wdot_6PNS1OS1OCoeffAvg(m1M)
+    params_dict['wdot6S2OS2OAvg'] = XLALSimInspiralTaylorT4wdot_6PNS1OS1OCoeffAvg(m2M)
+    
+    params_dict['wdot6QMS1OS1OAvg'] = quadparam1 * XLALSimInspiralTaylorT4wdot_6PNQMS1OS1OCoeffAvg(m1M)
+    params_dict['wdot6QMS2OS2OAvg'] = quadparam2 * XLALSimInspiralTaylorT4wdot_6PNQMS1OS1OCoeffAvg(m2M)
+    
+    return params_dict
+
+
+def XLALSimInspiralTaylorT4wdot_6PNS1OS2OCoeffAvg(eta):
+     return 162.25/(2.24*eta) - 129.31/2.88
+
+def XLALSimInspiralTaylorT4wdot_4PNS1OS2OCoeffAvg(eta):
+     return 721. / 48. / eta
+
+def XLALSimInspiralTaylorT4wdot_3PNSOCoeff(mByM):
+    return - 19./6. - 25./4./mByM
+
+
+def XLALSimInspiralTaylorT4wdot_4PNS1S2CoeffAvg(eta):
+    return - 247. / 48. / eta
+
+
+def XLALSimInspiralTaylorT4wdot_4PNS1S1CoeffAvg(mByM):
+    return  7./96./mByM/mByM
+
+def XLALSimInspiralTaylorT4wdot_4PNQMS1S1CoeffAvg(mByM):
+    return -2.5/mByM/mByM
+
+def XLALSimInspiralTaylorT4wdot_4PNS1OS1OCoeffAvg(mByM):
+    return -1./96./mByM/mByM
+
+def XLALSimInspiralTaylorT4wdot_4PNQMS1OS1OCoeffAvg(mByM):
+    return 7.5/mByM/mByM
+
+def XLALSimInspiralTaylorT4wdot_5PNSOCoeff(mByM):
+    return -809./(84.*mByM) + 13.795/1.008 - 527.*mByM/24. - 79.*mByM*mByM/6.
+
+def XLALSimInspiralTaylorT4wdot_6PNSOCoeff(mByM):
+    return  jnp.pi * ( -37./3. - 151./6./mByM )
+
+def XLALSimInspiralTaylorT4wdot_6PNS1S2CoeffAvg(eta):
+    return 108.79/(6.72*eta) + 75.25/2.88
+
+def XLALSimInspiralTaylorT4wdot_6PNS1S1CoeffAvg(mByM):
+    return 101.9/(6.4*mByM*mByM) + 2.51/(5.76*mByM) + 13.33/5.76
+
+def XLALSimInspiralTaylorT4wdot_6PNQMS1S1CoeffAvg(mByM):
+    return -6.59/(2.24*mByM*mByM) + 7.3/(4.8*mByM) - 43./4.
+
+def XLALSimInspiralTaylorT4wdot_6PNS1OS1OCoeffAvg(mByM):
+    return -49.3/(6.4*mByM*mByM) + 197.47/(5.76*mByM) + 56.45/5.76
+
+def XLALSimInspiralTaylorT4wdot_6PNQMS1OS1OCoeffAvg(mByM):
+    return 19.77/(2.24*mByM*mByM) - 7.3/(1.6*mByM) + 129./4.
+
+
+def XLALSimInspiralL_2PN(eta):
+
+    return 1.5 + eta/6.
+
+'''
+wspin3 = params->wdot3S1O*LNhdotS1 + params->wdot3S2O*LNhdotS2;
+
+wspin4Avg = params->wdot4S1S2Avg *S1dotS2 + params->wdot4S1OS2OAvg *LNhdotS1 * LNhdotS2;
+wspin4Avg += (params->wdot4S1S1Avg + params->wdot4QMS1S1Avg) * S1sq
+	      + (params->wdot4S2S2Avg + params->wdot4QMS2S2Avg) * S2sq
+	      + (params->wdot4S1OS1OAvg + params->wdot4QMS1OS1OAvg) * LNhdotS1 * LNhdotS1
+	      + (params->wdot4S2OS2OAvg + params->wdot4QMS2OS2OAvg) * LNhdotS2 * LNhdotS2;
+
+wspin5 = params->wdot5S1O*LNhdotS1 + params->wdot5S2O*LNhdotS2;
+
+wspin6Avg = params->wdot6S1O*LNhdotS1 + params->wdot6S2O*LNhdotS2
+	  + params->wdot6S1S2Avg*S1dotS2 + params->wdot6S1OS2OAvg*LNhdotS1*LNhdotS2
+	  + (params->wdot6S1S1Avg + params->wdot6QMS1S1Avg)*S1sq
+	  + (params->wdot6S2S2Avg + params->wdot6QMS2S2Avg)*S2sq
+	  + (params->wdot6S1OS1OAvg + params->wdot6QMS1OS1OAvg)*LNhdotS1*LNhdotS1 +
+	  + (params->wdot6S2OS2OAvg + params->wdot6QMS2OS2OAvg)*LNhdotS2*LNhdotS2;
+
+'''
