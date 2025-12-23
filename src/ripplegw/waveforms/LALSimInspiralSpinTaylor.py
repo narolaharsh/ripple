@@ -17,8 +17,8 @@ LAL_G_SI = 6.67430e-11
 LAL_C_SI = 299792458.0
 LAL_GAMMA = 0.5772156649015329
 
-LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-14
-LAL_ST4_RELATIVE_TOLERANCE = 1.0e-14
+LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-12
+LAL_ST4_RELATIVE_TOLERANCE = 1.0e-12
 LAL_NUM_ST4_VARIABLES = 14
 
 LAL_REAL4_EPS = jnp.float32(2.0 ** -23)
@@ -377,7 +377,7 @@ def XLALSimInspiralSpinTaylorT4DerivativesAvg(t, values, params):
                        params['omegashiftS2'])
 
     dphi = omega * (1 + omega*omega*shift)
-
+    
     return jnp.array([
         dphi, domega,
         dLNhx, dLNhy, dLNhz,
@@ -513,7 +513,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
              jnp.where(large_v, -5.0,
              jnp.where(omegadot_fail, -6.0,
              1.0))))))  # Success = 1.0
-    #jax.debug.print("JAX Time {} Energy evolution {} Result {}", t, test, result)
+    jax.debug.print("JAX Time {} Energy evolution {} Result {}", t, test, result)
     return result
 
 
@@ -1016,7 +1016,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     )
     jax.debug.print('n_steps {}',n_steps)
     sgnt1 = sgn * t1
-    save_ts = jnp.linspace(t0, sgnt1, 1000) 
+    save_ts = jnp.arange(t0, sgnt1, dt0) 
 
     # Run integration
     term = ODETerm(XLALSimInspiralSpinTaylorT4DerivativesAvg)
@@ -1046,21 +1046,21 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     
    
     if n_invalid > 0:
+
+        print(f"Time array output: {sol.ts}")
         print(f'Removing {n_invalid} points with inf/nan')
         print(f'yout shape before: {yout.shape}')
 
+
         yout = yout[valid_mask]
         print(f'yout shape after: {yout.shape}')
-
-        print(f'Last 5 rows of yout:')
-        print(yout[-5:, :]) 
+        print(f'Time after removing nan: {sol.ts[valid_mask][-5:]}')
         len_result = yout.shape[0]    
-
-
 
 
     # Handle cutoff at fEnd
     cutlen = len_result
+    print('Original cutlen', cutlen)
     if fEnd != 0.:
         wEnd = jnp.pi * Msec * fEnd
         omega_series = yout[:, 1]
@@ -1071,10 +1071,13 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         else:
             # Forward integration  
             crosses = omega_series > wEnd
+            print('wEnd', wEnd)
+            print('Omega series', omega_series)
         
         first_cross = jnp.argmax(crosses)
         has_crossing = jnp.any(crosses)
         cutlen = jnp.where(has_crossing, first_cross + 1, len_result)
+        print('Update cutlen', cutlen)
     
     # Slice to cutlen
     yout = yout[:cutlen]
