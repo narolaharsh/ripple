@@ -378,23 +378,13 @@ def XLALSimInspiralSpinTaylorT4DerivativesAvg(t, values, params):
 
     dphi = omega * (1 + omega*omega*shift)
 
-    # -----------------------------------------------------
-    # Output vector (matches dvalues in C)
-    # -----------------------------------------------------
-
-    #jax.debug.print("[t={:.1f}] omega={:.8f} domega={:.8e}", t, omega, domega)
-
-    #jax.debug.print("jax dphi {}", dphi)
-
     return jnp.array([
         dphi, domega,
         dLNhx, dLNhy, dLNhz,
         dS1x,  dS1y,  dS1z,
         dS2x,  dS2y,  dS2z,
-        dE1x,  dE1y,  dE1z,
-        domega
+        dE1x,  dE1y,  dE1z
     ])
-
 
 
 def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
@@ -419,7 +409,6 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
     LNhx, LNhy, LNhz = y[2], y[3], y[4]
     S1x, S1y, S1z = y[5], y[6], y[7]
     S2x, S2y, S2z = y[8], y[9], y[10]
-    prev_domega = y[14]
     
     # Compute dot products
     LNhdotS1 = cdot(LNhx, LNhy, LNhz, S1x, S1y, S1z)
@@ -491,16 +480,9 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
 
     # Check d^2omega/dt^2 > 0
     #prev_domega = _get(params, 'prev_domega', 0.0)
-    current_domega = dvalues[1]
-    ddomega = current_domega - prev_domega
-    
-    # Account for backward integration
-    ddomega = jnp.where(
-        (fEnd < fStart) & (fEnd != 0.0) & (prev_domega != 0.0),
-        -ddomega,
-        ddomega
-    )
-    
+
+    ddomega = 0.0
+
     # Run tests (in JAX, we return a single value that encodes the result)
     # Positive = continue, negative values encode different failure modes
     
@@ -531,6 +513,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
              jnp.where(large_v, -5.0,
              jnp.where(omegadot_fail, -6.0,
              1.0))))))  # Success = 1.0
+    #jax.debug.print("JAX Time {} Energy evolution {} Result {}", t, test, result)
     return result
 
 
@@ -914,8 +897,6 @@ def XLALSimInspiralSpinDerivativesAvg(
     # Return order as in C: dLNhx,dLNhy,dLNhz, dE1x,dE1y,dE1z, dS1x,dS1y,dS1z, dS2x,dS2y,dS2z
     out = jnp.concatenate([dLNh, dE1, dS1_total, dS2_total])
 
-    #jax.debug.print("JAX dLNh {} \n dE1 {} \n dS1_total {} \n dS2_total {}\n\n", dLNh, dE1, dS1_total, dS2_total)
-
     return out
 
 
@@ -1020,7 +1001,6 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         norm2 * s2y,
         norm2 * s2z,
         e1x, e1y, e1z,
-        0.0 #prev_domega              # E1
     ])
     
     # Time span in dimensionless units \hat{t} = t/M
