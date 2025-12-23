@@ -513,7 +513,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
              jnp.where(large_v, -5.0,
              jnp.where(omegadot_fail, -6.0,
              1.0))))))  # Success = 1.0
-    jax.debug.print("JAX Time {} Energy evolution {} Result {}", t, test, result)
+    #jax.debug.print("JAX Time {} Energy evolution {} Result {}", t, test, result)
     return result
 
 
@@ -1016,7 +1016,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     )
     jax.debug.print('n_steps {}',n_steps)
     sgnt1 = sgn * t1
-    save_ts = jnp.linspace(t0, sgnt1, max_len) 
+    save_ts = jnp.linspace(t0, sgnt1, 1000) 
 
     # Run integration
     term = ODETerm(XLALSimInspiralSpinTaylorT4DerivativesAvg)
@@ -1035,7 +1035,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         args=params_dict,
         saveat=saveat,
         stepsize_controller=stepsize_controller,
-        max_steps=max_len * 100, 
+        max_steps=max_len, 
         event=Event(cond_fn = stopping_event)
     )
 
@@ -1044,16 +1044,20 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     valid_mask = jnp.all(jnp.isfinite(yout), axis=1)
     n_invalid = jnp.sum(~valid_mask)
     
-    jax.debug.print('Final time values {}', sol.ts)
    
-
     if n_invalid > 0:
         print(f'Removing {n_invalid} points with inf/nan')
+        print(f'yout shape before: {yout.shape}')
+
         yout = yout[valid_mask]
+        print(f'yout shape after: {yout.shape}')
+
+        print(f'Last 5 rows of yout:')
+        print(yout[-5:, :]) 
         len_result = yout.shape[0]    
-    
-    omega_final = yout[-1, 1]
-    V_final = jnp.cbrt(omega_final)
+
+
+
 
     # Handle cutoff at fEnd
     cutlen = len_result
