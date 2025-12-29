@@ -1183,26 +1183,6 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
             LNhatx, LNhaty, LNhatz, E1x, E1y, E1z)
 
 
-
-def compute_n_steps(fStart: float, fEnd: float, Mcsec: float, deltaT: float, max_len: int = 100000)->int:
-
-    dtStart = (5.0/256.0) * jnp.power(jnp.pi, -8.0/3.0) * \
-              jnp.power(Mcsec * fStart, -5.0/3.0) / fStart
-    dtEnd = jnp.where(
-        fEnd == 0.,
-        0.,
-        (5.0/256.0) * jnp.power(jnp.pi, -8.0/3.0) * \
-        jnp.power(Mcsec * fEnd, -5.0/3.0) / fEnd
-    )
-
-    lengths = dtStart - dtEnd
-
-    n_steps = jnp.minimum(
-        jnp.abs(jnp.floor(lengths / deltaT).astype(int)) + 1,
-        max_len
-    )
-    return int(n_steps)
-
 def example():
     """Example matching C API style"""
     
