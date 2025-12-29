@@ -155,6 +155,7 @@ def _get(params: Dict[str, Any], key: str, default: float = 0.0) -> float:
 # SETUP AND COEFFICIENT COMPUTATION
 # ============================================================================
 
+@jit
 def XLALSimInspiralSpinTaylorT4Setup(
     m1_SI: float, m2_SI: float, fStart: float, fEnd: float,
     lambda1: float, lambda2: float, quadparam1: float, quadparam2: float,
