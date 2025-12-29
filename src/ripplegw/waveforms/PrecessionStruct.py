@@ -237,6 +237,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         #self.MSA_ERROR      = 0
 
         self.pWF22AS = None
+        #start of SpinTaylor code
 
 
         #get first digit of precessing version: this tags the method employed to compute the Euler angles
@@ -288,8 +289,6 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         define some new floats based of if
 
         XLALSimIMRPhenomXUtilsMftoHz(Mf_low_cut * 0.65 * pPrec->M_MAX / 2.0, pWF->Mtot);
-
-
 
         if...else to adjust flow again
 
@@ -1061,8 +1060,8 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
 def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: float, fStart: float, fEnd: float,
                                            s1x: float, s1y: float, s1z: float, s2x: float, s2y: float, s2z: float, 
                                            lnhatx: float, lnhaty: float, lnhatz: float, e1x: float, e1y: float, e1z: float,
-                                           lambda1: float, lambda2: float, quadparam1: float, quadparam2: float, spin0: int,
-                                           tide0: int, phase0: float, lscorr: int, approx: str):
+                                           lambda1: float, lambda2: float, quadparam1: float, quadparam2: float, spinO: int,
+                                           tideO: int, phaseO: float, lscorr: int, approx: str):
     # https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/group___l_a_l_sim_inspiral_spin_taylor__c.html#ga35cfdf3082e09cc97cda9e11ba4c2bff
 
     """
@@ -1074,7 +1073,20 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: f
     """
 
     if approx=='SpinTaylorT4':
-        pass
+        from .LALSimInspiralSpinTaylor import XLALSimInspiralSpinTaylorPNEvolveOrbit as SpinTaylor4EvolveOrbit
+        V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = SpinTaylor4EvolveOrbit(deltaT = deltaT, 
+                                                                                                             m1_SI=m1_SI, 
+                                                                                                             m2_SI=m2_SI, 
+                                                                                                             fStart=fStart,
+                                                                                                             fEnd = fEnd,
+                                                                                                             s1x = s1x, s1y = s1y, s1z = s1z,
+                                                                                                             s2x = s2x, s2y = s2y, s2z = s2z,
+                                                                                                             lnhatx = lnhatx, lnhaty = lnhaty, lnhatz = lnhatz,
+                                                                                                             e1x = e1x, e1y = e1y, e1z = e1z,
+                                                                                                             lambda1 = lambda1, lambda2=lambda2,
+                                                                                                             quadparam1=quadparam1, quadparam2=quadparam2,
+                                                                                                             spinO=spinO, tideO=tideO, phaseO=phaseO,
+                                                                                                             lscorr=lscorr)
     elif approx=='SpinTaylorT5':
         pass
     elif approx=='SpinTaylorT1':
@@ -1096,7 +1108,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: f
     lengths = dtStart - dtEnd
 
 
-    return None
+    return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
 
 
 def integrate_forward(fRef, fmin, fCut, deltaT_coarse, m1_SI, m2_SI, s1x, s1y, s1z, s2x, s2y, s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1, lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
