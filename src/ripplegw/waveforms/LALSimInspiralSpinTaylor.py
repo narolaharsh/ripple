@@ -774,7 +774,6 @@ def XLALSimInspiralSpinTaylorStoppingTest(t: float, y: jax.Array, dy: jax.Array,
     
     return result
 
-@jit
 def stopping_event(t: float, y: jax.Array, args: Dict[str, Any], **kwargs) -> float:
     """Event function for diffrax integration."""
     dy = XLALSimInspiralSpinTaylorT4DerivativesAvg(t, y, args)
