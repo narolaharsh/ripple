@@ -440,7 +440,6 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
     )
     
     # Get energy coefficients
-    #print(params['energy_PNTermsAvg'])
     _energy_coeffs = _get(params, 'energy_PNTermsAvg', {})
     Ecoeff = _get(_energy_coeffs, 'Ecoeff', jnp.zeros(8))
     '''Ecoeff = jnp.array([
@@ -1053,21 +1052,12 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     
    
     if n_invalid > 0:
-
-        print(f"Time array output: {sol.ts}")
-        print(f'Removing {n_invalid} points with inf/nan')
-        print(f'yout shape before: {yout.shape}')
-
-
         yout = yout[valid_mask]
-        print(f'yout shape after: {yout.shape}')
-        print(f'Time after removing nan: {sol.ts[valid_mask][-5:]}')
         len_result = yout.shape[0]    
 
 
     # Handle cutoff at fEnd
     cutlen = len_result
-    print('Original cutlen', cutlen)
     if fEnd != 0.:
         wEnd = jnp.pi * Msec * fEnd
         omega_series = yout[:, 1]
@@ -1078,13 +1068,10 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         else:
             # Forward integration  
             crosses = omega_series > wEnd
-            print('wEnd', wEnd)
-            print('Omega series', omega_series)
         
         first_cross = jnp.argmax(crosses)
         has_crossing = jnp.any(crosses)
         cutlen = jnp.where(has_crossing, first_cross + 1, len_result)
-        print('Update cutlen', cutlen)
     
     # Slice to cutlen
     yout = yout[:cutlen]
