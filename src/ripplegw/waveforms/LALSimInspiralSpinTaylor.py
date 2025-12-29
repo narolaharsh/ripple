@@ -244,6 +244,7 @@ def XLALSimInspiralTaylorT4SetupWdotCoeffs(eta: float, m1M: float, m2M: float,
     
     return coeffs
 
+@jit
 def XLALSimInspiralSpinTaylorSetupSpinCoeffs(m1M: float, m2M: float, 
                                        quadparam1: float, quadparam2: float) -> Dict[str, float]:
     """Compute additional spin-related coefficients."""
@@ -279,6 +280,7 @@ def XLALSimInspiralSpinTaylorSetupSpinCoeffs(m1M: float, m2M: float,
     
     return coeffs
 
+@jit
 def XLALSimInspiralSetEnergyPNTermsAvg(m1M: float, m2M: float, eta: float,
                               lambda1: float, lambda2: float,
                               quadparam1: float, quadparam2: float) -> Dict[str, float]:
@@ -342,7 +344,7 @@ def XLALSimInspiralSetEnergyPNTermsAvg(m1M: float, m2M: float, eta: float,
 # ============================================================================
 # EVOLUTION DERIVATIVES
 # ============================================================================
-
+@jit
 def XLALSimInspiralSpinTaylorT4wdot(
     omega: float, params: Dict[str, Any]
 ) -> float:
@@ -408,6 +410,7 @@ def XLALSimInspiralSpinTaylorT4wdot(
     
     return domega
 
+@jit
 def XLALSimInspiralSpinDerivativesAvg(
     v: float, LNhat: jax.Array, E1: jax.Array, S1: jax.Array, S2: jax.Array,
     LNhdotS1: float, LNhdotS2: float, params: Dict[str, Any]
@@ -543,6 +546,7 @@ def XLALSimInspiralSpinDerivativesAvg(
     
     return dLNh_final, dE1_final, dS1_total, dS2_total
 
+@jit
 def XLALSimInspiralSpinTaylorT4DerivativesAvg(t: float, y: jax.Array, params: Dict[str, Any]) -> jax.Array:
     """
     Main derivative function for SpinTaylorT4 evolution.
@@ -612,7 +616,7 @@ def XLALSimInspiralSpinTaylorT4DerivativesAvg(t: float, y: jax.Array, params: Di
 # ============================================================================
 # TERMINATION CONDITIONS
 # ============================================================================
-
+@jit
 def XLALSimInspiralGetEnergyPNTermsAvg(
     LNhdotS1: float, LNhdotS2: float, S1sq: float, S2sq: float, S1dotS2: float,
     params: Dict[str, Any]
@@ -682,6 +686,7 @@ def XLALSimInspiralGetEnergyPNTermsAvg(
     
     return Espin3, Espin4, Espin5, Espin6, Espin7
 
+@jit
 def XLALSimInspiralSpinTaylorStoppingTest(t: float, y: jax.Array, dy: jax.Array, params: Dict[str, Any]) -> float:
     """
     Determine whether to continue or stop integration.
@@ -769,6 +774,7 @@ def XLALSimInspiralSpinTaylorStoppingTest(t: float, y: jax.Array, dy: jax.Array,
     
     return result
 
+@jit
 def stopping_event(t: float, y: jax.Array, args: Dict[str, Any], **kwargs) -> float:
     """Event function for diffrax integration."""
     dy = XLALSimInspiralSpinTaylorT4DerivativesAvg(t, y, args)
