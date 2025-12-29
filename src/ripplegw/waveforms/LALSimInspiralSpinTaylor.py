@@ -9,7 +9,7 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 from typing import Tuple, NamedTuple, Dict, Any
 from diffrax import diffeqsolve, ODETerm, Tsit5, SaveAt, PIDController, Event
-from jax import jit, lax
+from jax import jit, lax, tree_util
 from functools import partial
 from dataclasses import dataclass
 
@@ -97,6 +97,31 @@ class EvolutionParameters:
     wdotnewt: float
     omegashiftS1: float
     omegashiftS2: float
+
+    def tree_flatten(self):
+        # Extract all the values (children) that JAX should trace
+        children = (
+            self.m1_SI, self.m2_SI, self.fStart, self.fEnd,
+            self.lambda1, self.lambda2, self.quadparam1, self.quadparam2,
+            self.spinO, self.tideO, self.phaseO, self.lscorr, self.phenomtp,
+            self.m1sec, self.m2sec, self.Msec, self.Mcsec, self.eta,
+            self.norm1, self.norm2,
+            self.wdot_coeffs, self.spin_coeffs, self.energy_coeffs,
+            self.wdotnewt, self.omegashiftS1, self.omegashiftS2
+        )
+        # No auxiliary data needed since all fields should be JAX-traceable
+        aux_data = None
+        return children, aux_data
+    
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
+    
+tree_util.register_pytree_node(
+    EvolutionParameters,
+    EvolutionParameters.tree_flatten,
+    EvolutionParameters.tree_unflatten
+)
 
 # ============================================================================
 # UTILITY FUNCTIONS
