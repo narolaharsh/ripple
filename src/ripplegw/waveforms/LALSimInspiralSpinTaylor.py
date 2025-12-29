@@ -513,7 +513,6 @@ def XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, params)->bool:
              jnp.where(large_v, -5.0,
              jnp.where(omegadot_fail, -6.0,
              1.0))))))  # Success = 1.0
-    jax.debug.print("JAX Time {} Energy evolution {} Result {}", t, test, result)
     return result
 
 
@@ -1014,7 +1013,7 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
         jnp.abs(jnp.floor(lengths / deltaT).astype(int)) + 1,
         max_len
     )
-    jax.debug.print('n_steps {}',n_steps)
+
     sgnt1 = sgn * t1
     save_ts = jnp.arange(t0, sgnt1, dt0) 
 
