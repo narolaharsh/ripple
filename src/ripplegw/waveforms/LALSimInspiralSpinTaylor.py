@@ -6,7 +6,6 @@ from diffrax import diffeqsolve, ODETerm, Tsit5, SaveAt, PIDController, Event
 from jax import jit, lax
 from functools import partial
 from . import LALSimInspiralPNCoefficients as pncoefficients
-
 from dataclasses import dataclass
 
 # ============================================================================
@@ -962,19 +961,25 @@ def XLALSimInspiralSpinDerivativesAvg(
     return out
 
 
+def stopping_event(t: float, y: jax.Array, args, **kwargs) -> float:
+    """
+    Event function for diffrax integration (not JIT-compiled due to kwargs).
+    
+    Args:
+        t: Current time
+        y: Current state
+        args: Parameters (XLALSimInspiralSpinTaylorTxCoeffs)
+        **kwargs: Additional arguments from diffrax (may contain non-array objects)
+        
+    Returns:
+        Event value (negative triggers stopping)
+    """
+    # Compute derivatives for stopping test
+    dvalues = XLALSimInspiralSpinTaylorT4DerivativesAvg(t, y, args)
+    
+    # Run stopping test
+    return XLALSimInspiralSpinTaylorStoppingTest(t, y, dvalues, args)
 
-
-def stopping_event(t, y, args, **kwargs):
-    """Event function for stopping conditions"""
-    # Compute derivatives at current state
-    #t = state.t
-    #y = state.y
-    #args = state.args
-    dy = XLALSimInspiralSpinTaylorT4DerivativesAvg(t, y, args)
-    # Call stopping test
-    result = XLALSimInspiralSpinTaylorStoppingTest(t, y, dy, args)
-    # Event triggers when result crosses zero (from positive to negative)
-    return result
 
 # --------------------------
 # Main JAX function
@@ -1182,3 +1187,73 @@ def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float,
     return (V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, 
             LNhatx, LNhaty, LNhatz, E1x, E1y, E1z)
 
+
+
+
+# ============================================================================
+# EXAMPLE AND TESTING
+# ============================================================================
+
+def example_binary_evolution():
+    """
+    Example demonstrating SpinTaylor evolution for a binary black hole.
+    
+    Returns:
+        Tuple of evolved time series
+    """
+    # Binary parameters
+    m1_SI = 36.0 * LAL_MSUN_SI  # 36 solar masses
+    m2_SI = 29.0 * LAL_MSUN_SI  # 29 solar masses
+    
+    # Evolution parameters  
+    fStart = 20.0    # Hz
+    fEnd = 1000.0    # Hz  
+    deltaT = 0.01    # 10 ms time step
+    
+    # Initial spins (aligned with orbit)
+    s1x = s1y = s2x = s2y = 0.0
+    s1z = 0.3  # Moderate spin 1
+    s2z = 0.2  # Moderate spin 2
+    
+    # Initial orientations
+    lnhatx = lnhaty = 0.0
+    lnhatz = 1.0  # Orbital plane in x-y plane
+    e1x, e1y, e1z = 1.0, 0.0, 0.0  # Reference direction
+    
+    # Physical parameters
+    lambda1 = lambda2 = 0.0  # No tidal effects (black holes)
+    quadparam1 = quadparam2 = 1.0  # Standard quadrupole
+    
+    # PN orders (use highest available)
+    spinO = tideO = phaseO = -1
+    lscorr = 0
+    
+    print(f"Evolving {m1_SI/LAL_MSUN_SI:.1f}+{m2_SI/LAL_MSUN_SI:.1f} M☉ binary")
+    print(f"Frequency: {fStart}-{fEnd} Hz")
+    print(f"Spins: χ₁={s1z:.1f}, χ₂={s2z:.1f}")
+    
+    # Run evolution
+    result = XLALSimInspiralSpinTaylorPNEvolveOrbit(
+        deltaT=deltaT, m1_SI=m1_SI, m2_SI=m2_SI,
+        fStart=fStart, fEnd=fEnd,
+        s1x=s1x, s1y=s1y, s1z=s1z,
+        s2x=s2x, s2y=s2y, s2z=s2z,
+        lnhatx=lnhatx, lnhaty=lnhaty, lnhatz=lnhatz,
+        e1x=e1x, e1y=e1y, e1z=e1z,
+        lambda1=lambda1, lambda2=lambda2,
+        quadparam1=quadparam1, quadparam2=quadparam2,
+        spinO=spinO, tideO=tideO, phaseO=phaseO,
+        lscorr=lscorr, approx=4, phenomtp=False
+    )
+    
+    V, Phi = result[:2]
+    print(f"Generated {len(V.data)} time samples")
+    print(f"Total evolution time: {len(V.data) * deltaT:.2f} seconds")
+    print(f"Final PN parameter: v = {V.data[-1]:.4f}")
+    
+    return result
+
+
+if __name__ == "__main__":
+    # Run example
+    example_result = example_binary_evolution()
