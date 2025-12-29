@@ -5,6 +5,8 @@ from ..constants import G, MSUN, C, MTSUN_SI, GAMMA
 import jax
 from .spherical_harmonics import *
 from .IMRPhenomXPHM_utils import *
+from .LALSimInspiralSpinTaylor import XLALSimInspiralSpinTaylorPNEvolveOrbit
+
 
 class IMRPhenomXGetAndSetPrecessionVariables:
 
@@ -957,7 +959,6 @@ End of IMRPhenomXGetAndSetPrecessionVaraibles
 
 
 #FIXME
-# Wrapper of  XLALSimInspiralSpinTaylorPNEvolveOrbit : if integration is successful, stores arrays containing PN solution in  a PhenomXPInspiralArrays struct
 def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: float, 
                                          chi2x: float, chi2y: float, chi2z: float,
                                          fmin: float, PrecVersion: int, pWF: dict, lalParams: dict):
@@ -1056,59 +1057,6 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
     return PhenomXPInspiralArrays, status
 
 
-#FIXME
-def XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT: float, m1_SI: float, m2_SI: float, fStart: float, fEnd: float,
-                                           s1x: float, s1y: float, s1z: float, s2x: float, s2y: float, s2z: float, 
-                                           lnhatx: float, lnhaty: float, lnhatz: float, e1x: float, e1y: float, e1z: float,
-                                           lambda1: float, lambda2: float, quadparam1: float, quadparam2: float, spinO: int,
-                                           tideO: int, phaseO: float, lscorr: int, approx: str):
-    # https://lscsoft.docs.ligo.org/lalsuite/lalsimulation/group___l_a_l_sim_inspiral_spin_taylor__c.html#ga35cfdf3082e09cc97cda9e11ba4c2bff
-
-    """
-    spin0 >= 7 is not allowed.
-    fStart < 0 is not allowed. 
-    fEnd < 0 is not allowed.
-    if fEnd<fStart && fEnd != 0.0, sgn = -1 else sign 1.
-    
-    """
-
-    if approx=='SpinTaylorT4':
-        from .LALSimInspiralSpinTaylor import XLALSimInspiralSpinTaylorPNEvolveOrbit as SpinTaylor4EvolveOrbit
-        V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = SpinTaylor4EvolveOrbit(deltaT = deltaT, 
-                                                                                                             m1_SI=m1_SI, 
-                                                                                                             m2_SI=m2_SI, 
-                                                                                                             fStart=fStart,
-                                                                                                             fEnd = fEnd,
-                                                                                                             s1x = s1x, s1y = s1y, s1z = s1z,
-                                                                                                             s2x = s2x, s2y = s2y, s2z = s2z,
-                                                                                                             lnhatx = lnhatx, lnhaty = lnhaty, lnhatz = lnhatz,
-                                                                                                             e1x = e1x, e1y = e1y, e1z = e1z,
-                                                                                                             lambda1 = lambda1, lambda2=lambda2,
-                                                                                                             quadparam1=quadparam1, quadparam2=quadparam2,
-                                                                                                             spinO=spinO, tideO=tideO, phaseO=phaseO,
-                                                                                                             lscorr=lscorr)
-    elif approx=='SpinTaylorT5':
-        pass
-    elif approx=='SpinTaylorT1':
-        pass
-    else:
-        pass
-
-    m1sec = m1_SI / MSUN * MTSUN_SI
-    m2sec = m2_SI / MSUN * MTSUN_SI
-    Msec = m1sec + m2sec
-    Mcsec = Msec * pow( m1sec*m2sec/Msec/Msec, 0.6)
-
-
-    #/* Estimate length of waveform using Newtonian t(f) formula */
-    #/* Time from freq. = fStart to infinity */
-    dtStart = (5.0/256.0) * pow(jnp.pi,-8.0/3.0) * pow(Mcsec * fStart,-5.0/3.0) / fStart
-    #/* Time from freq. = fEnd to infinity. Set to zero if fEnd=0 */
-    dtEnd = jnp.where(fEnd==0.0, 0, (5.0/256.0) * pow(jnp.pi,-8.0/3.0) * pow(Mcsec * fEnd,-5.0/3.0) / fEnd)
-    lengths = dtStart - dtEnd
-
-
-    return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
 
 
 def integrate_forward(fRef, fmin, fCut, deltaT_coarse, m1_SI, m2_SI, s1x, s1y, s1z, s2x, s2y, s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1, lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx):
@@ -1121,7 +1069,7 @@ def integrate_forward(fRef, fmin, fCut, deltaT_coarse, m1_SI, m2_SI, s1x, s1y, s
     fS = fmin
     fE = fCut
 
-    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr)
     return V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z
 
 
@@ -1137,7 +1085,7 @@ def integrate_both_sides(fRef, fmin, fCut, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x
     fE = fmin - 0.5
 
     # Backward integration
-    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+    V, Phi, S1x, S1y, S1z, S2x, S2y, S2z, LNhatx, LNhaty, LNhatz, E1x, E1y, E1z = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x,s1y,s1z,s2x,s2y,s2z,lnhatx,lnhaty,lnhatz,e1x,e1y,e1z,lambda1,lambda2,quadparam1, quadparam2, spinO, tideO, phaseO, lscorr)
 
 
     fS = fRef
@@ -1145,7 +1093,7 @@ def integrate_both_sides(fRef, fmin, fCut, deltaT_coarse, m1_SI, m2_SI,fS,fE,s1x
     #Skipping the sanity check of if...else. Just jump to forward integration. 
     V_forward, Phi_forward, S1x_forward, S1y_forward, S1z_forward, S2x_forward, S2y_forward, S2z_forward, LNhatx_forward, LNhaty_forward, LNhatz_forward, E1x_forward, E1y_forward, E1z_forward = XLALSimInspiralSpinTaylorPNEvolveOrbit(deltaT_coarse, 
                                                                                                                                             m1_SI, m2_SI, fS, fE, s1x, s1y, s1z, s2x, s2y,
-                                                                                                                                            s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1,lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr, approx)
+                                                                                                                                            s2z, lnhatx, lnhaty, lnhatz, e1x, e1y, e1z, lambda1,lambda2, quadparam1, quadparam2, spinO, tideO, phaseO, lscorr)
     V = jnp.append(V, V_forward)
     Phi = jnp.append(Phi, Phi_forward)
     S1x = jnp.append(S1x, S1x_forward)
