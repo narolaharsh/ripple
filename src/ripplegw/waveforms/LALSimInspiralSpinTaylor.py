@@ -32,40 +32,96 @@ LAL_REAL4_EPS = jnp.float32(2.0 ** -23)  # Single precision epsilon
 
 
 
-@dataclass
-class REAL8TimeSeries:
-    """JAX equivalent of LAL REAL8TimeSeries"""
-    data: jax.Array
-    deltaT: float
-    epoch: float = 0.0
+# ============================================================================
+# UTILITY FUNCTIONS (JIT-COMPILED)
+# ============================================================================
 
-def normsq(x, y, z):
-    """Compute squared norm of 3-vector"""
+@jit
+def normsq(x: float, y: float, z: float) -> float:
+    """
+    Compute squared magnitude of 3-vector.
+    
+    Args:
+        x, y, z: Vector components
+        
+    Returns:
+        |v|² = x² + y² + z²
+    """
     return x*x + y*y + z*z
 
-def cdot(ax, ay, az, bx, by, bz):
-    """Vector dot product stub."""
+
+@jit  
+def cdot(ax: float, ay: float, az: float, 
+         bx: float, by: float, bz: float) -> float:
+    """
+    Compute dot product of two 3-vectors.
+    
+    Args:
+        ax, ay, az: First vector components
+        bx, by, bz: Second vector components
+        
+    Returns:
+        a⃗ · b⃗ = ax*bx + ay*by + az*bz
+    """
     return ax*bx + ay*by + az*bz
 
 
-def omegashift(S1sq, S2sq, S1S2, LNhS1, LNhS2, OmS1, OmS2):
-    """Stub for omegashift (replace with your physics formula)."""
-    # Just return zero for now
-    return -0.25*(OmS1*OmS1*(S1sq-LNhS1*LNhS1)+OmS2*OmS2*(S2sq-LNhS2*LNhS2)+2.*OmS1*OmS2*(S1S2-LNhS1*LNhS2))
-
-def cross_vec(a, b):
-    """Cross product of 3-vectors a and b. a,b shape=(3,)"""
+@jit
+def cross_vec(a: jax.Array, b: jax.Array) -> jax.Array:
+    """
+    Compute cross product of two 3-vectors.
+    
+    Args:
+        a, b: Input vectors of shape (3,)
+        
+    Returns:
+        a⃗ × b⃗ as array of shape (3,)
+    """
     return jnp.array([
-        a[1]*b[2] - a[2]*b[1],
-        a[2]*b[0] - a[0]*b[2],
-        a[0]*b[1] - a[1]*b[0],
+        a[1]*b[2] - a[2]*b[1],  # x-component
+        a[2]*b[0] - a[0]*b[2],  # y-component  
+        a[0]*b[1] - a[1]*b[0],  # z-component
     ])
+
+
+@jit
+def omegashift(S1sq: float, S2sq: float, S1S2: float, 
+               LNhS1: float, LNhS2: float, OmS1: float, OmS2: float) -> float:
+    """
+    Compute spin-orbit corrections to orbital frequency.
+    
+    This function calculates the leading-order corrections to the orbital
+    frequency due to spin-orbit coupling effects.
+    
+    Args:
+        S1sq, S2sq: Squared spin magnitudes |S₁|², |S₂|²
+        S1S2: Spin-spin dot product S₁ · S₂
+        LNhS1, LNhS2: Orbital angular momentum projections L̂N · S₁, L̂N · S₂
+        OmS1, OmS2: Spin-orbit coupling coefficients
+        
+    Returns:
+        Fractional frequency shift Δω/ω
+    """
+    return -0.25 * (
+        OmS1*OmS1 * (S1sq - LNhS1*LNhS1) + 
+        OmS2*OmS2 * (S2sq - LNhS2*LNhS2) + 
+        2.0*OmS1*OmS2 * (S1S2 - LNhS1*LNhS2)
+    )
+
+
 
 
 def _get(p, name, default=0.0):
     """Safe getter from params PyTree (works if params is a simple object or dict)."""
     return getattr(p, name, p.get(name, default) if isinstance(p, dict) else default)
 
+
+@dataclass
+class REAL8TimeSeries:
+    """JAX equivalent of LAL REAL8TimeSeries"""
+    data: jax.Array
+    deltaT: float
+    epoch: float = 0.0
 
 @dataclass
 class XLALSimInspiralSpinTaylorTxCoeffs:
