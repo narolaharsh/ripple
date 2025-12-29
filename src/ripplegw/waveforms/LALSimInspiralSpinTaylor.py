@@ -1,27 +1,35 @@
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
-from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, NamedTuple, Callable
 from diffrax import diffeqsolve, ODETerm, Tsit5, SaveAt, PIDController, Event
 from jax import jit, lax
+from functools import partial
 from . import LALSimInspiralPNCoefficients as pncoefficients
 
-from functools import partial
+from dataclasses import dataclass
 
-# Constants (from LAL)
-LAL_MSUN_SI = 1.988409870698050731911960804878414216e30
-LAL_MTSUN_SI = 4.925490947641266978197229498498379006e-6
+# ============================================================================
+# PHYSICAL CONSTANTS (High Precision LAL Values)
+# ============================================================================
 
-LAL_G_SI = 6.67430e-11
-LAL_C_SI = 299792458.0
-LAL_GAMMA = 0.5772156649015329
+# Solar mass and related quantities (exact LAL values)
+LAL_MSUN_SI = 1.988409870698050731911960804878414216e30  # kg
+LAL_MTSUN_SI = 4.925490947641266978197229498498379006e-6  # seconds
 
-LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-12
-LAL_ST4_RELATIVE_TOLERANCE = 1.0e-12
-LAL_NUM_ST4_VARIABLES = 14
+# Physical constants
+LAL_G_SI = 6.67430e-11          # Gravitational constant (m³/kg/s²)
+LAL_C_SI = 299792458.0          # Speed of light (m/s)  
+LAL_GAMMA = 0.5772156649015329  # Euler-Mascheroni constant
 
-LAL_REAL4_EPS = jnp.float32(2.0 ** -23)
+# Integration tolerances (tighter for accuracy)
+LAL_ST4_ABSOLUTE_TOLERANCE = 1.0e-12  # Absolute tolerance
+LAL_ST4_RELATIVE_TOLERANCE = 1.0e-12  # Relative tolerance
+LAL_NUM_ST4_VARIABLES = 14             # Number of evolved variables
+
+# Numerical precision
+LAL_REAL4_EPS = jnp.float32(2.0 ** -23)  # Single precision epsilon
+
 
 
 @dataclass
@@ -59,7 +67,7 @@ def _get(p, name, default=0.0):
     return getattr(p, name, p.get(name, default) if isinstance(p, dict) else default)
 
 
-@dataclass(frozen=True)
+@dataclass
 class XLALSimInspiralSpinTaylorTxCoeffs:
     """Parameters for SpinTaylor evolution (replaces C struct)"""
     m1_SI: float
