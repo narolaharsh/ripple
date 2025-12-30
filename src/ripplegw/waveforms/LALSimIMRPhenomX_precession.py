@@ -38,8 +38,15 @@ def XLALSimIMRPhenomXLPNAnsatz(v: float, LNorm: float, L0: float, L1: float, L2:
                     L6*x3 + L7*(x3*sqx) + L8*x4 + L8L*x4*jnp.log(x))
 
 
-
+#/** This function initializes all the core variables required for the MSA system. This will be called first. */
 def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int):
-    """Stub: Initialize MSA system"""
-    # Implementation needed - modifies pPrec in place
-    pass
+
+    pflag = pPrec.IMRPhenomXPrecVersion
+
+    if pflag not in [220, 221, 222, 223, 224]:
+        raise ValueError("Error: MSA system requires IMRPhenomXPrecVersion 220, 221, 222, 223 or 224.")
+
+
+
+
+    return None
