@@ -6,6 +6,8 @@ import jax
 from .spherical_harmonics import *
 from .IMRPhenomXPHM_utils import *
 from .LALSimInspiralSpinTaylor import XLALSimInspiralSpinTaylorPNEvolveOrbit
+from .LALSimIMRPhenomX_PNR_internals import IMRPhenomX_PNR_HMInterpolationDeltaF
+
 
 
 class IMRPhenomXGetAndSetPrecessionVariables:
@@ -231,72 +233,124 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.pWF22AS = None
         #start of SpinTaylor code
 
+        if self.manual_prescription_tag==3:
+            print("Executing Spin Taylor code")
+            self.L_MAX_PNR = max(self.lalParams['ModeArray'])
+            flow = self.pWF['fMin']
+            if self.pWF['deltaF']==0:
+                self.pWF['deltaMF'] = get_deltaF_from_wfstruct(self.pWF)
+            
+            #if PNR angles are disabled, step back accordingly to the waveform's frequency grid step
+            if self.lalParams['PNRUseTunedAngles'] == False:
+                self.integration_buffer = jnp.where(self.pWF['deltaF'] > 0., 3. * self.pWF['deltaF'], 0.5)
+                flow = (self.pWF['fMin'] - self.integration_buffer) * 2 / self.M_MAX
+            
+            #if PNR angles are enabled, adjust buffer to the requirements of IMRPhenomX_PNR_GeneratePNRAngleInterpolants
 
-        #get first digit of precessing version: this tags the method employed to compute the Euler angles
-        #1: NNLO 2: MSA 3: SpinTaylor (numerical)
+            else:
+                #Compress line 336-340
+                iStart_here = jnp.where(self.pWF['deltaF'] == 0., 0, jnp.floor(self.pWF['fMin'] / self.pWF['deltaF']).astype(int))
+                flow = jnp.where(self.pWF['deltaF'] == 0., 0., iStart_here * self.pWF['deltaF'])
+                fmin_HM_inspiral = flow * 2.0 / self.M_MAX
+
+                precVersion = self.IMRPhenomXPrecVersion
+                #fill in a fake value to allow the next code to work
+                self.IMRPhenomXPrecVersion = 223
+                IMRPhenomX_PNR_GetAndSetPNRVariables(self, pWF)
+                #XLAL_CHECK(XLAL_SUCCESS == status, XLAL_EFUNC, "Error: IMRPhenomX_PNR_GetAndSetPNRVariables failed in IMRPhenomXGetAndSetPrecessionVariables.\n")
+
+                alphaParams = IMRPhenomX_PNR_precompute_alpha_coefficients(self.pWF, self.pPrec)
+                betaParams = IMRPhenomX_PNR_precompute_beta_coefficients(self.pWF, self.pPrec)
+                connection_frequencies = IMRPhenomX_PNR_BetaConnectionFrequencies(betaParams)
+
+                self.IMRPhenomXPrecVersion = precVersion
+
+                Mf_alpha_upper = alphaParams['A4'] / 3.0
+                Mf_low_cut = (3.0 / 3.5) * Mf_alpha_upper
+                MF_high_cut = betaParams['Mf_beta_lower']
+
+                #Compress line 375-380
+                # First conditional assignment
+                MF_high_cut = jnp.where(
+                    jnp.logical_or(
+                        MF_high_cut > self.pWF['fCutDef'],
+                        MF_high_cut < 0.1 * self.pWF['fRING']
+                    ),
+                    self.pWF['fRING'],
+                    MF_high_cut
+                )
+
+                # Second conditional assignment  
+                Mf_low_cut = jnp.where(
+                    jnp.logical_or(
+                        Mf_low_cut > self.pWF['fCutDef'],
+                        MF_high_cut < Mf_low_cut
+                    ),
+                    MF_high_cut / 2.0,
+                    Mf_low_cut
+                )
 
 
-        ## SpinTaylor code is from 294 to 484
-        #start of SpinTaylor code
-        '''
-        1. Initialize PNarrays
-        2. self.L_MAX_PNR = self.M_MAX
+                flow_alpha = XLALSimIMRPhenomXUtilsMftoHz(Mf_low_cut * 0.65 * self.M_MAX / 2.0, self.pWF['Mtot'])
+                
+                #flow is approximately in the intermediate region of the frequency map
+                #conservatively reduce flow to account for potential problems in this region
 
-        ModeArray 
+                # Compute values for the else branch
+                Mf_RD_22 = self.pWF['fRING']
+                Mf_RD_lm = IMRPhenomXHM_GenerateRingdownFrequency(self.pPrec['L_MAX_PNR'], self.pPrec['M_MAX'], self.pWF)
+                fmin_HM_ringdowm = XLALSimIMRPhenomXUtilsMftoHz(
+                    XLALSimIMRPhenomXUtilsHztoMf(flow, self.pWF['Mtot']) - (Mf_RD_lm - Mf_RD_22), 
+                    self.pWF['Mtot']
+                )
+                else_branch_result = jnp.where(
+                    jnp.logical_and(fmin_HM_ringdowm < fmin_HM_inspiral, fmin_HM_ringdowm > 0.0),
+                    fmin_HM_ringdowm,
+                    fmin_HM_inspiral
+                )
 
-        LMAX_PNR = 2
+                # Main conditional
+                flow = jnp.where(flow_alpha < flow, fmin_HM_inspiral / 1.5, else_branch_result)
 
-        if mode_array is not none:
-            if 44 is active:
-                LMAX_PNR = 4
-            elif 33 or 32 active:
-                LMAX_PNR = 3
-            GetandSetModes..
-            self.LMAX_PNR = LMAX_PNR
+                ## Line 397 - 402
+                pnr_interpolation_deltaf = IMRPhenomX_PNR_HMInterpolationDeltaF(flow, pWF, pPrec)
+                self.integration_buffer = 1.4*pnr_interpolation_deltaf
+                flow = jnp.where(flow - 2.0 * pnr_interpolation_deltaf < 0, flow / 2.0, flow - 2.0 * pnr_interpolation_deltaf)
 
-        flow = pWF['fMin']
-        if deltaF is zero: get it from wfstruct
+                iStart_here = jnp.floor(flow / pnr_interpolation_deltaf).astype(int)
+                flow = iStart_here * pnr_interpolation_deltaf
+                
+                
+            #XLAL_CHECK(flow>0.,XLAL_EDOM,"Error in %s: starting frequency for SpinTaylor angles must be positive!",__func__)
+            PNarrays, fmin_integration = IMRPhenomX_InspiralAngles_SpinTaylor(chi1x, chi1y, chi1z, chi2x, chi2y, chi2z, flow,self.IMRPhenomXPrecVersion, pWF, lalParams)                 
+            #   // convert the min frequency of integration to geometric units for later convenience
+            self.Mfmin_integration = XLALSimIMRPhenomXUtilsHztoMf(self.fmin_integration, self.pWF['Mtot'])
 
-        if PNRUseTunedAngles is flase:
-            flow = update
-        else:
-            flow = update
+            if self.IMRPhenomXPrecVersion == 330:
+                chi1x_evolved = chi1x
+                chi1y_evolved = chi1y
+                chi1z_evolved = chi1z
+                chi2x_evolved = chi2x
+                chi2y_evolved = chi2y
+                chi2z_evolved = chi2z
 
-        self.fmin_HM_inspiral = flow * 2.0 / pPrec->M_MAX;
+                if "Angles are generated":
+                    #in case that SpinTaylor angles generate, overwrite variables with evolved spins
+                    pass
+                
+                self.chi1x_evolved = chi1x_evolved
+                self.chi1y_evolved = chi1y_evolved
+                self.chi1z_evolved = chi1z_evolved
+                self.chi2x_evolved = chi2x_evolved
+                self.chi2y_evolved = chi2y_evolved
+                self.chi2z_evolved = chi2z_evolved
 
-        make backup of the original precVersion
+            #  // if PN numerical integration fails, default to MSA+fallback to NNLO
+            if "Failure":
+                print("Warning: due to a failure in the SpinTaylor routines, the model will default to MSA angles.")
+                self.IMRPhenomXPrecVersion = 223
 
-        create a fake prec version 223
-
-        IMRPhenomX_PNR_GetAndSetPNRVariables(pWF, pPrec);
-
-        IMRPhenomX_PNR_precompute_alpha_coefficients(alphaParams, pWF, pPrec);
-
-        IMRPhenomX_PNR_precompute_beta_coefficients(betaParams, pWF, pPrec);
-
-        IMRPhenomX_PNR_BetaConnectionFrequencies(betaParams);
-
-        revert to original precVersion
-
-        define some new floats based of if
-
-        XLALSimIMRPhenomXUtilsMftoHz(Mf_low_cut * 0.65 * pPrec->M_MAX / 2.0, pWF->Mtot);
-
-        if...else to adjust flow again
-
-
-        IMRPhenomX_PNR_HMInterpolationDeltaF(flow, pWF, pPrec)
-
-        IMRPhenomX_InspiralAngles_SpinTaylor(function with lots of arguments)
-
-        Mfmin_integration = XLALSimIMRPhenomXUtilsHztoMf(pPrec->fmin_integration,pWF->Mtot);
-
-        if 330:
-            do some rotations
-        
-        if failure:
-            fall back on 223
-        '''
+            #  // end of SpinTaylor code
 
         self.IMRPhenomXPrecVersion = jax.lax.cond(self.IMRPhenomXPrecVersion==self.manual_prescription_tag, self.spin_taylor_code, lambda _: 223, operand = None)
 
@@ -1045,7 +1099,7 @@ def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: floa
 
     
     #Line 4681
-    #if(coarse_fac  < 1) { XLAL_ERROR(XLAL_EDOM, "Coarse factor must be >= 1!\n");}
+    #if(coarse_fac  < 1) { XLAL_ERROR(XLAL_EDOM, "Coarse factor must be >= 1!\n")}
 
     #Line 4685-4686
     #fS = fmin
@@ -1619,8 +1673,6 @@ def IMRPhenomX_Return_Constants_d_MSA(LNorm, JNorm, pPrec):
     return jnp.array([x, y, z])
 
 
-
-
 def IMRPhenomX_Return_phiz_MSA(
     v: float, 
     JNorm: float, 
@@ -1678,7 +1730,7 @@ def IMRPhenomX_Return_phiz_MSA(
  
     # \phi_{z,-1} = \sum^5_{n=0} <\Omega_z>^(n) \phi_z^(n) + \phi_{z,-1}^0
  
-    # Note that the <\Omega_z>^(n) are given by pPrec->Omegazn_coeff's as in Eqs. D15-D20
+    # Note that the <\Omega_z>^(n) are given by self.Omegazn_coeff's as in Eqs. D15-D20
     phiz_out = (
         phiz_0_coeff * pPrec.Omegaz0_coeff
         + phiz_1_coeff * pPrec.Omegaz1_coeff
@@ -1731,3 +1783,315 @@ def IMRPhenomX_costhetaLJ(
     costhetaLJ = jnp.clip(costhetaLJ, -1.0, 1.0)
 
     return costhetaLJ
+
+
+
+
+def IMRPhenomXHM_GenerateRingdownFrequency(ell: int, emm: int, wf22: dict) -> float:
+    """
+    Wrapper function to return ringdown frequency
+    
+    Args:
+        ell: Spherical harmonic l index (int)
+        emm: Spherical harmonic m index (int) - guaranteed to be positive
+        wf22: Waveform structure dictionary (dict)
+        
+    Returns:
+        float: Ringdown frequency
+    """
+    # emm is guaranteed to be positive
+    modeTag = ell * 10 + emm
+    
+    # if the tuned coprecessing tuning is activated, use the precessing final spin
+    afinal = jnp.where(
+        wf22['IMRPhenomXPNRUseTunedCoprec'],
+        wf22['afinal_prec'],
+        wf22['afinal']
+    )
+    
+    def case_21():
+        return evaluate_QNMfit_fring21(afinal) / wf22['Mfinal']
+    
+    def case_22():
+        return wf22['fRING']
+    
+    def case_33():
+        return evaluate_QNMfit_fring33(afinal) / wf22['Mfinal']
+    
+    def case_32():
+        return evaluate_QNMfit_fring32(afinal) / wf22['Mfinal']
+    
+    def case_44():
+        return evaluate_QNMfit_fring44(afinal) / wf22['Mfinal']
+    
+    def default_case():
+        # In JAX, we can't raise errors in jit-compiled code
+        # Return NaN or handle error upstream
+        return jnp.nan
+    
+    # Create branches for each case
+    fRING = jax.lax.switch(
+        jnp.where(modeTag == 21, 0,
+        jnp.where(modeTag == 22, 1,
+        jnp.where(modeTag == 33, 2,
+        jnp.where(modeTag == 32, 3,
+        jnp.where(modeTag == 44, 4, 5))))),
+        [case_21, case_22, case_33, case_32, case_44, default_case]
+    )
+    
+    # if the coprecessing tuning is activated, return Effective RD frequency
+    fRING = jnp.where(
+        jnp.logical_and(
+            wf22['IMRPhenomXPNRUseTunedCoprec'],
+            jnp.logical_or(ell != 2, emm != 2)
+        ),
+        fRING - emm * wf22['fRINGEffShiftDividedByEmm'],
+        fRING
+    )
+    
+    return fRING
+
+def XLALSimIMRPhenomXUtilsHztoMf(fHz: float, Mtot_Msun: float) -> float:
+
+    """
+    Convert frequency from Hz to dimensionless units
+    
+    Args:
+        fHz: Frequency in Hz (float)
+        Mtot_Msun: Total mass in solar masses (float)
+        
+    Returns:
+        float: Frequency in dimensionless units
+    """
+    return fHz * (MTSUN_SI * Mtot_Msun)
+
+def evaluate_QNMfit_fring21(finalDimlessSpin: float) -> float:
+    """
+    Evaluate QNM fit for fring21
+    
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+        
+    Returns:
+        float: QNM frequency fit result
+    """
+    
+    # Check bounds - return NaN for invalid input
+    # (In JAX, we can't raise errors in jit-compiled code)
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+    
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    
+    numerator = (0.059471695665734674 - 0.07585416297991414*finalDimlessSpin + 
+                 0.021967909664591865*x2 - 0.0018964744613388146*x3 + 
+                 0.001164879406179587*x4 - 0.0003387374454044957*x5)
+    
+    denominator = (1 - 1.4437415542456158*finalDimlessSpin + 0.49246920313191234*x2)
+    
+    return_val = numerator / denominator
+    
+    # Return NaN if input is invalid, otherwise return the computed value
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+def evaluate_QNMfit_fring33(finalDimlessSpin: float) -> float:
+    """
+    Evaluate QNM fit for fring33
+    
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+        
+    Returns:
+        float: QNM frequency fit result
+    """
+    
+    # Check bounds - return NaN for invalid input
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+    
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+    
+    numerator = (0.09540436245212061 - 0.22799517865876945*finalDimlessSpin + 
+                 0.13402916709362475*x2 + 0.03343753057911253*x3 - 
+                 0.030848060170259615*x4 - 0.006756504382964637*x5 + 
+                 0.0027301732074159835*x6)
+    
+    denominator = (1 - 2.7265947806178334*finalDimlessSpin + 2.144070539525238*x2 - 
+                   0.4706873667569393*x4 + 0.05321818246993958*x6)
+    
+    return_val = numerator / denominator
+    
+    # Return NaN if input is invalid, otherwise return the computed value
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+def evaluate_QNMfit_fring32(finalDimlessSpin: float) -> float:
+    """
+    Evaluate QNM fit for fring32
+    
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+        
+    Returns:
+        float: QNM frequency fit result
+    """
+    
+    # Check bounds - return NaN for invalid input
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+    
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+    
+    numerator = (0.09540436245212061 - 0.13628306966373951*finalDimlessSpin + 
+                 0.030099881830507727*x2 - 0.000673589757007597*x3 + 
+                 0.0118277880067919*x4 + 0.0020533816327907334*x5 - 
+                 0.0015206141948469621*x6)
+    
+    denominator = (1 - 1.6531854335715193*finalDimlessSpin + 0.5634705514193629*x2 + 
+                   0.12256204148002939*x4 - 0.027297817699401976*x6)
+    
+    return_val = numerator / denominator
+    
+    # Return NaN if input is invalid, otherwise return the computed value
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+def evaluate_QNMfit_fring44(finalDimlessSpin: float) -> float:
+    """
+    Evaluate QNM fit for fring44
+    
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+        
+    Returns:
+        float: QNM frequency fit result
+    """
+    
+    # Check bounds - return NaN for invalid input
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+    
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+    
+    numerator = (0.1287821193485683 - 0.21224284094693793*finalDimlessSpin + 
+                 0.0710926778043916*x2 + 0.015487322972031054*x3 - 
+                 0.002795401084713644*x4 + 0.000045483523029172406*x5 + 
+                 0.00034775290179000503*x6)
+    
+    denominator = (1 - 1.9931645124693607*finalDimlessSpin + 1.0593147376898773*x2 - 
+                   0.06378640753152783*x4)
+    
+    return_val = numerator / denominator
+    
+    # Return NaN if input is invalid, otherwise return the computed value
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+
+def get_deltaF_from_wfstruct(pWF: dict) -> float:
+    """
+    Get deltaF from waveform structure
+    
+    Args:
+        pWF: Waveform structure dictionary (dict)
+        
+    Returns:
+        float: Delta frequency in dimensionless units
+    """
+    
+    seglen = XLALSimInspiralChirpTimeBound(
+        pWF['fRef'], pWF['m1_SI'], pWF['m2_SI'], pWF['chi1L'], pWF['chi2L']
+    )
+    
+    deltaFv1 = 1.0 / jnp.maximum(4.0, jnp.power(2, jnp.ceil(jnp.log(seglen)/jnp.log(2))))
+    deltaF = jnp.minimum(deltaFv1, 0.1)
+    deltaMF = XLALSimIMRPhenomXUtilsHztoMf(deltaF, pWF['Mtot'])
+    
+    return deltaMF
+
+def XLALSimInspiralChirpTimeBound(fstart: float, m1: float, m2: float, s1: float, s2: float) -> float:
+    """
+    Calculate chirp time bound for inspiral
+    
+    Args:
+        fstart: Starting frequency (float)
+        m1: Mass of object 1 (float)
+        m2: Mass of object 2 (float)
+        s1: Spin of object 1 (float)
+        s2: Spin of object 2 (float)
+        
+    Returns:
+        float: Chirp time bound
+    """
+    
+    M = m1 + m2  # total mass
+    mu = m1 * m2 / M  # reduced mass
+    eta = mu / M  # symmetric mass ratio
+    
+    # chi = (s1*m1 + s2*m2)/M <= max(|s1|,|s2|)
+    # over-estimate of chi
+    chi = jnp.abs(jnp.where(jnp.abs(s1) > jnp.abs(s2), s1, s2))
+    
+    # note: for some reason these coefficients are named wrong...
+    # "2PN" should be "1PN", "4PN" should be "2PN", etc.
+    c0 = jnp.abs(XLALSimInspiralTaylorT2Timing_0PNCoeff(M, eta))
+    c2 = XLALSimInspiralTaylorT2Timing_2PNCoeff(eta)
+    
+    # the 1.5pN spin term is in TaylorT2 is 8*beta/5 [Citation ??]
+    # where beta = (113/12 + (25/4)(m2/m1))*(s1*m1^2/M^2) + 2 <-> 1
+    # [Cutler & Flanagan, Physical Review D 49, 2658 (1994), Eq. (3.21)]
+    # which can be written as (113/12)*chi - (19/6)(s1 + s2)
+    # and we drop the negative contribution
+    c3 = (226.0/15.0) * chi
+    
+    # there is also a 1.5PN term with eta, but it is negative so do not include it
+    c4 = XLALSimInspiralTaylorT2Timing_4PNCoeff(eta)
+    
+    v = jnp.power(jnp.pi * G * M * fstart, 1.0/3.0) / C
+    
+    return c0 * jnp.power(v, -8) * (1.0 + (c2 + (c3 + c4 * v) * v) * v * v)
+
+
+def XLALSimInspiralTaylorT2Timing_0PNCoeff(totalmass: float, eta: float) -> float:
+    """
+    Calculate 0PN coefficient for TaylorT2 timing
+    
+    Args:
+        totalmass: Total mass in kilograms (float)
+        eta: Symmetric mass ratio (float)
+        
+    Returns:
+        float: 0PN timing coefficient
+    """
+    
+    # convert totalmass from kilograms to seconds
+    totalmass *= G / jnp.power(C, 3.0)
+    
+    return -5.0 * totalmass / (256.0 * eta)
+
+
+def XLALSimInspiralTaylorT2Timing_2PNCoeff(eta: float) -> float:
+    """
+    Calculate 2PN coefficient for TaylorT2 timing
+    
+    Args:
+        eta: Symmetric mass ratio (float)
+        
+    Returns:
+        float: 2PN timing coefficient
+    """
+    
+    return 7.43/2.52 + 11.0/3.0 * eta
+
+
+def XLALSimInspiralTaylorT2Timing_4PNCoeff(eta: float) -> float:
+
+    return 30.58673/5.08032 + 54.29/5.04*eta + 61.7/7.2*eta*eta

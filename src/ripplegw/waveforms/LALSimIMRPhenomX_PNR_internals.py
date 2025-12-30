@@ -4,7 +4,7 @@ from ..constants import MTSUN_SI
 from .LALSimIMRPhenomX_precession import XLALSimIMRPhenomXLPNAnsatz, IMRPhenomX_Initialize_MSA_System
 
 
-def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) -> float:
+def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) . float:
     """
     Compute deltaF required for PNR HM interpolation
     
@@ -51,9 +51,30 @@ def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) -
             # If SpinTaylor version (tag == 3), we need to set up L coefficients
             # This is just setup - the main logic happens regardless
             def setup_spintaylor():
-                # In JAX, we can't modify pPrec in-place, so we'd need to 
-                # return modified values or handle this differently
-                # For now, assume this setup has been done elsewhere
+                eta = pPrec.eta
+                delta = pWF['delta']
+                chi1L = pPrec.chi1L
+                chi2L = pPrec.chi2L
+
+                pPrec.L0   = 1.0
+                pPrec.L1   = 0.0
+                pPrec.L2   = 3.0/2. + eta/6.0
+                pPrec.L3   = (5*(chi1L*(-2 - 2*delta + eta) + chi2L*(-2 + 2*delta + eta)))/6.
+                pPrec.L4   = (81 + (-57 + eta)*eta)/24.
+                pPrec.L5   = (-7*(chi1L*(72 + delta*(72 - 31*eta) + eta*(-121 + 2*eta)) + chi2L*(72 + eta*(-121 + 2*eta) + delta*(-72 + 31*eta))))/144.
+                pPrec.L6   = (10935 + eta*(-62001 + eta*(1674 + 7*eta) + 2214*jnp.power(jnp.pi, 2)))/1296.
+                pPrec.L7   = 0.0
+                pPrec.L8   = 0.0
+                #// This is the log(x) term
+                pPrec.L8L  = 0.0
+
+                user_version = pPrec.IMRPhenomXPrecVersion
+
+                pPrec.IMRPhenomXPrecVersion = 223
+
+                IMRPhenomX_Initialize_MSA_System(pWF, pPrec, pPrec.ExpansionOrder)
+
+                pPrec.IMRPhenomXPrecVersion = user_version
                 return pPrec
                 
             def no_setup():
@@ -132,7 +153,7 @@ def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) -
 
 
 
-def IMRPhenomX_PNR_CheckTwoSpin(pPrec: dict) -> bool:
+def IMRPhenomX_PNR_CheckTwoSpin(pPrec: dict) . bool:
     """
     Check for two-spin system conditions
     
@@ -157,11 +178,11 @@ def IMRPhenomX_PNR_CheckTwoSpin(pPrec: dict) -> bool:
     
     return condition
 
-def XLALSimPhenomUtilsHztoMf(fHz: float, Mtot: float) -> float:
+def XLALSimPhenomUtilsHztoMf(fHz: float, Mtot: float) . float:
     """Stub: Convert Hz to dimensionless frequency"""
     # Implementation needed - likely similar to XLALSimIMRPhenomXUtilsHztoMf
     return fHz * (MTSUN_SI * Mtot)
 
-def XLALSimPhenomUtilsMftoHz(Mf: float, Mtot: float) -> float:
+def XLALSimPhenomUtilsMftoHz(Mf: float, Mtot: float) . float:
     return Mf / (MTSUN_SI * Mtot)
 
