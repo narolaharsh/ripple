@@ -340,19 +340,49 @@ class IMRPhenomXGetAndSetPrecessionVariables:
                 chi2y_evolved = chi2y
                 chi2z_evolved = chi2z
 
-                if "Angles are generated":
-                    #in case that SpinTaylor angles generate, overwrite variables with evolved spins
-                    pass
-                
+                lenPN = len(PNarrays[0])
+                chi1x_temp = PNarrays[1][lenPN-1]
+                chi1y_temp = PNarrays[2][lenPN-1]
+                chi1z_temp = PNarrays[3][lenPN-1]
+
+                chi2x_temp = PNarrays[4][lenPN-1]
+                chi2y_temp = PNarrays[5][lenPN-1]
+                chi2z_temp = PNarrays[6][lenPN-1]
+
+                Lx = PNarrays[7][lenPN-1]
+                Ly = PNarrays[8][lenPN-1]
+                Lz = PNarrays[9][lenPN-1]
+
+                phi = jnp.atan2( Ly, Lx )
+                theta = jnp.acos( Lz / jnp.sqrt(Lx*Lx + Ly*Ly + Lz*Lz) )
+
+                _v = IMRPhenomX_rotate_z(-phi, jnp.array([chi1x_temp, chi1y_temp, chi1z_temp]))
+                chi1x_temp, chi1y_temp, chi1z_temp = IMRPhenomX_rotate_y(-theta, _v)
+
+                _v = IMRPhenomX_rotate_z(-phi, jnp.array([chi2x_temp, chi2y_temp, chi2z_temp]))
+                chi2x_temp, chi2y_temp, chi2z_temp = IMRPhenomX_rotate_y(-theta, jnp.array([chi2x_temp, chi2y_temp, chi2z_temp]))
+
+                chi1x_evolved = chi1x_temp
+                chi1y_evolved = chi1y_temp
+                chi1z_evolved = chi1z_temp
+
+
+                chi2x_evolved = chi2x_temp
+                chi2y_evolved = chi2y_temp
+                chi2z_evolved = chi2z_temp
+
+
                 self.chi1x_evolved = chi1x_evolved
                 self.chi1y_evolved = chi1y_evolved
                 self.chi1z_evolved = chi1z_evolved
+
                 self.chi2x_evolved = chi2x_evolved
                 self.chi2y_evolved = chi2y_evolved
                 self.chi2z_evolved = chi2z_evolved
 
             #  // if PN numerical integration fails, default to MSA+fallback to NNLO
             if "Failure":
+                "Place holder"
                 print("Warning: due to a failure in the SpinTaylor routines, the model will default to MSA angles.")
                 self.IMRPhenomXPrecVersion = 223
 
