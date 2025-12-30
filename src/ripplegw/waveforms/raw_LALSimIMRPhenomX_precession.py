@@ -9,6 +9,8 @@ from .LALSimInspiralSpinTaylor import XLALSimInspiralSpinTaylorPNEvolveOrbit
 from .LALSimIMRPhenomX_PNR_internals import IMRPhenomX_PNR_HMInterpolationDeltaF
 from dataclasses import dataclass
 from jax_dataclasses import pytree_dataclass
+from .LALSimIMRPhenomX_PNR_alpha import IMRPhenomX_PNR_precompute_alpha_coefficients
+from .LALSimIMRPhenomX_PNR_beta import (IMRPhenomX_PNR_precompute_beta_coefficients, IMRPhenomX_PNR_BetaConnectionFrequencies)
 
 
 
