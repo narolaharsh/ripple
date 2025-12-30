@@ -4,7 +4,7 @@ from ..constants import MTSUN_SI
 from .LALSimIMRPhenomX_precession import XLALSimIMRPhenomXLPNAnsatz, IMRPhenomX_Initialize_MSA_System
 
 
-def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) . float:
+def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) -> float:
     """
     Compute deltaF required for PNR HM interpolation
     
@@ -153,7 +153,7 @@ def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) .
 
 
 
-def IMRPhenomX_PNR_CheckTwoSpin(pPrec: dict) . bool:
+def IMRPhenomX_PNR_CheckTwoSpin(pPrec: dict) -> bool:
     """
     Check for two-spin system conditions
     
@@ -178,11 +178,11 @@ def IMRPhenomX_PNR_CheckTwoSpin(pPrec: dict) . bool:
     
     return condition
 
-def XLALSimPhenomUtilsHztoMf(fHz: float, Mtot: float) . float:
+def XLALSimPhenomUtilsHztoMf(fHz: float, Mtot: float) -> float:
     """Stub: Convert Hz to dimensionless frequency"""
     # Implementation needed - likely similar to XLALSimIMRPhenomXUtilsHztoMf
     return fHz * (MTSUN_SI * Mtot)
 
-def XLALSimPhenomUtilsMftoHz(Mf: float, Mtot: float) . float:
+def XLALSimPhenomUtilsMftoHz(Mf: float, Mtot: float) -> float:
     return Mf / (MTSUN_SI * Mtot)
 
