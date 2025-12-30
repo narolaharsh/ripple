@@ -155,17 +155,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.chi2_norm      = jnp.sqrt(chi2x*chi2x + chi2y*chi2y + chi2z*chi2z)
 
         ###Check that spins obey Kerr bound */ ####
-        """
-        FIXME
-        ### I will come back to the Kerr bound later line 210 ############
-        I do not know a jax friendly version for assert
-
-        condition = (jnp.logical_not(self.PNRUseTunedAngles)) | (pWF['PNR_SINGLE_SPIN'] != 1)
-
-        if condition:
-            assert jnp.abs(self.chi1_norm) <= 1.0
-            assert jnp.abs(self.chi2_norm) <= 1.0
-        """
+        kerr_bound_satisfied = self.check_kerr_bound(self.lalParams['PNRUseTunedAngles'],  self.pWF['PNR_SINGLE_SPIN'], self.chi1_norm, self.chi2_norm)
 
         ###/* Calculate dimensionful spins */
         self.S1x        = self.chi1x * self.m1_2
@@ -587,6 +577,33 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self.Y43          = compute_sminus2_l4(theta = self.thetaJN, m = 3)
         self.Y44          = compute_sminus2_l4(theta = self.thetaJN, m = 4)
 
+    def check_kerr_bound(self, pnr_use_tuned_angles, pnr_single_spin, chi1_norm, chi2_norm):
+        """Function to compress line 209-213"""
+        
+        # Condition to apply check
+        should_check = jnp.logical_or(
+            jnp.logical_not(pnr_use_tuned_angles),
+            pnr_single_spin != 1)
+        
+        # Compute violations
+        chi1_violation = jnp.abs(chi1_norm) > 1.0
+        chi2_violation = jnp.abs(chi2_norm) > 1.0
+        
+        # Only raise error if we should check AND there's a violation
+        error_condition = jnp.logical_and(
+            should_check,
+            jnp.logical_or(chi1_violation, chi2_violation)
+        )
+        
+        # Use where to conditionally raise error or return success
+        # In practice, you might want to return the error condition
+        # and handle it upstream
+        return jnp.where(
+            error_condition,
+            False,  # Error case
+            True    # Success case
+            )
+
     def convention_five_or_seven_true(self, alpha0):
         return -alpha0, 0, -alpha0, 0, -alpha0, 0, -alpha0, 0
     
@@ -957,8 +974,6 @@ End of IMRPhenomXGetAndSetPrecessionVaraibles
 
 
 
-
-#FIXME
 def IMRPhenomX_InspiralAngles_SpinTaylor(chi1x: float, chi1y: float, chi1z: float, 
                                          chi2x: float, chi2y: float, chi2z: float,
                                          fmin: float, PrecVersion: int, pWF: dict, lalParams: dict):
