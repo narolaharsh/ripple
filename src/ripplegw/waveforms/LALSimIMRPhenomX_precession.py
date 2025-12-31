@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from jax_dataclasses import pytree_dataclass
 
 from .LALSimIMRPhenomX_PNR_internals import IMRPhenomX_PNR_HMInterpolationDeltaF
+from .initialise_MSA_system import IMRPhenomX_Initialize_MSA_System
 
 from .LALSimIMRPhenomX_PNR_alpha import IMRPhenomX_PNR_precompute_alpha_coefficients
 from .LALSimIMRPhenomX_PNR_beta import (
