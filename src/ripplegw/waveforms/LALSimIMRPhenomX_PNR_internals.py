@@ -2,6 +2,222 @@ import jax.numpy as jnp
 import jax
 from ..constants import MTSUN_SI
 
+
+def XLALSimIMRPhenomXchiEff(eta: float, chi1L: float, chi2L: float) -> float:
+    """
+    Effective aligned spin parameter.
+
+    Args:
+        eta: Symmetric mass ratio
+        chi1L: Aligned spin of BH 1
+        chi2L: Aligned spin of BH 2
+
+    Returns:
+        Effective aligned spin
+    """
+    # Convention m1 >= m2 and chi1 is the spin on m1
+    delta = jnp.sqrt(1.0 - 4.0 * eta)
+    mm1 = 0.5 * (1 + delta)
+    mm2 = 0.5 * (1 - delta)
+
+    return mm1 * chi1L + mm2 * chi2L
+
+
+def XLALSimIMRPhenomXSTotR(eta: float, chi1L: float, chi2L: float) -> float:
+    """
+    Total spin normalised to [-1,1].
+
+    Args:
+        eta: Symmetric mass ratio
+        chi1L: Aligned spin of BH 1
+        chi2L: Aligned spin of BH 2
+
+    Returns:
+        Normalized total spin
+    """
+    # Convention m1 >= m2 and chi1z is the spin projected along Lz on m1
+    delta = jnp.sqrt(1.0 - 4.0 * eta)
+    m1 = 0.5 * (1 + delta)
+    m2 = 0.5 * (1 - delta)
+    m1Sq = m1 * m1
+    m2Sq = m2 * m2
+
+    return (m1Sq * chi1L + m2Sq * chi2L) / (m1Sq + m2Sq)
+
+
+def XLALSimIMRPhenomXFinalSpin2017(eta: float, chi1L: float, chi2L: float) -> float:
+    """
+    Final Dimensionless Spin, X Jimenez-Forteza et al, PRD, 95, 064024, (2017), arXiv:1611.00332.
+
+    Args:
+        eta: Symmetric mass ratio
+        chi1L: Aligned spin of BH 1
+        chi2L: Aligned spin of BH 2
+
+    Returns:
+        Final dimensionless spin
+    """
+    delta = jnp.sqrt(1.0 - 4.0 * eta)
+    m1 = 0.5 * (1.0 + delta)
+    m2 = 0.5 * (1.0 - delta)
+    m1Sq = m1 * m1
+    m2Sq = m2 * m2
+
+    eta2 = eta * eta
+    eta3 = eta2 * eta
+
+    S = XLALSimIMRPhenomXSTotR(eta, chi1L, chi2L)
+    S2 = S * S
+    S3 = S2 * S
+
+    dchi = chi1L - chi2L
+    dchi2 = dchi * dchi
+
+    # No-spin contribution
+    noSpin = (3.4641016151377544 * eta + 20.0830030082033 * eta2 - 12.333573402277912 * eta3) / (
+        1 + 7.2388440419467335 * eta
+    )
+
+    # Equal-spin contribution
+    eqSpin = (m1Sq + m2Sq) * S + (
+        (-0.8561951310209386 * eta - 0.09939065676370885 * eta2 + 1.668810429851045 * eta3) * S +
+        (0.5881660363307388 * eta - 2.149269067519131 * eta2 + 3.4768263932898678 * eta3) * S2 +
+        (0.142443244743048 * eta - 0.9598353840147513 * eta2 + 1.9595643107593743 * eta3) * S3
+    ) / (1 + (-0.9142232693081653 + 2.3191363426522633 * eta - 9.710576749140989 * eta3) * S)
+
+    # Unequal-spin contribution
+    uneqSpin = (
+        0.3223660562764661 * dchi * delta * (1 + 9.332575956437443 * eta) * eta2 -  # Linear in spin difference
+        0.059808322561702126 * dchi2 * eta3 +  # Quadratic in spin difference
+        2.3170397514509933 * dchi * delta * (1 - 3.2624649875884852 * eta) * eta3 * S  # Mixed term
+    )
+
+    return noSpin + eqSpin + uneqSpin
+
+
+def IMRPhenomX_PNR_GetAndSetPNRVariables(pPrec, pWF: dict) -> int:
+    """
+    Get and set PNR (Precessing Numerical Relativity) variables for single-spin mapping.
+
+    Computes effective single-spin parameters from the two-spin system using the mapping
+    described in arXiv:2107.08876. This function populates several fields in the pPrec
+    structure that are used for PNR angle calculations.
+
+    Args:
+        pPrec: PhenomX precession struct (IMRPhenomXGetAndSetPrecessionVariables instance)
+        pWF: PhenomX waveform struct (dict)
+
+    Returns:
+        int: Success status (1 for success)
+
+    References:
+        - Eq. 17-19 of arXiv:2107.08876
+    """
+    # Get needed quantities
+    m1 = pWF['m1'] * pWF['Mtot']
+    m2 = pWF['m2'] * pWF['Mtot']
+    q = pWF['q']
+
+    # Select spin values based on version
+    is_version_330 = (pPrec.IMRPhenomXPrecVersion == 330)
+    #FIXME
+    '''
+    chi1x = jnp.where(is_version_330, pPrec.chi1x_evolved, pPrec.chi1x)
+    chi1y = jnp.where(is_version_330, pPrec.chi1y_evolved, pPrec.chi1y)
+    chi2x = jnp.where(is_version_330, pPrec.chi2x_evolved, pPrec.chi2x)
+    chi2y = jnp.where(is_version_330, pPrec.chi2y_evolved, pPrec.chi2y)
+
+    chi1z_val = jnp.where(is_version_330, pPrec.chi1z_evolved, pPrec.chi1z)
+    chi2z_val = jnp.where(is_version_330, pPrec.chi2z_evolved, pPrec.chi2z)
+    '''
+    chi1x, chi1y, chi1z_val = pPrec.chi1x, pPrec.chi1y, pPrec.chi1z
+    chi2x, chi2y, chi2z_val = pPrec.chi2x, pPrec.chi2y, pPrec.chi2z
+    
+    chieff = XLALSimIMRPhenomXchiEff(pWF['eta'], chi1z_val, chi2z_val)
+
+    # Compute parallel spin parameter
+    chipar = pWF['Mtot'] * chieff / m1
+
+    # Compute effective in-plane spin contribution from Eq. 17 of arXiv:2107.08876
+    chis = jnp.sqrt(
+        (m1 * m1 * chi1x + m2 * m2 * chi2x) ** 2 +
+        (m1 * m1 * chi1y + m2 * m2 * chi2y) ** 2
+    ) / (m1 * m1)
+
+    # For version 330, use chis directly; otherwise apply q-dependent weighting
+    sin_term = jnp.sin((q - 1.0) * jnp.pi)
+    cos_term = jnp.cos((q - 1.0) * jnp.pi)
+    chiperp_q_weighted = sin_term * sin_term * pPrec.chi_p + cos_term * cos_term * chis
+
+    # Use chi_p for q > 1.5, otherwise use weighted version
+    chiperp_low_q = jnp.where(q <= 1.5, chiperp_q_weighted, pPrec.chi_p)
+
+    # Final chiperp: version 330 uses chis, others use chiperp_low_q
+    chiperp = jnp.where(is_version_330, chis, chiperp_low_q)
+
+    # Compute antisymmetric chiperp
+    antisymmetric_chis = jnp.sqrt(
+        (m1 * m1 * chi1x - m2 * m2 * chi2x) ** 2 +
+        (m1 * m1 * chi1y - m2 * m2 * chi2y) ** 2
+    ) / (m1 * m1)
+
+    chiperp_antisymmetric_weighted = sin_term * sin_term * pPrec.chi_p + cos_term * cos_term * antisymmetric_chis
+    chiperp_antisymmetric = jnp.where(q <= 1.5, chiperp_antisymmetric_weighted, pPrec.chi_p)
+
+    # Get the total magnitude, Eq. 18 of arXiv:2107.08876
+    chi_mag = jnp.sqrt(chipar * chipar + chiperp * chiperp)
+    chi_mag_antisymmetric = jnp.sqrt(chipar * chipar + chiperp_antisymmetric * chiperp_antisymmetric)
+
+    # Set attributes on pPrec
+    object.__setattr__(pPrec, 'chi_singleSpin', chi_mag)
+    object.__setattr__(pPrec, 'chi_singleSpin_antisymmetric', chi_mag_antisymmetric)
+
+    # Get the opening angle of the single spin, Eq. 19 of arXiv:2107.08876
+    costheta = jnp.where(chi_mag >= 1.0e-6, chipar / chi_mag, 0.0)
+    theta_antisymmetric = jnp.where(
+        chi_mag_antisymmetric >= 1.0e-6,
+        jnp.arccos(chipar / chi_mag_antisymmetric),
+        0.0
+    )
+
+    object.__setattr__(pPrec, 'costheta_singleSpin', costheta)
+    object.__setattr__(pPrec, 'theta_antisymmetric', theta_antisymmetric)
+
+    # Compute an approximate final spin using single-spin mapping
+    chi1L = chi_mag * costheta
+    chi2L = 0.0
+
+    Xfparr = XLALSimIMRPhenomXFinalSpin2017(pWF['eta'], chi1L, chi2L)
+
+    # Rescale Xfperp to use the final total mass of 1
+    qfactor = q / (1.0 + q)
+    Xfperp = qfactor * qfactor * chi_mag * jnp.sqrt(1.0 - costheta * costheta)
+    xf = jnp.sqrt(Xfparr * Xfparr + Xfperp * Xfperp)
+
+    costheta_final_singleSpin = jnp.where(xf > 1.0e-6, Xfparr / xf, 0.0)
+
+    object.__setattr__(pPrec, 'costheta_final_singleSpin', costheta_final_singleSpin)
+
+    # Initialize frequency values
+    object.__setattr__(pPrec, 'PNR_HM_Mflow', 0.0)
+    object.__setattr__(pPrec, 'PNR_HM_Mfhigh', 0.0)
+
+    # Set angle window boundaries
+    object.__setattr__(pPrec, 'PNR_q_window_lower', 8.5)
+    object.__setattr__(pPrec, 'PNR_q_window_upper', 12.0)
+    object.__setattr__(pPrec, 'PNR_chi_window_lower', 0.85)
+    object.__setattr__(pPrec, 'PNR_chi_window_upper', 1.2)
+
+    # Set inspiral scaling flag for HM frequency map
+    PNRInspiralScaling = jnp.where(
+        jnp.logical_or(q > 12.0, chi_mag > 1.2),
+        1,
+        0
+    )
+    object.__setattr__(pPrec, 'PNRInspiralScaling', PNRInspiralScaling)
+
+    return 1  # XLAL_SUCCESS
+
 def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) -> float:
     """
     Compute deltaF required for PNR HM interpolation
@@ -183,7 +399,6 @@ def XLALSimPhenomUtilsHztoMf(fHz: float, Mtot: float) -> float:
 
 def XLALSimPhenomUtilsMftoHz(Mf: float, Mtot: float) -> float:
     return Mf / (MTSUN_SI * Mtot)
-
 
 
 

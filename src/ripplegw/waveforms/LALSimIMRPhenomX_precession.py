@@ -9,7 +9,7 @@ from .LALSimInspiralSpinTaylor import XLALSimInspiralSpinTaylorPNEvolveOrbit
 from dataclasses import dataclass, field
 from jax_dataclasses import pytree_dataclass
 
-from .LALSimIMRPhenomX_PNR_internals import IMRPhenomX_PNR_HMInterpolationDeltaF
+from .LALSimIMRPhenomX_PNR_internals import (IMRPhenomX_PNR_HMInterpolationDeltaF, IMRPhenomX_PNR_GetAndSetPNRVariables)
 from .initialise_MSA_system import IMRPhenomX_Initialize_MSA_System
 
 from .LALSimIMRPhenomX_PNR_alpha import IMRPhenomX_PNR_precompute_alpha_coefficients
@@ -190,6 +190,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self._compute_spin_quantities()
         self._compute_effective_spin_parameters()
         self._validate_kerr_bound()
+        self._setup_evolved_spins()
         
 
     def _compute_masses(self):
@@ -372,31 +373,71 @@ class IMRPhenomXGetAndSetPrecessionVariables:
             self.chi2_norm
         )
 
+    def _setup_evolved_spins(self):
+        """Setup evolved spins - either via SpinTaylor or use initial values."""
+        # Check if we need to run SpinTaylor prescription (versions 300+)
+        use_spintaylor = (self.IMRPhenomXPrecVersion // 100 == 3)
+
+        if use_spintaylor:
+            self._setup_spintaylor_prescription()
+        else:
+            # For non-SpinTaylor versions, evolved spins are just the initial spins
+            object.__setattr__(self, 'chi1x_evolved', self.chi1x)
+            object.__setattr__(self, 'chi1y_evolved', self.chi1y)
+            object.__setattr__(self, 'chi1z_evolved', self.chi1z)
+            object.__setattr__(self, 'chi2x_evolved', self.chi2x)
+            object.__setattr__(self, 'chi2y_evolved', self.chi2y)
+            object.__setattr__(self, 'chi2z_evolved', self.chi2z)
+
     def _setup_spintaylor_prescription(self):
         """
         Setup SpinTaylor prescription for self.IMRPhenomXPrecVersion//100 == 3.
         Reference: Lines 242-389 in raw_LALSimIMRPhenomX_precession.py
         """
+        self._initialize_mode_arrays_and_frequencies()
 
+        integration_buffer_path1, flow_path1 = self._compute_path1_parameters()
+        integration_buffer_path2, flow_path2 = self._compute_path2_parameters()
+
+        integration_buffer, flow = self._select_integration_path(
+            integration_buffer_path1, integration_buffer_path2,
+            flow_path1, flow_path2
+        )
+
+        PNarrays, fmin_integration = self._run_spintaylor_evolution(flow)
+        self._extract_and_set_evolved_spins(PNarrays)
+
+    def _initialize_mode_arrays_and_frequencies(self):
+        """Initialize mode arrays and handle deltaF."""
         object.__setattr__(self, 'L_MAX_PNR', jnp.max(jnp.array(self.lalParams['ModeArray'])))
         object.__setattr__(self, 'M_MAX', jnp.max(jnp.array(self.lalParams['ModeArray'][:, 1])))
-        flow = self.pWF['fMin']
 
         # Handle deltaF == 0 case
         deltaMF = jnp.where(
             self.pWF['deltaF'] == 0,
             get_deltaF_from_wfstruct(self.pWF),
-            -1 #FIXME
+            -1  # FIXME
         )
         self.pWF['deltaMF'] = deltaMF
 
-        # Branch on PNRUseTunedAngles
-        # Path 1: PNRUseTunedAngles == False
+    def _compute_path1_parameters(self):
+        """Compute integration parameters for PNRUseTunedAngles == False."""
         integration_buffer_path1 = jnp.where(self.pWF['deltaF'] > 0., 3. * self.pWF['deltaF'], 0.5)
         flow_path1 = (self.pWF['fMin'] - integration_buffer_path1) * 2 / self.M_MAX
+        return integration_buffer_path1, flow_path1
 
-        # Path 2: PNRUseTunedAngles == True
-        # Line 257-260
+    def _compute_path2_parameters(self):
+        """Compute integration parameters for PNRUseTunedAngles == True."""
+        flow_temp_path2, fmin_HM_inspiral = self._compute_path2_initial_frequencies()
+        Mf_low_cut, MF_high_cut = self._compute_frequency_cutoffs()
+        flow_path2_intermediate = self._compute_path2_intermediate_flow(
+            flow_temp_path2, fmin_HM_inspiral, Mf_low_cut, MF_high_cut
+        )
+        integration_buffer_path2, flow_path2 = self._finalize_path2_parameters(flow_path2_intermediate)
+        return integration_buffer_path2, flow_path2
+
+    def _compute_path2_initial_frequencies(self):
+        """Compute initial frequencies for path 2."""
         iStart_here_path2 = jnp.where(
             self.pWF['deltaF'] == 0.,
             0,
@@ -408,14 +449,15 @@ class IMRPhenomXGetAndSetPrecessionVariables:
             iStart_here_path2 * self.pWF['deltaF']
         )
         fmin_HM_inspiral = flow_temp_path2 * 2.0 / self.M_MAX
+        return flow_temp_path2, fmin_HM_inspiral
 
+    def _compute_frequency_cutoffs(self):
+        """Compute frequency cutoffs using PNR coefficients."""
         # Temporarily set version to 223 for PNR variable computation
         precVersion_save = self.IMRPhenomXPrecVersion
         object.__setattr__(self, 'IMRPhenomXPrecVersion', 223)
-
-
-        # These functions would need to be implemented
-        # IMRPhenomX_PNR_GetAndSetPNRVariables(self, self.pWF)
+        print('precversion', self.IMRPhenomXPrecVersion)
+        IMRPhenomX_PNR_GetAndSetPNRVariables(self, self.pWF) ## First precversion is set to 223
 
         alphaParams = IMRPhenomX_PNR_precompute_alpha_coefficients(self.pWF, self)
         betaParams = IMRPhenomX_PNR_precompute_beta_coefficients(self.pWF, self)
@@ -424,12 +466,12 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         # Restore version
         object.__setattr__(self, 'IMRPhenomXPrecVersion', precVersion_save)
 
-        # Line 274-276
+        # Compute cutoff frequencies
         Mf_alpha_upper = alphaParams.A4 / 3.0
         Mf_low_cut = (3.0 / 3.5) * Mf_alpha_upper
         MF_high_cut = Mf_beta_lower
 
-        # Line 280-287: First conditional assignment
+        # Adjust high cutoff
         MF_high_cut = jnp.where(
             jnp.logical_or(
                 MF_high_cut > self.pWF['fCutDef'],
@@ -439,7 +481,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
             MF_high_cut
         )
 
-        # Line 290-297: Second conditional assignment
+        # Adjust low cutoff
         Mf_low_cut = jnp.where(
             jnp.logical_or(
                 Mf_low_cut > self.pWF['fCutDef'],
@@ -449,13 +491,16 @@ class IMRPhenomXGetAndSetPrecessionVariables:
             Mf_low_cut
         )
 
-        # Line 300
+        return Mf_low_cut, MF_high_cut
+
+    def _compute_path2_intermediate_flow(self, flow_temp_path2, fmin_HM_inspiral, Mf_low_cut, MF_high_cut):
+        """Compute intermediate flow frequency for path 2."""
         flow_alpha = XLALSimIMRPhenomXUtilsMftoHz(
             Mf_low_cut * 0.65 * self.M_MAX / 2.0,
             self.pWF['Mtot']
         )
 
-        # Line 305-316: Compute else branch for main conditional
+        # Compute ringdown frequency adjustment
         Mf_RD_22 = self.pWF['fRING']
         Mf_RD_lm = IMRPhenomXHM_GenerateRingdownFrequency(self.L_MAX_PNR, self.M_MAX, self.pWF)
 
@@ -469,15 +514,20 @@ class IMRPhenomXGetAndSetPrecessionVariables:
             fmin_HM_inspiral
         )
 
-        # Line 319: Main conditional
+        # Main conditional
         flow_path2_intermediate = jnp.where(
             flow_alpha < flow_temp_path2,
             fmin_HM_inspiral / 1.5,
             else_branch_result
         )
 
-        # Line 322-327
-        pnr_interpolation_deltaf = IMRPhenomX_PNR_HMInterpolationDeltaF(flow_path2_intermediate, self.pWF, self)
+        return flow_path2_intermediate
+
+    def _finalize_path2_parameters(self, flow_path2_intermediate):
+        """Finalize path 2 integration buffer and flow."""
+        pnr_interpolation_deltaf = IMRPhenomX_PNR_HMInterpolationDeltaF(
+            flow_path2_intermediate, self.pWF, self
+        )
 
         integration_buffer_path2 = 1.4 * pnr_interpolation_deltaf
         flow_path2 = jnp.where(
@@ -489,24 +539,42 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         iStart_here_path2_final = jnp.floor(flow_path2 / pnr_interpolation_deltaf).astype(int)
         flow_path2 = iStart_here_path2_final * pnr_interpolation_deltaf
 
-        # Select path based on PNRUseTunedAngles
-        integration_buffer = jnp.where(self.lalParams['PNRUseTunedAngles'], integration_buffer_path2, integration_buffer_path1)
+        return integration_buffer_path2, flow_path2
+
+    def _select_integration_path(self, integration_buffer_path1, integration_buffer_path2,
+                                  flow_path1, flow_path2):
+        """Select between path 1 and path 2 based on PNRUseTunedAngles."""
+        integration_buffer = jnp.where(
+            self.lalParams['PNRUseTunedAngles'],
+            integration_buffer_path2,
+            integration_buffer_path1
+        )
         flow = jnp.where(self.lalParams['PNRUseTunedAngles'], flow_path2, flow_path1)
 
         object.__setattr__(self, 'integration_buffer', integration_buffer)
+        return integration_buffer, flow
 
+    def _run_spintaylor_evolution(self, flow):
+        """Run SpinTaylor evolution and return PN arrays."""
         PNarrays, fmin_integration = IMRPhenomX_InspiralAngles_SpinTaylor(
-             self.chi1x, self.chi1y, self.chi1z,
-             self.chi2x, self.chi2y, self.chi2z,
-             flow, self.IMRPhenomXPrecVersion,
-             self.pWF, self.lalParams)
-        object.__setattr__(self, 'Mfmin_integration',
-                           XLALSimIMRPhenomXUtilsHztoMf(fmin_integration, self.pWF['Mtot']))
+            self.chi1x, self.chi1y, self.chi1z,
+            self.chi2x, self.chi2y, self.chi2z,
+            flow, self.IMRPhenomXPrecVersion,
+            self.pWF, self.lalParams
+        )
+        object.__setattr__(
+            self, 'Mfmin_integration',
+            XLALSimIMRPhenomXUtilsHztoMf(fmin_integration, self.pWF['Mtot'])
+        )
+        return PNarrays, fmin_integration
 
-        # Line 335-381: Handle IMRPhenomXPrecVersion == 330 case
-        # Extract evolved spins from PNarrays and apply rotation
-        # Using jnp.where to make it JAX-compatible
+    def _extract_and_set_evolved_spins(self, PNarrays):
+        """Extract evolved spins from PNarrays and apply rotation if needed."""
+        chi1_evolved, chi2_evolved = self._compute_rotated_spins(PNarrays)
+        self._set_evolved_spin_attributes(chi1_evolved, chi2_evolved)
 
+    def _compute_rotated_spins(self, PNarrays):
+        """Compute rotated spin vectors from PNarrays."""
         # Extract final values from PNarrays (last element)
         lenPN = len(PNarrays[0])
 
@@ -538,21 +606,30 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         # Conditionally use rotated or original values based on IMRPhenomXPrecVersion
         is_version_330 = (self.IMRPhenomXPrecVersion == 330)
 
-        chi1x_evolved = jnp.where(is_version_330, chi1_rotated[0], self.chi1x)
-        chi1y_evolved = jnp.where(is_version_330, chi1_rotated[1], self.chi1y)
-        chi1z_evolved = jnp.where(is_version_330, chi1_rotated[2], self.chi1z)
+        chi1_evolved = jnp.array([
+            jnp.where(is_version_330, chi1_rotated[0], self.chi1x),
+            jnp.where(is_version_330, chi1_rotated[1], self.chi1y),
+            jnp.where(is_version_330, chi1_rotated[2], self.chi1z)
+        ])
 
-        chi2x_evolved = jnp.where(is_version_330, chi2_rotated[0], self.chi2x)
-        chi2y_evolved = jnp.where(is_version_330, chi2_rotated[1], self.chi2y)
-        chi2z_evolved = jnp.where(is_version_330, chi2_rotated[2], self.chi2z)
+        chi2_evolved = jnp.array([
+            jnp.where(is_version_330, chi2_rotated[0], self.chi2x),
+            jnp.where(is_version_330, chi2_rotated[1], self.chi2y),
+            jnp.where(is_version_330, chi2_rotated[2], self.chi2z)
+        ])
 
-        # Set evolved spin attributes
-        object.__setattr__(self, 'chi1x_evolved', chi1x_evolved)
-        object.__setattr__(self, 'chi1y_evolved', chi1y_evolved)
-        object.__setattr__(self, 'chi1z_evolved', chi1z_evolved)
-        object.__setattr__(self, 'chi2x_evolved', chi2x_evolved)
-        object.__setattr__(self, 'chi2y_evolved', chi2y_evolved)
-        object.__setattr__(self, 'chi2z_evolved', chi2z_evolved)
+        return chi1_evolved, chi2_evolved
+
+    def _set_evolved_spin_attributes(self, chi1_evolved, chi2_evolved):
+        """Set evolved spin attributes."""
+        object.__setattr__(self, 'chi1x_evolved', chi1_evolved[0])
+        object.__setattr__(self, 'chi1y_evolved', chi1_evolved[1])
+        object.__setattr__(self, 'chi1z_evolved', chi1_evolved[2])
+        object.__setattr__(self, 'chi2x_evolved', chi2_evolved[0])
+        object.__setattr__(self, 'chi2y_evolved', chi2_evolved[1])
+        object.__setattr__(self, 'chi2z_evolved', chi2_evolved[2])
+
+
 
 
 def get_deltaF_from_wfstruct(pWF: dict) -> float:
