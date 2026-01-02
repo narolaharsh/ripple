@@ -4,6 +4,7 @@ from .LALSimIMRPhenomTHM_fits import (evaluate_QNMfit_fring21,
                                       evaluate_QNMfit_fring32,
                                       evaluate_QNMfit_fring44
                                       )
+import jax
 
 def IMRPhenomXHM_GenerateRingdownFrequency(ell: int, emm: int, wf22: dict) -> float:
     """
@@ -68,3 +69,5 @@ def IMRPhenomXHM_GenerateRingdownFrequency(ell: int, emm: int, wf22: dict) -> fl
     )
     
     return fRING
+
+

@@ -288,7 +288,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
                 # Second conditional assignment  
                 Mf_low_cut = jnp.where(
-                    jnp.logical_or(
+                    jnp.logical_or
                         Mf_low_cut > self.pWF['fCutDef'],
                         MF_high_cut < Mf_low_cut
                     ),

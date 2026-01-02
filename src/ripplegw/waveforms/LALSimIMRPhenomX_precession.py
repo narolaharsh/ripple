@@ -297,6 +297,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         # Convert version 300 to 223
         version = jnp.where(self.IMRPhenomXPrecVersion == 300, 223, self.IMRPhenomXPrecVersion)
         object.__setattr__(self, 'IMRPhenomXPrecVersion', version)
+        print('IMRPhenomXPrecVersion is updated to', self.IMRPhenomXPrecVersion)
 
         # Calculate in-plane spin magnitude
         chi_in_plane = jnp.sqrt(
@@ -377,8 +378,8 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         """Setup evolved spins - either via SpinTaylor or use initial values."""
         # Check if we need to run SpinTaylor prescription (versions 300+)
         use_spintaylor = (self.IMRPhenomXPrecVersion // 100 == 3)
-
-        if use_spintaylor:
+        print('Are we using spin taylor?', use_spintaylor)
+        if use_spintaylor:  
             self._setup_spintaylor_prescription()
         else:
             # For non-SpinTaylor versions, evolved spins are just the initial spins
@@ -422,6 +423,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
     def _compute_path1_parameters(self):
         """Compute integration parameters for PNRUseTunedAngles == False."""
+        print('Not using PNRUseTunedAngles')
         integration_buffer_path1 = jnp.where(self.pWF['deltaF'] > 0., 3. * self.pWF['deltaF'], 0.5)
         flow_path1 = (self.pWF['fMin'] - integration_buffer_path1) * 2 / self.M_MAX
         return integration_buffer_path1, flow_path1
@@ -470,6 +472,11 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         Mf_alpha_upper = alphaParams.A4 / 3.0
         Mf_low_cut = (3.0 / 3.5) * Mf_alpha_upper
         MF_high_cut = Mf_beta_lower
+
+        self.pWF['fCutDef'] = jnp.where(self.pWF['chiEff']>0.99, 0.33, 0.3)
+        print('Generating ringdown frequency', self.pWF['Mfinal'])
+        self.pWF['IMRPhenomXPNRUseTunedCoprec'] = False
+        self.pWF['fRing'] = IMRPhenomXHM_GenerateRingdownFrequency(2, 2, self.pWF)
 
         # Adjust high cutoff
         MF_high_cut = jnp.where(
