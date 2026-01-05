@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import jax
 from ..constants import MTSUN_SI
+from .initialise_MSA_system import IMRPhenomX_Initialize_MSA_System
 jax.config.update("jax_enable_x64", True)
 
 
@@ -650,5 +651,7 @@ def IMRPhenomX_PNR_GetAndSetCoPrecParams(pPrec, pWF: dict, lalParams: dict) -> i
 
 
 
-def IMRPhenomX_PNR_SetPhaseAlignmentParams(fix, _fix):
+def IMRPhenomX_PNR_SetPhaseAlignmentParams(x, y):
+    #TODO
+
     return None

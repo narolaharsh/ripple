@@ -2,9 +2,10 @@
 import jax.numpy as jnp
 import jax
 from ..constants import MTSUN_SI, GAMMA
+from .elliptic_integrals import ellint_F
 
 #/** This function initializes all the core variables required for the MSA system. This will be called first. */
-def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int):
+def IMRPhenomX_Initialize_MSA_System(pPrec, pWF: dict, ExpansionOrder: int):
 
     #Sanity check on the precession version
     pflag = pPrec.IMRPhenomXPrecVersion
@@ -19,10 +20,10 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
         - Bohe et al, CQG, 30, 135009, (2013), arXiv:1303.7412
     '''
 
-    eta = pPrec['eta']
-    eta2 = pPrec['eta2']
-    eta3 = pPrec['eta3']
-    eta4 = pPrec['eta4']
+    eta = pPrec.eta
+    eta2 = pPrec.eta2
+    eta3 = pPrec.eta3
+    eta4 = pPrec.eta4
 
     m1 = pWF['m1']
     m2 = pWF['m2']
@@ -61,16 +62,16 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
 
     q = m2 / m1  # m2 / m1, q < 1, m1 > m2
     invq = 1.0 / q  # m1 / m2, invq > 1, m1 > m2
-    pPrec['qq'] = q
-    pPrec['invqq'] = invq
+    object.__setattr__(pPrec, 'qq', q)
+    object.__setattr__(pPrec, 'invqq', invq)
 
     mu = (m1 * m2) / (m1 + m2)
 
     #    /* \delta and powers of \delta in terms of q < 1, should just be m1 - m2 */
-    pPrec['delta_qq'] = (1.0 - pPrec['qq']) / (1.0 + pPrec['qq'])
-    pPrec['delta2_qq'] = pPrec['delta_qq'] * pPrec['delta_qq']
-    pPrec['delta3_qq'] = pPrec['delta_qq'] * pPrec['delta2_qq']
-    pPrec['delta4_qq'] = pPrec['delta_qq'] * pPrec['delta3_qq']
+    object.__setattr__(pPrec, 'delta_qq', (1.0 - pPrec.qq) / (1.0 + pPrec.qq))
+    object.__setattr__(pPrec, 'delta2_qq', pPrec.delta_qq * pPrec.delta_qq)
+    object.__setattr__(pPrec, 'delta3_qq', pPrec.delta_qq * pPrec.delta2_qq)
+    object.__setattr__(pPrec, 'delta4_qq', pPrec.delta_qq * pPrec.delta3_qq)
 
     # Initialize empty vectors (using dictionaries to represent vectors)
     S1v = jnp.array([0.0, 0.0, 0.0])
@@ -80,18 +81,18 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
     Lhat =jnp.array([0.0, 0.0, 1.0])
 
     # Set LHat variables - these are fixed
-    pPrec['Lhat_cos_theta'] = 1.0  # Cosine of Polar angle of orbital angular momentum
-    pPrec['Lhat_phi'] = 0.0        # Azimuthal angle of orbital angular momentum
-    pPrec['Lhat_theta'] = 0.0      # Polar angle of orbital angular momentum
+    object.__setattr__(pPrec, 'Lhat_cos_theta', 1.0)  # Cosine of Polar angle of orbital angular momentum
+    object.__setattr__(pPrec, 'Lhat_phi', 0.0)        # Azimuthal angle of orbital angular momentum
+    object.__setattr__(pPrec, 'Lhat_theta', 0.0)      # Polar angle of orbital angular momentum
 
     # Dimensionful spin vectors, note eta = m1 * m2 and q = m2/m1
-    S1v['x'] = pPrec['chi1x'] * eta/q  # eta / q = m1^2
-    S1v['y'] = pPrec['chi1y'] * eta/q
-    S1v['z'] = pPrec['chi1z'] * eta/q
+    S1v = S1v.at[0].set(pPrec.chi1x * eta/q)  # eta / q = m1^2
+    S1v = S1v.at[1].set(pPrec.chi1y * eta/q)
+    S1v = S1v.at[2].set(pPrec.chi1z * eta/q)
 
-    S2v['x'] = pPrec['chi2x'] * eta*q  # eta * q = m2^2
-    S2v['y'] = pPrec['chi2y'] * eta*q
-    S2v['z'] = pPrec['chi2z'] * eta*q
+    S2v = S2v.at[0].set(pPrec.chi2x * eta*q)  # eta * q = m2^2
+    S2v = S2v.at[1].set(pPrec.chi2y * eta*q)
+    S2v = S2v.at[2].set(pPrec.chi2z * eta*q)
 
     S1_0_norm = IMRPhenomX_vector_L2_norm(S1v)  # stub
     S2_0_norm = IMRPhenomX_vector_L2_norm(S2v)  # stub
@@ -99,19 +100,19 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
 
     # Initial dimensionful spin vectors at reference frequency
     # S1 = {S1x,S1y,S1z}
-    pPrec['S1_0'] = jnp.array([S1v[0], S1v[1], S1v[2]])
+    object.__setattr__(pPrec, 'S1_0', jnp.array([S1v[0], S1v[1], S1v[2]]))
 
-    # S2 = {S2x,S2y,S2z}  
-    pPrec['S2_0'] = jnp.array([S2v[0], S2v[1], S2v[2]])
+    # S2 = {S2x,S2y,S2z}
+    object.__setattr__(pPrec, 'S2_0', jnp.array([S2v[0], S2v[1], S2v[2]]))
 
     # Reference velocity v and v^2
-    pPrec['v_0'] = jnp.power(pPrec['piGM'] * pWF['fRef'], 1.0/3.0)
-    pPrec['v_0_2'] = pPrec['v_0'] * pPrec['v_0']
+    object.__setattr__(pPrec, 'v_0', jnp.power(pPrec.piGM * pWF['fRef'], 1.0/3.0))
+    object.__setattr__(pPrec, 'v_0_2', pPrec.v_0 * pPrec.v_0)
 
     # Reference orbital angular momenta
     L_0 = jnp.array([0.0, 0.0, 0.0])
-    L_0 = IMRPhenomX_vector_scalar(Lhat, pPrec['eta'] / pPrec['v_0'])  # stub
-    pPrec['L_0'] = L_0    
+    L_0 = IMRPhenomX_vector_scalar(Lhat, pPrec.eta / pPrec.v_0)  # stub
+    object.__setattr__(pPrec, 'L_0', L_0)    
 
     # Inner products used in MSA system
     dotS1L = IMRPhenomX_vector_dot_product(S1v, Lhat)  # stub
@@ -121,42 +122,43 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
     dotS2Ln = dotS2L / S2_0_norm
 
     # Add dot products to struct
-    pPrec['dotS1L'] = dotS1L
-    pPrec['dotS2L'] = dotS2L
-    pPrec['dotS1S2'] = dotS1S2
-    pPrec['dotS1Ln'] = dotS1Ln
-    pPrec['dotS2Ln'] = dotS2Ln
+    object.__setattr__(pPrec, 'dotS1L', dotS1L)
+    object.__setattr__(pPrec, 'dotS2L', dotS2L)
+    object.__setattr__(pPrec, 'dotS1S2', dotS1S2)
+    object.__setattr__(pPrec, 'dotS1Ln', dotS1Ln)
+    object.__setattr__(pPrec, 'dotS2Ln', dotS2Ln)
 
 
     # Coefficients for PN orbital angular momentum at 3PN, as per LALSimInspiralFDPrecAngles_internals.c
-    pPrec['constants_L'] = jnp.zeros(5)  # Initialize array for 5 coefficients
+    constants_L = jnp.zeros(5)  # Initialize array for 5 coefficients
 
-    pPrec['constants_L'] = pPrec['constants_L'].at[0].set(
+    constants_L = constants_L.at[0].set(
         L_csts_nonspin[0] + eta * L_csts_nonspin[1]
     )
-    pPrec['constants_L'] = pPrec['constants_L'].at[1].set(
+    constants_L = constants_L.at[1].set(
         IMRPhenomX_Get_PN_beta(L_csts_spinorbit[0], L_csts_spinorbit[1], pPrec)  # stub
     )
-    pPrec['constants_L'] = pPrec['constants_L'].at[2].set(
+    constants_L = constants_L.at[2].set(
         L_csts_nonspin[2] + eta * L_csts_nonspin[3] + eta * eta * L_csts_nonspin[4]
     )
-    pPrec['constants_L'] = pPrec['constants_L'].at[3].set(
+    constants_L = constants_L.at[3].set(
         IMRPhenomX_Get_PN_beta(
-            (L_csts_spinorbit[2] + L_csts_spinorbit[3] * eta), 
-            (L_csts_spinorbit[4] + L_csts_spinorbit[5] * eta), 
+            (L_csts_spinorbit[2] + L_csts_spinorbit[3] * eta),
+            (L_csts_spinorbit[4] + L_csts_spinorbit[5] * eta),
             pPrec
         )  # stub
     )
-    pPrec['constants_L'] = pPrec['constants_L'].at[4].set(
+    constants_L = constants_L.at[4].set(
         L_csts_nonspin[5] + L_csts_nonspin[6] * eta + L_csts_nonspin[7] * eta * eta + L_csts_nonspin[8] * eta * eta * eta
     )
+    object.__setattr__(pPrec, 'constants_L', constants_L)
 
     # Effective total spin
-    Seff = (1.0 + q) * pPrec['dotS1L'] + (1 + (1.0/q)) * pPrec['dotS2L']
+    Seff = (1.0 + q) * pPrec.dotS1L + (1 + (1.0/q)) * pPrec.dotS2L
     Seff2 = Seff * Seff
 
-    pPrec['Seff'] = Seff
-    pPrec['Seff2'] = Seff2
+    object.__setattr__(pPrec, 'Seff', Seff)
+    object.__setattr__(pPrec, 'Seff2', Seff2)
 
     #Line 2347
     # Initial total spin, S = S1 + S2
@@ -164,179 +166,179 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
     S0 = IMRPhenomX_vector_sum(S1v, S2v)  # stub
 
     # Cache total spin in the precession struct
-    pPrec['S_0'] = S0
-    
+    object.__setattr__(pPrec, 'S_0', S0)
+
     #    /* Initial total angular momentum, J = L + S1 + S2 */
-    pPrec['J_0'] = IMRPhenomX_vector_sum(pPrec['L_0'],pPrec['S_0'])
+    object.__setattr__(pPrec, 'J_0', IMRPhenomX_vector_sum(pPrec.L_0, pPrec.S_0))
 
     # Norm of total initial spin
-    pPrec['S_0_norm'] = IMRPhenomX_vector_L2_norm(S0)
-    pPrec['S_0_norm_2'] = pPrec['S_0_norm'] * pPrec['S_0_norm']
+    object.__setattr__(pPrec, 'S_0_norm', IMRPhenomX_vector_L2_norm(S0))
+    object.__setattr__(pPrec, 'S_0_norm_2', pPrec.S_0_norm * pPrec.S_0_norm)
 
     # Norm of orbital and total angular momenta
-    pPrec['L_0_norm'] = IMRPhenomX_vector_L2_norm(pPrec['L_0'])
-    pPrec['J_0_norm'] = IMRPhenomX_vector_L2_norm(pPrec['J_0'])
+    object.__setattr__(pPrec, 'L_0_norm', IMRPhenomX_vector_L2_norm(pPrec.L_0))
+    object.__setattr__(pPrec, 'J_0_norm', IMRPhenomX_vector_L2_norm(pPrec.J_0))
 
-    L0norm = pPrec['L_0_norm']
-    J0norm = pPrec['J_0_norm']
+    L0norm = pPrec.L_0_norm
+    J0norm = pPrec.J_0_norm
 
     # Useful powers
-    pPrec['S_0_norm_2'] = pPrec['S_0_norm'] * pPrec['S_0_norm']
-    pPrec['J_0_norm_2'] = pPrec['J_0_norm'] * pPrec['J_0_norm']
-    pPrec['L_0_norm_2'] = pPrec['L_0_norm'] * pPrec['L_0_norm']
+    object.__setattr__(pPrec, 'S_0_norm_2', pPrec.S_0_norm * pPrec.S_0_norm)
+    object.__setattr__(pPrec, 'J_0_norm_2', pPrec.J_0_norm * pPrec.J_0_norm)
+    object.__setattr__(pPrec, 'L_0_norm_2', pPrec.L_0_norm * pPrec.L_0_norm)
 
     # Vector for obtaining B, C, D coefficients
     vBCD = IMRPhenomX_Return_Spin_Evolution_Coefficients_MSA(
-        pPrec['L_0_norm'], pPrec['J_0_norm'], pPrec)
-    
+        pPrec.L_0_norm, pPrec.J_0_norm, pPrec)
+
 
     vRoots = jnp.array([0.0, 0.0, 0.0])
 
-    vRoots = IMRPhenomX_Return_Roots_MSA(pPrec['L_0_norm'],pPrec['J_0_norm'],pPrec)
-    
+    vRoots = IMRPhenomX_Return_Roots_MSA(pPrec.L_0_norm, pPrec.J_0_norm, pPrec)
+
     #Line 2500
 
-    pPrec['Spl2'] = vRoots[2]
-    pPrec['Smi2'] = vRoots[1]
-    pPrec['S32'] = vRoots[0]
+    object.__setattr__(pPrec, 'Spl2', vRoots[2])
+    object.__setattr__(pPrec, 'Smi2', vRoots[1])
+    object.__setattr__(pPrec, 'S32', vRoots[0])
 
     # S^2_+ + S^2_-
-    pPrec['Spl2pSmi2'] = pPrec['Spl2'] + pPrec['Smi2']
+    object.__setattr__(pPrec, 'Spl2pSmi2', pPrec.Spl2 + pPrec.Smi2)
 
     # S^2_+ - S^2_-
-    pPrec['Spl2mSmi2'] = pPrec['Spl2'] - pPrec['Smi2']
+    object.__setattr__(pPrec, 'Spl2mSmi2', pPrec.Spl2 - pPrec.Smi2)
 
     # S_+ and S_-
-    pPrec['Spl'] = jnp.sqrt(pPrec['Spl2'])
-    pPrec['Smi'] = jnp.sqrt(pPrec['Smi2'])
+    object.__setattr__(pPrec, 'Spl', jnp.sqrt(pPrec.Spl2))
+    object.__setattr__(pPrec, 'Smi', jnp.sqrt(pPrec.Smi2))
 
     # Eq. 45 of PRD 95, 104004, (2017), arXiv:1703.03967, set from initial conditions
-    pPrec['SAv2'] = 0.5 * (pPrec['Spl2pSmi2'])
-    pPrec['SAv'] = jnp.sqrt(pPrec['SAv2'])
-    pPrec['invSAv2'] = 1.0 / pPrec['SAv2']
-    pPrec['invSAv'] = 1.0 / pPrec['SAv']
+    object.__setattr__(pPrec, 'SAv2', 0.5 * (pPrec.Spl2pSmi2))
+    object.__setattr__(pPrec, 'SAv', jnp.sqrt(pPrec.SAv2))
+    object.__setattr__(pPrec, 'invSAv2', 1.0 / pPrec.SAv2)
+    object.__setattr__(pPrec, 'invSAv', 1.0 / pPrec.SAv)
 
 
     # c_1 is determined by Eq. 41 of PRD, 95, 104004, (2017), arXiv:1703.03967
-    c_1 = 0.5 * (J0norm*J0norm - L0norm*L0norm - pPrec['SAv2']) / pPrec['L_0_norm'] * eta
+    c_1 = 0.5 * (J0norm*J0norm - L0norm*L0norm - pPrec.SAv2) / pPrec.L_0_norm * eta
     c1_2 = c_1 * c_1
 
     # Useful powers and combinations of c_1
-    pPrec['c1'] = c_1
-    pPrec['c12'] = c_1 * c_1
-    pPrec['c1_over_eta'] = c_1 / eta
+    object.__setattr__(pPrec, 'c1', c_1)
+    object.__setattr__(pPrec, 'c12', c_1 * c_1)
+    object.__setattr__(pPrec, 'c1_over_eta', c_1 / eta)
 
     # Average spin couplings over one precession cycle: A9 - A14 of arXiv:1703.03967
     omqsq = (1.0 - q) * (1.0 - q) + 1e-16
     omq2 = (1.0 - q * q) + 1e-16
 
     # Precession averaged spin couplings, Eq. A9 - A14 of arXiv:1703.03967, note that we only use the initial values
-    pPrec['S1L_pav'] = (c_1 * (1.0 + q) - q * eta * Seff) / (eta * omq2)
-    pPrec['S2L_pav'] = -q * (c_1 * (1.0 + q) - eta * Seff) / (eta * omq2)
-    pPrec['S1S2_pav'] = 0.5 * pPrec['SAv2'] - 0.5 * (pPrec['S1_norm_2'] + pPrec['S2_norm_2'])
-    pPrec['S1Lsq_pav'] = (pPrec['S1L_pav']*pPrec['S1L_pav'] + 
-                        ((pPrec['Spl2mSmi2'])*(pPrec['Spl2mSmi2']) * pPrec['v_0_2']) / (32.0 * eta2 * omqsq))
-    pPrec['S2Lsq_pav'] = (pPrec['S2L_pav']*pPrec['S2L_pav'] + 
-                        (q*q*(pPrec['Spl2mSmi2'])*(pPrec['Spl2mSmi2']) * pPrec['v_0_2']) / (32.0 * eta2 * omqsq))
-    pPrec['S1LS2L_pav'] = (pPrec['S1L_pav']*pPrec['S2L_pav'] - 
-                        q * (pPrec['Spl2mSmi2'])*(pPrec['Spl2mSmi2'])*pPrec['v_0_2'] / (32.0 * eta2 * omqsq))
+    object.__setattr__(pPrec, 'S1L_pav', (c_1 * (1.0 + q) - q * eta * Seff) / (eta * omq2))
+    object.__setattr__(pPrec, 'S2L_pav', -q * (c_1 * (1.0 + q) - eta * Seff) / (eta * omq2))
+    object.__setattr__(pPrec, 'S1S2_pav', 0.5 * pPrec.SAv2 - 0.5 * (pPrec.S1_norm_2 + pPrec.S2_norm_2))
+    object.__setattr__(pPrec, 'S1Lsq_pav', (pPrec.S1L_pav*pPrec.S1L_pav +
+                        ((pPrec.Spl2mSmi2)*(pPrec.Spl2mSmi2) * pPrec.v_0_2) / (32.0 * eta2 * omqsq)))
+    object.__setattr__(pPrec, 'S2Lsq_pav', (pPrec.S2L_pav*pPrec.S2L_pav +
+                        (q*q*(pPrec.Spl2mSmi2)*(pPrec.Spl2mSmi2) * pPrec.v_0_2) / (32.0 * eta2 * omqsq)))
+    object.__setattr__(pPrec, 'S1LS2L_pav', (pPrec.S1L_pav*pPrec.S2L_pav -
+                        q * (pPrec.Spl2mSmi2)*(pPrec.Spl2mSmi2)*pPrec.v_0_2 / (32.0 * eta2 * omqsq)))
     
     # Spin couplings in arXiv:1703.03967
-    pPrec['beta3'] = (((113./12.) + (25./4.)*(m2/m1)) * pPrec['S1L_pav'] + 
-                    ((113./12.) + (25./4.)*(m1/m2)) * pPrec['S2L_pav'])
+    object.__setattr__(pPrec, 'beta3', (((113./12.) + (25./4.)*(m2/m1)) * pPrec.S1L_pav +
+                    ((113./12.) + (25./4.)*(m1/m2)) * pPrec.S2L_pav))
 
-    pPrec['beta5'] = (((31319./1008.) - (1159./24.)*eta) + (m2/m1)*((809./84) - (281./8.)*eta)) * pPrec['S1L_pav'] + \
-                    (((31319./1008.) - (1159./24.)*eta) + (m1/m2)*((809./84) - (281./8.)*eta)) * pPrec['S2L_pav']
+    object.__setattr__(pPrec, 'beta5', (((31319./1008.) - (1159./24.)*eta) + (m2/m1)*((809./84) - (281./8.)*eta)) * pPrec.S1L_pav +
+                    (((31319./1008.) - (1159./24.)*eta) + (m1/m2)*((809./84) - (281./8.)*eta)) * pPrec.S2L_pav)
 
-    pPrec['beta6'] = jnp.pi * (((75./2.) + (151./6.)*(m2/m1))*pPrec['S1L_pav'] + 
-                            ((75./2.) + (151./6.)*(m1/m2))*pPrec['S2L_pav'])
+    object.__setattr__(pPrec, 'beta6', jnp.pi * (((75./2.) + (151./6.)*(m2/m1))*pPrec.S1L_pav +
+                            ((75./2.) + (151./6.)*(m1/m2))*pPrec.S2L_pav))
 
-    pPrec['beta7'] = (((130325./756) - (796069./2016)*eta + (100019./864.)*eta2) + 
-                    (m2/m1)*((1195759./18144) - (257023./1008.)*eta + (2903/32.)*eta2)) * pPrec['S1L_pav'] + \
-                    (((130325./756) - (796069./2016)*eta + (100019./864.)*eta2) + 
-                    (m1/m2)*((1195759./18144) - (257023./1008.)*eta + (2903/32.)*eta2)) * pPrec['S2L_pav']
+    object.__setattr__(pPrec, 'beta7', (((130325./756) - (796069./2016)*eta + (100019./864.)*eta2) +
+                    (m2/m1)*((1195759./18144) - (257023./1008.)*eta + (2903/32.)*eta2)) * pPrec.S1L_pav +
+                    (((130325./756) - (796069./2016)*eta + (100019./864.)*eta2) +
+                    (m1/m2)*((1195759./18144) - (257023./1008.)*eta + (2903/32.)*eta2)) * pPrec.S2L_pav)
 
-    pPrec['sigma4'] = ((1.0/mu) * ((247./48.)*pPrec['S1S2_pav'] - (721./48.)*pPrec['S1L_pav']*pPrec['S2L_pav']) + 
-                    (1.0/(m1*m1)) * ((233./96.)*pPrec['S1_norm_2'] - (719./96.)*pPrec['S1Lsq_pav']) + 
-                    (1.0/(m2*m2)) * ((233./96.)*pPrec['S2_norm_2'] - (719./96.)*pPrec['S2Lsq_pav']))
+    object.__setattr__(pPrec, 'sigma4', ((1.0/mu) * ((247./48.)*pPrec.S1S2_pav - (721./48.)*pPrec.S1L_pav*pPrec.S2L_pav) +
+                    (1.0/(m1*m1)) * ((233./96.)*pPrec.S1_norm_2 - (719./96.)*pPrec.S1Lsq_pav) +
+                    (1.0/(m2*m2)) * ((233./96.)*pPrec.S2_norm_2 - (719./96.)*pPrec.S2Lsq_pav)))
     
 
     # Compute PN coefficients using precession-averaged spin couplings
-    pPrec['a0'] = 96.0 * eta / 5.0
+    object.__setattr__(pPrec, 'a0', 96.0 * eta / 5.0)
 
     # These are all normalized by a factor of a0
-    pPrec['a2'] = -(743./336.) - (11.0/4.)*eta
-    pPrec['a3'] = 4.0 * jnp.pi - pPrec['beta3']
-    pPrec['a4'] = (34103./18144.) + (13661./2016.)*eta + (59./18.)*eta2 - pPrec['sigma4']
-    pPrec['a5'] = -(4159./672.)*jnp.pi - (189./8.)*jnp.pi*eta - pPrec['beta5']
-    pPrec['a6'] = ((16447322263./139708800.) + (16./3.)*jnp.pi*jnp.pi - (856./105)*jnp.log(16.) - 
-                (1712./105.)*GAMMA - pPrec['beta6'] + 
-                eta*((451./48)*jnp.pi*jnp.pi - (56198689./217728.)) + 
-                eta2*(541./896.) - eta3*(5605./2592.))
-    pPrec['a7'] = (-(4415./4032.)*jnp.pi + (358675./6048.)*jnp.pi*eta + 
-                (91495./1512.)*jnp.pi*eta2 - pPrec['beta7'])
+    object.__setattr__(pPrec, 'a2', -(743./336.) - (11.0/4.)*eta)
+    object.__setattr__(pPrec, 'a3', 4.0 * jnp.pi - pPrec.beta3)
+    object.__setattr__(pPrec, 'a4', (34103./18144.) + (13661./2016.)*eta + (59./18.)*eta2 - pPrec.sigma4)
+    object.__setattr__(pPrec, 'a5', -(4159./672.)*jnp.pi - (189./8.)*jnp.pi*eta - pPrec.beta5)
+    object.__setattr__(pPrec, 'a6', ((16447322263./139708800.) + (16./3.)*jnp.pi*jnp.pi - (856./105)*jnp.log(16.) -
+                (1712./105.)*GAMMA - pPrec.beta6 +
+                eta*((451./48)*jnp.pi*jnp.pi - (56198689./217728.)) +
+                eta2*(541./896.) - eta3*(5605./2592.)))
+    object.__setattr__(pPrec, 'a7', (-(4415./4032.)*jnp.pi + (358675./6048.)*jnp.pi*eta +
+                (91495./1512.)*jnp.pi*eta2 - pPrec.beta7))
 
     # Coefficients are weighted by an additional factor of a_0
-    pPrec['a2'] *= pPrec['a0']
-    pPrec['a3'] *= pPrec['a0']
-    pPrec['a4'] *= pPrec['a0']
-    pPrec['a5'] *= pPrec['a0']
-    pPrec['a6'] *= pPrec['a0']
-    pPrec['a7'] *= pPrec['a0']
+    object.__setattr__(pPrec, 'a2', pPrec.a2 * pPrec.a0)
+    object.__setattr__(pPrec, 'a3', pPrec.a3 * pPrec.a0)
+    object.__setattr__(pPrec, 'a4', pPrec.a4 * pPrec.a0)
+    object.__setattr__(pPrec, 'a5', pPrec.a5 * pPrec.a0)
+    object.__setattr__(pPrec, 'a6', pPrec.a6 * pPrec.a0)
+    object.__setattr__(pPrec, 'a7', pPrec.a7 * pPrec.a0)
 
 
     #Line 2597
     if pflag == 222 or pflag == 223:
-        pPrec['a0'] = eta * domegadt_constants_NS[0]
-        pPrec['a2'] = eta * (domegadt_constants_NS[1] + eta * (domegadt_constants_NS[2]))
-        pPrec['a3'] = eta * (domegadt_constants_NS[3] + 
-                            IMRPhenomX_Get_PN_beta(domegadt_constants_SO[0], domegadt_constants_SO[1], pPrec))
-        pPrec['a4'] = eta * (domegadt_constants_NS[4] + eta * (domegadt_constants_NS[5] + eta * (domegadt_constants_NS[6])) + 
+        object.__setattr__(pPrec, 'a0', eta * domegadt_constants_NS[0])
+        object.__setattr__(pPrec, 'a2', eta * (domegadt_constants_NS[1] + eta * (domegadt_constants_NS[2])))
+        object.__setattr__(pPrec, 'a3', eta * (domegadt_constants_NS[3] +
+                            IMRPhenomX_Get_PN_beta(domegadt_constants_SO[0], domegadt_constants_SO[1], pPrec)))
+        object.__setattr__(pPrec, 'a4', eta * (domegadt_constants_NS[4] + eta * (domegadt_constants_NS[5] + eta * (domegadt_constants_NS[6])) +
                             IMRPhenomX_Get_PN_sigma(domegadt_constants_SS[0], domegadt_constants_SS[1], pPrec) +  # stub
-                            IMRPhenomX_Get_PN_tau(domegadt_constants_SS[2], domegadt_constants_SS[3], pPrec))    # stub
-        pPrec['a5'] = eta * (domegadt_constants_NS[7] + eta * (domegadt_constants_NS[8]) + 
-                            IMRPhenomX_Get_PN_beta((domegadt_constants_SO[2] + eta * (domegadt_constants_SO[3])), 
-                                                    (domegadt_constants_SO[4] + eta * (domegadt_constants_SO[5])), 
-                                                    pPrec))
+                            IMRPhenomX_Get_PN_tau(domegadt_constants_SS[2], domegadt_constants_SS[3], pPrec)))    # stub
+        object.__setattr__(pPrec, 'a5', eta * (domegadt_constants_NS[7] + eta * (domegadt_constants_NS[8]) +
+                            IMRPhenomX_Get_PN_beta((domegadt_constants_SO[2] + eta * (domegadt_constants_SO[3])),
+                                                    (domegadt_constants_SO[4] + eta * (domegadt_constants_SO[5])),
+                                                    pPrec)))
 
     
 
     # Useful powers of a_0
-    pPrec['a0_2'] = pPrec['a0'] * pPrec['a0']
-    pPrec['a0_3'] = pPrec['a0_2'] * pPrec['a0']
-    pPrec['a2_2'] = pPrec['a2'] * pPrec['a2']
+    object.__setattr__(pPrec, 'a0_2', pPrec.a0 * pPrec.a0)
+    object.__setattr__(pPrec, 'a0_3', pPrec.a0_2 * pPrec.a0)
+    object.__setattr__(pPrec, 'a2_2', pPrec.a2 * pPrec.a2)
 
     # Calculate g coefficients as in Appendix A of Chatziioannou et al, PRD, 95, 104004, (2017), arXiv:1703.03967.
     # These constants are used in TaylorT2 where domega/dt is expressed as an inverse polynomial
-    pPrec['g0'] = 1.0 / pPrec['a0']
+    object.__setattr__(pPrec, 'g0', 1.0 / pPrec.a0)
 
     # Eq. A2 (1703.03967)
-    pPrec['g2'] = -(pPrec['a2'] / pPrec['a0_2'])
+    object.__setattr__(pPrec, 'g2', -(pPrec.a2 / pPrec.a0_2))
 
     # Eq. A3 (1703.03967)
-    pPrec['g3'] = -(pPrec['a3'] / pPrec['a0_2'])
+    object.__setattr__(pPrec, 'g3', -(pPrec.a3 / pPrec.a0_2))
 
     # Eq.A4 (1703.03967)
-    pPrec['g4'] = -(pPrec['a4'] * pPrec['a0'] - pPrec['a2_2']) / pPrec['a0_3']
+    object.__setattr__(pPrec, 'g4', -(pPrec.a4 * pPrec.a0 - pPrec.a2_2) / pPrec.a0_3)
 
     # Eq. A5 (1703.03967)
-    pPrec['g5'] = -(pPrec['a5'] * pPrec['a0'] - 2.0 * pPrec['a3'] * pPrec['a2']) / pPrec['a0_3']
+    object.__setattr__(pPrec, 'g5', -(pPrec.a5 * pPrec.a0 - 2.0 * pPrec.a3 * pPrec.a2) / pPrec.a0_3)
 
     # Useful powers of delta
-    delta = pPrec['delta_qq']
+    delta = pPrec.delta_qq
     delta2 = delta * delta
     delta3 = delta * delta2
     delta4 = delta * delta3
 
     # These are the phase coefficients of Eq. 51 of PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['psi0'] = 0.0
-    pPrec['psi1'] = 0.0
-    pPrec['psi2'] = 0.0
+    object.__setattr__(pPrec, 'psi0', 0.0)
+    object.__setattr__(pPrec, 'psi1', 0.0)
+    object.__setattr__(pPrec, 'psi2', 0.0)
 
     # \psi_1 is defined in Eq. C1 of Appendix C in PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['psi1'] = 3.0 * (2.0 * eta2 * Seff - c_1) / (eta * delta2)
+    object.__setattr__(pPrec, 'psi1', 3.0 * (2.0 * eta2 * Seff - c_1) / (eta * delta2))
 
-    c_1_over_nu = pPrec['c1_over_eta']
+    c_1_over_nu = pPrec.c1_over_eta
     c_1_over_nu_2 = c_1_over_nu * c_1_over_nu
     one_p_q_sq = (1.0 + q) * (1.0 + q)
     Seff_2 = Seff * Seff
@@ -350,67 +352,67 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
     if pflag == 222 or pflag == 223:
         Del1 = 4.0 * c_1_over_nu_2 * one_p_q_sq
         Del2 = 8.0 * c_1_over_nu * q * (1.0 + q) * Seff
-        Del3 = 4.0 * (one_m_q2_2 * pPrec['S1_norm_2'] - q_2 * Seff_2)
+        Del3 = 4.0 * (one_m_q2_2 * pPrec.S1_norm_2 - q_2 * Seff_2)
         Del4 = 4.0 * c_1_over_nu_2 * q_2 * one_p_q_sq
         Del5 = 8.0 * c_1_over_nu * q_2 * (1.0 + q) * Seff
-        Del6 = 4.0 * (one_m_q2_2 * pPrec['S2_norm_2'] - q_2 * Seff_2)
-        pPrec['Delta'] = jnp.sqrt(jnp.abs((Del1 - Del2 - Del3) * (Del4 - Del5 - Del6)))
+        Del6 = 4.0 * (one_m_q2_2 * pPrec.S2_norm_2 - q_2 * Seff_2)
+        object.__setattr__(pPrec, 'Delta', jnp.sqrt(jnp.abs((Del1 - Del2 - Del3) * (Del4 - Del5 - Del6))))
     else:
         # Coefficients of \Delta as defined in Eq. C3 of Appendix C in PRD, 95, 104004, (2017), arXiv:1703.03967.
         term1 = c1_2 * eta / (q * delta4)
         term2 = -2.0 * c_1 * eta3 * (1.0 + q) * Seff / (q * delta4)
-        term3 = -eta2 * (delta2 * pPrec['S1_norm_2'] - eta2 * Seff_2) / delta4
+        term3 = -eta2 * (delta2 * pPrec.S1_norm_2 - eta2 * Seff_2) / delta4
         
         # Is this 1) (c1_2 * q * eta / delta4) or 2) c1_2*eta2/delta4?
         # - In paper.pdf, the expression 1) is used.
         # Using eta^2 leads to higher frequency oscillations, use q * eta
         term4 = c1_2 * eta * q / delta4
         term5 = -2.0 * c_1 * eta3 * (1.0 + q) * Seff / delta4
-        term6 = -eta2 * (delta2 * pPrec['S2_norm_2'] - eta2 * Seff_2) / delta4
-        pPrec['Delta']  = jnp.sqrt( jnp.abs( (term1 + term2 + term3) * (term4 + term5 + term6) ) )
+        term6 = -eta2 * (delta2 * pPrec.S2_norm_2 - eta2 * Seff_2) / delta4
+        object.__setattr__(pPrec, 'Delta', jnp.sqrt( jnp.abs( (term1 + term2 + term3) * (term4 + term5 + term6) ) ))
 
     # Line 2706
 
     if pflag == 222 or pflag == 223:
-        u1 = 3.0 * pPrec['g2'] / pPrec['g0']
+        u1 = 3.0 * pPrec.g2 / pPrec.g0
         u2 = 0.75 * one_p_q_sq / one_m_q_4
         u3 = -20.0 * c_1_over_nu_2 * q_2 * one_p_q_sq
-        u4 = 2.0 * one_m_q2_2 * (q * (2.0 + q) * pPrec['S1_norm_2'] + (1.0 + 2.0 * q) * pPrec['S2_norm_2'] - 2.0 * q * pPrec['SAv2'])
+        u4 = 2.0 * one_m_q2_2 * (q * (2.0 + q) * pPrec.S1_norm_2 + (1.0 + 2.0 * q) * pPrec.S2_norm_2 - 2.0 * q * pPrec.SAv2)
         u5 = 2.0 * q_2 * (7.0 + 6.0 * q + 7.0 * q_2) * 2.0 * c_1_over_nu * Seff
         u6 = 2.0 * q_2 * (3.0 + 4.0 * q + 3.0 * q_2) * Seff_2
-        u7 = q * pPrec['Delta']
+        u7 = q * pPrec.Delta
         
         # Eq. C2 (1703.03967)
-        pPrec['psi2'] = u1 + u2 * (u3 + u4 + u5 - u6 + u7)
+        object.__setattr__(pPrec, 'psi2', u1 + u2 * (u3 + u4 + u5 - u6 + u7))
     else:
         # \psi_2 is defined in Eq. C2 of Appendix C in PRD, 95, 104004, (2017). Here we implement system of equations as in paper.pdf
-        term1 = 3.0 * pPrec['g2'] / pPrec['g0']
+        term1 = 3.0 * pPrec.g2 / pPrec.g0
         
         # q^2 or no q^2 in term2? Consensus on retaining q^2 term: https://git.ligo.org/waveforms/reviews/phenompv3hm/issues/7
         term2 = 3.0 * q * q / (2.0 * eta3)
-        term3 = 2.0 * pPrec['Delta']
-        term4 = -2.0 * eta2 * pPrec['SAv2'] / delta2
+        term3 = 2.0 * pPrec.Delta
+        term4 = -2.0 * eta2 * pPrec.SAv2 / delta2
         term5 = -10.0 * eta * c1_2 / delta4
         term6 = 2.0 * eta2 * (7.0 + 6.0 * q + 7.0 * q * q) * c_1 * Seff / (omqsq * delta2)
         term7 = -eta3 * (3.0 + 4.0 * q + 3.0 * q * q) * Seff_2 / (omqsq * delta2)
-        term8 = eta * (q * (2.0 + q) * pPrec['S1_norm_2'] + (1.0 + 2.0 * q) * pPrec['S2_norm_2']) / omqsq
+        term8 = eta * (q * (2.0 + q) * pPrec.S1_norm_2 + (1.0 + 2.0 * q) * pPrec.S2_norm_2) / omqsq
         
         # \psi_2, C2 of Appendix C of PRD, 95, 104004, (2017)
-        pPrec['psi2'] = term1 + term2 * (term3 + term4 + term5 + term6 + term7 + term8)
+        object.__setattr__(pPrec, 'psi2', term1 + term2 * (term3 + term4 + term5 + term6 + term7 + term8))
 
 
     # Eq. D1 of PRD, 95, 104004, (2017), arXiv:1703.03967
-    Rm = pPrec['Spl2'] - pPrec['Smi2']
+    Rm = pPrec.Spl2 - pPrec.Smi2
     Rm_2 = Rm * Rm
 
     # Eq. D2 and D3 Appendix D of PRD, 95, 104004, (2017), arXiv:1703.03967
-    cp = pPrec['Spl2'] * eta2 - c1_2
-    cm = pPrec['Smi2'] * eta2 - c1_2
+    cp = pPrec.Spl2 * eta2 - c1_2
+    cm = pPrec.Smi2 * eta2 - c1_2
 
     # Check if cm goes negative, this is likely pathological. If so, set MSA_ERROR to 1, so that waveform generator can handle
     # the error appropriately
     # if cm < 0.0:
-    #     pPrec['MSA_ERROR'] = 1
+    #     pPrec.MSA_ERROR = 1
     #     print(f"Error, coefficient cm = {cm:.16f}, which is negative and likely to be pathological. Triggering MSA failure.")
 
     # jnp.abs is here to help enforce positive definite cpcm
@@ -429,7 +431,7 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
     # Eq. E4 in PRD, 95, 104004, (2017), arXiv:1703.03967 ; Note that this is Rm^2 * D4
     D4RmSq = -0.5*Rm*sqrt_cpcm/eta2 - cp/eta4*(sqrt_cpcm - cp)
 
-    S0m = pPrec['S1_norm_2'] - pPrec['S2_norm_2']
+    S0m = pPrec.S1_norm_2 - pPrec.S2_norm_2
 
     # Difference of spin norms squared, as used in Eq. D6 of PRD, 95, 104004, (2017), arXiv:1703.03967
     aw = (-3.0*(1.0 + q)/q*(2.0*(1.0 + q)*eta2*Seff*c_1 - (1.0 + q)*c1_2 + (1.0 - q)*eta2*S0m))
@@ -456,56 +458,56 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
 
 
     # Eq. D10 in PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['Omegaz0'] = a1dD + adD
+    object.__setattr__(pPrec, 'Omegaz0', a1dD + adD)
 
     # Eq. D11 in PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['Omegaz1'] = a2dD - adD*Seff - adD*hdD
+    object.__setattr__(pPrec, 'Omegaz1', a2dD - adD*Seff - adD*hdD)
 
     # Eq. D12 in PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['Omegaz2'] = adD*hdD*Seff + cdD - adD*fdD + adD*hdD_2
+    object.__setattr__(pPrec, 'Omegaz2', adD*hdD*Seff + cdD - adD*fdD + adD*hdD_2)
 
     # Eq. D13 in PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['Omegaz3'] = (adDfdD - cdD - adDhdD_2)*(Seff + hdD) + adDfdDhdD
+    object.__setattr__(pPrec, 'Omegaz3', (adDfdD - cdD - adDhdD_2)*(Seff + hdD) + adDfdDhdD)
 
     # Eq. D14 in PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['Omegaz4'] = (cdD + adDhdD_2 - 2.0*adDfdD)*(hdD*Seff + hdD_2 - fdD) - adD*fdD*fdD
+    object.__setattr__(pPrec, 'Omegaz4', (cdD + adDhdD_2 - 2.0*adDfdD)*(hdD*Seff + hdD_2 - fdD) - adD*fdD*fdD)
 
     # Eq. D15 in PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['Omegaz5'] = ((cdD - adDfdD + adDhdD_2) * fdD * (Seff + 2.0*hdD) - 
-                        (cdD + adDhdD_2 - 2.0*adDfdD) * hdD_2 * (Seff + hdD) - 
-                        adDfdD*fdD*hdD)
+    object.__setattr__(pPrec, 'Omegaz5', ((cdD - adDfdD + adDhdD_2) * fdD * (Seff + 2.0*hdD) -
+                        (cdD + adDhdD_2 - 2.0*adDfdD) * hdD_2 * (Seff + hdD) -
+                        adDfdD*fdD*hdD))
         
     # If Omegaz5 > 1000, this is larger than we expect and the system may be pathological.
     # Set MSA_ERROR = 1 to trigger an error
-    if jnp.abs(pPrec['Omegaz5']) > 1000.0:
-        pPrec['MSA_ERROR'] = 1
-        print(f"Warning, |Omegaz5| = {pPrec['Omegaz5']:.16f}, which is larger than expected and may be pathological. Triggering MSA failure.")
+    if jnp.abs(pPrec.Omegaz5) > 1000.0:
+        object.__setattr__(pPrec, 'MSA_ERROR', 1)
+        print(f"Warning, |Omegaz5| = {pPrec.Omegaz5:.16f}, which is larger than expected and may be pathological. Triggering MSA failure.")
 
-    g0 = pPrec['g0']
+    g0 = pPrec.g0
 
     # Coefficients of Eq. 65, as defined in Equations D16 - D21 of PRD, 95, 104004, (2017), arXiv:1703.03967
-    pPrec['Omegaz0_coeff'] = 3.0 * g0 * pPrec['Omegaz0']
-    pPrec['Omegaz1_coeff'] = 3.0 * g0 * pPrec['Omegaz1']
-    pPrec['Omegaz2_coeff'] = 3.0 * (g0 * pPrec['Omegaz2'] + pPrec['g2']*pPrec['Omegaz0'])
-    pPrec['Omegaz3_coeff'] = 3.0 * (g0 * pPrec['Omegaz3'] + pPrec['g2']*pPrec['Omegaz1'] + pPrec['g3']*pPrec['Omegaz0'])
-    pPrec['Omegaz4_coeff'] = 3.0 * (g0 * pPrec['Omegaz4'] + pPrec['g2']*pPrec['Omegaz2'] + pPrec['g3']*pPrec['Omegaz1'] + pPrec['g4']*pPrec['Omegaz0'])
-    pPrec['Omegaz5_coeff'] = 3.0 * (g0 * pPrec['Omegaz5'] + pPrec['g2']*pPrec['Omegaz3'] + pPrec['g3']*pPrec['Omegaz2'] + pPrec['g4']*pPrec['Omegaz1'] + pPrec['g5']*pPrec['Omegaz0'])
+    object.__setattr__(pPrec, 'Omegaz0_coeff', 3.0 * g0 * pPrec.Omegaz0)
+    object.__setattr__(pPrec, 'Omegaz1_coeff', 3.0 * g0 * pPrec.Omegaz1)
+    object.__setattr__(pPrec, 'Omegaz2_coeff', 3.0 * (g0 * pPrec.Omegaz2 + pPrec.g2*pPrec.Omegaz0))
+    object.__setattr__(pPrec, 'Omegaz3_coeff', 3.0 * (g0 * pPrec.Omegaz3 + pPrec.g2*pPrec.Omegaz1 + pPrec.g3*pPrec.Omegaz0))
+    object.__setattr__(pPrec, 'Omegaz4_coeff', 3.0 * (g0 * pPrec.Omegaz4 + pPrec.g2*pPrec.Omegaz2 + pPrec.g3*pPrec.Omegaz1 + pPrec.g4*pPrec.Omegaz0))
+    object.__setattr__(pPrec, 'Omegaz5_coeff', 3.0 * (g0 * pPrec.Omegaz5 + pPrec.g2*pPrec.Omegaz3 + pPrec.g3*pPrec.Omegaz2 + pPrec.g4*pPrec.Omegaz1 + pPrec.g5*pPrec.Omegaz0))
 
     # Coefficients of zeta: in Appendix E of PRD, 95, 104004, (2017), arXiv:1703.03967
     c1oveta2 = c_1 / eta2
-    pPrec['Omegazeta0'] = pPrec['Omegaz0']
-    pPrec['Omegazeta1'] = pPrec['Omegaz1'] + pPrec['Omegaz0'] * c1oveta2
-    pPrec['Omegazeta2'] = pPrec['Omegaz2'] + pPrec['Omegaz1'] * c1oveta2
-    pPrec['Omegazeta3'] = pPrec['Omegaz3'] + pPrec['Omegaz2'] * c1oveta2 + gdD
-    pPrec['Omegazeta4'] = pPrec['Omegaz4'] + pPrec['Omegaz3'] * c1oveta2 - gdD*Seff - gdD*hdD
-    pPrec['Omegazeta5'] = pPrec['Omegaz5'] + pPrec['Omegaz4'] * c1oveta2 + gdD*hdD*Seff + gdD*(hdD_2 - fdD)
+    object.__setattr__(pPrec, 'Omegazeta0', pPrec.Omegaz0)
+    object.__setattr__(pPrec, 'Omegazeta1', pPrec.Omegaz1 + pPrec.Omegaz0 * c1oveta2)
+    object.__setattr__(pPrec, 'Omegazeta2', pPrec.Omegaz2 + pPrec.Omegaz1 * c1oveta2)
+    object.__setattr__(pPrec, 'Omegazeta3', pPrec.Omegaz3 + pPrec.Omegaz2 * c1oveta2 + gdD)
+    object.__setattr__(pPrec, 'Omegazeta4', pPrec.Omegaz4 + pPrec.Omegaz3 * c1oveta2 - gdD*Seff - gdD*hdD)
+    object.__setattr__(pPrec, 'Omegazeta5', pPrec.Omegaz5 + pPrec.Omegaz4 * c1oveta2 + gdD*hdD*Seff + gdD*(hdD_2 - fdD))
 
-    pPrec['Omegazeta0_coeff'] = -pPrec['g0'] * pPrec['Omegazeta0']
-    pPrec['Omegazeta1_coeff'] = -1.5 * pPrec['g0'] * pPrec['Omegazeta1']
-    pPrec['Omegazeta2_coeff'] = -3.0*(pPrec['g0'] * pPrec['Omegazeta2'] + pPrec['g2']*pPrec['Omegazeta0'])
-    pPrec['Omegazeta3_coeff'] = 3.0*(pPrec['g0'] * pPrec['Omegazeta3'] + pPrec['g2']*pPrec['Omegazeta1'] + pPrec['g3']*pPrec['Omegazeta0'])
-    pPrec['Omegazeta4_coeff'] = 3.0*(pPrec['g0'] * pPrec['Omegazeta4'] + pPrec['g2']*pPrec['Omegazeta2'] + pPrec['g3']*pPrec['Omegazeta1'] + pPrec['g4']*pPrec['Omegazeta0'])
-    pPrec['Omegazeta5_coeff'] = 1.5*(pPrec['g0']*pPrec['Omegazeta5'] + pPrec['g2']*pPrec['Omegazeta3'] + pPrec['g3']*pPrec['Omegazeta2'] + pPrec['g4']*pPrec['Omegazeta1'] + pPrec['g5']*pPrec['Omegazeta0'])
+    object.__setattr__(pPrec, 'Omegazeta0_coeff', -pPrec.g0 * pPrec.Omegazeta0)
+    object.__setattr__(pPrec, 'Omegazeta1_coeff', -1.5 * pPrec.g0 * pPrec.Omegazeta1)
+    object.__setattr__(pPrec, 'Omegazeta2_coeff', -3.0*(pPrec.g0 * pPrec.Omegazeta2 + pPrec.g2*pPrec.Omegazeta0))
+    object.__setattr__(pPrec, 'Omegazeta3_coeff', 3.0*(pPrec.g0 * pPrec.Omegazeta3 + pPrec.g2*pPrec.Omegazeta1 + pPrec.g3*pPrec.Omegazeta0))
+    object.__setattr__(pPrec, 'Omegazeta4_coeff', 3.0*(pPrec.g0 * pPrec.Omegazeta4 + pPrec.g2*pPrec.Omegazeta2 + pPrec.g3*pPrec.Omegazeta1 + pPrec.g4*pPrec.Omegazeta0))
+    object.__setattr__(pPrec, 'Omegazeta5_coeff', 1.5*(pPrec.g0*pPrec.Omegazeta5 + pPrec.g2*pPrec.Omegazeta3 + pPrec.g3*pPrec.Omegazeta2 + pPrec.g4*pPrec.Omegazeta1 + pPrec.g5*pPrec.Omegazeta0))
         
     #Line 2887 - 2943 compressed
 
@@ -519,7 +521,7 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
     volume_element = 0.0
     vol_sign = 0.0
 
-    pPrec['psi0'] = compute_psi0(pPrec, L_0, S1v, S2v) 
+    object.__setattr__(pPrec, 'psi0', compute_psi0(pPrec, L_0, S1v, S2v) )
 
     vMSA = jnp.array([0.0, 0.0, 0.0])
 
@@ -530,10 +532,10 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
     zeta_0_MSA = 0.0  # UNUSED in original
 
     # Tolerance chosen to be consistent with implementation in LALSimInspiralFDPrecAngles
-    condition = jnp.abs(pPrec['Spl2'] - pPrec['Smi2']) > 1e-5
+    condition = jnp.abs(pPrec.Spl2 - pPrec.Smi2) > 1e-5
 
     def compute_msa_corrections():
-        return IMRPhenomX_Return_MSA_Corrections_MSA(pPrec['v_0'], pPrec['L_0_norm'], pPrec['J_0_norm'], pPrec)  # stub
+        return IMRPhenomX_Return_MSA_Corrections_MSA(pPrec.v_0, pPrec.L_0_norm, pPrec.J_0_norm, pPrec)  # stub
 
     def no_msa_corrections():
         return jnp.array([0.0, 0.0, 0.0])
@@ -544,15 +546,15 @@ def IMRPhenomX_Initialize_MSA_System(pWF: dict, pPrec: dict, ExpansionOrder: int
     zeta_0_MSA = vMSA[1]
 
     # Initial \phi_z
-    pPrec['phiz_0'] = 0.0
-    phiz_0 = IMRPhenomX_Return_phiz_MSA(pPrec['v_0'], pPrec['J_0_norm'], pPrec)  # stub
+    object.__setattr__(pPrec, 'phiz_0', 0.0)
+    phiz_0 = IMRPhenomX_Return_phiz_MSA(pPrec.v_0, pPrec.J_0_norm, pPrec)  # stub
 
     # Initial \zeta
-    pPrec['zeta_0'] = 0.0
-    zeta_0 = IMRPhenomX_Return_zeta_MSA(pPrec['v_0'], pPrec)  # stub
+    object.__setattr__(pPrec, 'zeta_0', 0.0)
+    zeta_0 = IMRPhenomX_Return_zeta_MSA(pPrec.v_0, pPrec)  # stub
 
-    pPrec['phiz_0'] = -phiz_0 - vMSA[0]
-    pPrec['zeta_0'] = -zeta_0 - vMSA[1]
+    object.__setattr__(pPrec, 'phiz_0', -phiz_0 - vMSA[0])
+    object.__setattr__(pPrec, 'zeta_0', -zeta_0 - vMSA[1])
 
     return None
 
@@ -680,7 +682,7 @@ def IMRPhenomX_Get_PN_sigma(a: float, b: float, pPrec: dict) -> float:
     Returns:
         float: PN sigma value
     """
-    return pPrec['inveta'] * (a * pPrec['dotS1S2'] - b * pPrec['dotS1L'] * pPrec['dotS2L'])
+    return pPrec.inveta * (a * pPrec.dotS1S2 - b * pPrec.dotS1L * pPrec.dotS2L)
 
 def IMRPhenomX_Get_PN_tau(a: float, b: float, pPrec: dict) -> float:
     """
@@ -694,9 +696,9 @@ def IMRPhenomX_Get_PN_tau(a: float, b: float, pPrec: dict) -> float:
     Returns:
         float: PN tau value
     """
-    return ((pPrec['qq'] * ((pPrec['S1_norm_2'] * a) - b * pPrec['dotS1L'] * pPrec['dotS1L']) + 
-             (a * pPrec['S2_norm_2'] - b * pPrec['dotS2L'] * pPrec['dotS2L']) / pPrec['qq']) / 
-            pPrec['eta'])
+    return ((pPrec.qq * ((pPrec.S1_norm_2 * a) - b * pPrec.dotS1L * pPrec.dotS1L) + 
+             (a * pPrec.S2_norm_2 - b * pPrec.dotS2L * pPrec.dotS2L) / pPrec.qq) / 
+            pPrec.eta)
 
 
 
@@ -713,8 +715,8 @@ def IMRPhenomX_Get_PN_beta(a: float, b: float, pPrec: dict) -> float:
     Returns:
         float: PN beta value
     """
-    return (pPrec['dotS1L'] * (a + b * pPrec['qq']) + 
-            pPrec['dotS2L'] * (a + b / pPrec['qq']))
+    return (pPrec.dotS1L * (a + b * pPrec.qq) + 
+            pPrec.dotS2L * (a + b / pPrec.qq))
 
 
 
@@ -742,20 +744,20 @@ def apply_expansion_order(pPrec: dict, ExpansionOrder: int) -> dict:
     # For expansion order -1, keep all coefficients (no changes)
     # For higher orders, zero out coefficients beyond the specified order
     
-    pPrec['Omegaz1_coeff'] = jnp.where(zero_1_and_higher, 0.0, pPrec['Omegaz1_coeff'])
-    pPrec['Omegazeta1_coeff'] = jnp.where(zero_1_and_higher, 0.0, pPrec['Omegazeta1_coeff'])
+    object.__setattr__(pPrec, 'Omegaz1_coeff', jnp.where(zero_1_and_higher, 0.0, pPrec.Omegaz1_coeff))
+    object.__setattr__(pPrec, 'Omegazeta1_coeff', jnp.where(zero_1_and_higher, 0.0, pPrec.Omegazeta1_coeff))
     
-    pPrec['Omegaz2_coeff'] = jnp.where(zero_2_and_higher, 0.0, pPrec['Omegaz2_coeff'])
-    pPrec['Omegazeta2_coeff'] = jnp.where(zero_2_and_higher, 0.0, pPrec['Omegazeta2_coeff'])
+    object.__setattr__(pPrec, 'Omegaz2_coeff', jnp.where(zero_2_and_higher, 0.0, pPrec.Omegaz2_coeff))
+    object.__setattr__(pPrec, 'Omegazeta2_coeff', jnp.where(zero_2_and_higher, 0.0, pPrec.Omegazeta2_coeff))
     
-    pPrec['Omegaz3_coeff'] = jnp.where(zero_3_and_higher, 0.0, pPrec['Omegaz3_coeff'])
-    pPrec['Omegazeta3_coeff'] = jnp.where(zero_3_and_higher, 0.0, pPrec['Omegazeta3_coeff'])
+    object.__setattr__(pPrec, 'Omegaz3_coeff', jnp.where(zero_3_and_higher, 0.0, pPrec.Omegaz3_coeff))
+    object.__setattr__(pPrec, 'Omegazeta3_coeff', jnp.where(zero_3_and_higher, 0.0, pPrec.Omegazeta3_coeff))
     
-    pPrec['Omegaz4_coeff'] = jnp.where(zero_4_and_higher, 0.0, pPrec['Omegaz4_coeff'])
-    pPrec['Omegazeta4_coeff'] = jnp.where(zero_4_and_higher, 0.0, pPrec['Omegazeta4_coeff'])
+    object.__setattr__(pPrec, 'Omegaz4_coeff', jnp.where(zero_4_and_higher, 0.0, pPrec.Omegaz4_coeff))
+    object.__setattr__(pPrec, 'Omegazeta4_coeff', jnp.where(zero_4_and_higher, 0.0, pPrec.Omegazeta4_coeff))
     
-    pPrec['Omegaz5_coeff'] = jnp.where(zero_5_and_higher, 0.0, pPrec['Omegaz5_coeff'])
-    pPrec['Omegazeta5_coeff'] = jnp.where(zero_5_and_higher, 0.0, pPrec['Omegazeta5_coeff'])
+    object.__setattr__(pPrec, 'Omegaz5_coeff', jnp.where(zero_5_and_higher, 0.0, pPrec.Omegaz5_coeff))
+    object.__setattr__(pPrec, 'Omegazeta5_coeff', jnp.where(zero_5_and_higher, 0.0, pPrec.Omegazeta5_coeff))
     
     return pPrec
 
@@ -763,21 +765,21 @@ def apply_expansion_order(pPrec: dict, ExpansionOrder: int) -> dict:
 
 
 def compute_psi0(pPrec, L_0, S1v, S2v):
-    condition = jnp.abs(pPrec['Smi2'] - pPrec['Spl2']) < 1.0e-5
+    condition = jnp.abs(pPrec.Smi2 - pPrec.Spl2) < 1.0e-5
     
     def psi0_zero():
         return 0.0
     
     def psi0_nonzero():
-        mm = jnp.sqrt((pPrec['Smi2'] - pPrec['Spl2']) / (pPrec['S32'] - pPrec['Spl2']))
-        tmpB = (pPrec['S_0_norm']*pPrec['S_0_norm'] - pPrec['Spl2']) / (pPrec['Smi2'] - pPrec['Spl2'])
+        mm = jnp.sqrt((pPrec.Smi2 - pPrec.Spl2) / (pPrec.S32 - pPrec.Spl2))
+        tmpB = (pPrec.S_0_norm*pPrec.S_0_norm - pPrec.Spl2) / (pPrec.Smi2 - pPrec.Spl2)
         
         volume_element = IMRPhenomX_vector_dot_product(
             IMRPhenomX_vector_cross_product(L_0, S1v), S2v  
         )
         vol_sign = jnp.sign(volume_element)  # equivalent to (volume_element > 0) - (volume_element < 0)
         
-        psi_of_v0 = IMRPhenomX_psiofv(pPrec['v_0'], pPrec['v_0_2'], 0.0, pPrec['psi1'], pPrec['psi2'], pPrec)  
+        psi_of_v0 = IMRPhenomX_psiofv(pPrec.v_0, pPrec.v_0_2, 0.0, pPrec.psi1, pPrec.psi2, pPrec)  
         
         # Handle boundary cases for tmpB
         def handle_boundary_cases():
@@ -802,12 +804,97 @@ def compute_psi0(pPrec, L_0, S1v, S2v):
         
         # Check if we're in boundary case
         boundary_condition = jnp.logical_or(tmpB < 0.0, tmpB > 1.0)
-        
+        jax.debug.print('JAX debug {} {} {}', handle_boundary_cases(), normal_case(), boundary_condition)
+
         return jax.lax.cond(boundary_condition, handle_boundary_cases, normal_case)
     
     return jax.lax.cond(condition, psi0_zero, psi0_nonzero)
 
 
+
+def IMRPhenomX_psiofv(v, v2, psi0, psi1, psi2, pPrec):
+    # Equation 51 in arXiv:1703.03967
+    return psi0 - 0.75 * pPrec.g0 * pPrec.delta_qq * (1.0 + psi1 * v + psi2 * v2) / (v2 * v)
+
+
+def IMRPhenomX_vector_cross_product(v1: jnp.ndarray, v2: jnp.ndarray) -> jnp.ndarray:
+    """
+    Calculate cross product of two 3D vectors
+    
+    Args:
+        v1: First 3D vector as JAX array [x, y, z] (jnp.ndarray)
+        v2: Second 3D vector as JAX array [x, y, z] (jnp.ndarray)
+        
+    Returns:
+        jnp.ndarray: Cross product vector
+    """
+    return jnp.cross(v1, v2)
+
+
+
+def IMRPhenomX_Return_Constants_c_MSA(v, JNorm, pPrec):
+    v2 = v * v
+    v3 = v * v2
+    v4 = v2 * v2
+    v6 = v3 * v3
+    JNorm2 = JNorm * JNorm
+    Seff = pPrec.Seff
+
+
+    x = JNorm * (
+        0.75 * (1.0 - Seff * v) * v2 * (
+            pPrec.eta3
+            + 4.0 * pPrec.eta3 * Seff * v
+            - 2.0 * pPrec.eta * (
+                JNorm2 - pPrec.Spl2 + 2.0 * (pPrec.S1_norm_2 - pPrec.S2_norm_2) * pPrec.delta_qq
+            ) * v2
+            - 4.0 * pPrec.eta * Seff * (JNorm2 - pPrec.Spl2) * v3
+            + (JNorm2 - pPrec.Spl2) ** 2 * v4 * pPrec.inveta
+        )
+    )
+
+    y = JNorm * (
+        -1.5 * pPrec.eta * (pPrec.Spl2 - pPrec.Smi2)
+        * (1.0 + 2.0 * Seff * v - (JNorm2 - pPrec.Spl2) * v2 * pPrec.inveta**2)
+        * (1.0 - Seff * v) * v4
+    )
+
+    z = JNorm * (
+        0.75 * pPrec.inveta * (pPrec.Spl2 - pPrec.Smi2) ** 2
+        * (1.0 - Seff * v) * v6
+    )
+
+    return jnp.array([x, y, z])
+
+
+
+def IMRPhenomX_Return_Constants_d_MSA(LNorm, JNorm, pPrec):
+    LNorm2 = LNorm * LNorm
+    JNorm2 = JNorm * JNorm
+
+    x = - (JNorm2 - (LNorm + pPrec.Spl)) ** 2 * (JNorm2 - (LNorm - pPrec.Spl)) ** 2
+
+    y = -2.0 * (pPrec.Spl2 - pPrec.Smi2) * (JNorm2 + LNorm2 - pPrec.Spl2)
+
+    z = -(pPrec.Spl2 - pPrec.Smi2) ** 2
+
+    return jnp.array([x, y, z])
+
+
+def IMRPhenomX_Return_Psi_MSA(v, v2, pPrec):
+    return -0.75 * pPrec.g0 * pPrec.delta_qq * (1.0 + pPrec.psi1 * v + pPrec.psi2 * v2) / (v2 * v)
+
+
+
+
+
+def IMRPhenomX_Return_Psi_dot_MSA(v, pPrec):
+    v2 = v * v
+
+    A_coeff = -1.5 * v2 * v2 * v2 * (1.0 - v * pPrec.Seff) * jnp.sqrt(pPrec.inveta)
+    psi_dot = 0.5 * A_coeff * jnp.sqrt(pPrec.Spl2 - pPrec.S32)
+
+    return psi_dot
 
 def IMRPhenomX_Return_MSA_Corrections_MSA(
     v, 

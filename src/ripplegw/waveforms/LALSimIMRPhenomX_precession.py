@@ -644,21 +644,22 @@ class IMRPhenomXGetAndSetPrecessionVariables:
     def compute_evolved_spin_using_msa(self):
         print('Develope MSA code')        
 
+        #Line 569
         IMRPhenomX_PNR_GetAndSetPNRVariables(self, self.pWF)
 
+        #Line 580
         IMRPhenomX_PNR_GetAndSetCoPrecParams(self,self.pWF, self.lalParams)
 
-        
+        #if pflag in 220, 221, 222, 223, 224...
+
+        IMRPhenomX_Initialize_MSA_System(self, self.pWF, self.lalParams['ExpansionOrder'])
+
+
+
+
+
 
         '''
-        Line 555-567: initialize some quantities
-
-        line 569 = 
-
-        line 572-574: initialise alpha, beta, and gamma
-
-        line 580 = IMRPhenomX_PNR_GetAndSetCoPrecParams(pWF, pPrec, lalParams)
-
 
         IMRPhenomX_Initialize_MSA_System(pWF,pPrec,pPrec->ExpansionOrder);
 
