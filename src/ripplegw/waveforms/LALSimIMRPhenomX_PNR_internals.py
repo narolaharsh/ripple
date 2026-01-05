@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import jax
 from ..constants import MTSUN_SI
+jax.config.update("jax_enable_x64", True)
 
 
 def XLALSimIMRPhenomXchiEff(eta: float, chi1L: float, chi2L: float) -> float:
@@ -114,8 +115,8 @@ def IMRPhenomX_PNR_GetAndSetPNRVariables(pPrec, pWF: dict) -> int:
         - Eq. 17-19 of arXiv:2107.08876
     """
     # Get needed quantities
-    m1 = pWF['m1'] * pWF['Mtot']
-    m2 = pWF['m2'] * pWF['Mtot']
+    m1 = pWF['m1'] #* pWF['Mtot']
+    m2 = pWF['m2'] #* pWF['Mtot']
     q = pWF['q']
 
     # Select spin values based on version
@@ -138,31 +139,7 @@ def IMRPhenomX_PNR_GetAndSetPNRVariables(pPrec, pWF: dict) -> int:
     # Compute parallel spin parameter
     chipar = pWF['Mtot'] * chieff / m1
 
-    # Compute effective in-plane spin contribution from Eq. 17 of arXiv:2107.08876
-    chis = jnp.sqrt(
-        (m1 * m1 * chi1x + m2 * m2 * chi2x) ** 2 +
-        (m1 * m1 * chi1y + m2 * m2 * chi2y) ** 2
-    ) / (m1 * m1)
-
-    # For version 330, use chis directly; otherwise apply q-dependent weighting
-    sin_term = jnp.sin((q - 1.0) * jnp.pi)
-    cos_term = jnp.cos((q - 1.0) * jnp.pi)
-    chiperp_q_weighted = sin_term * sin_term * pPrec.chi_p + cos_term * cos_term * chis
-
-    # Use chi_p for q > 1.5, otherwise use weighted version
-    chiperp_low_q = jnp.where(q <= 1.5, chiperp_q_weighted, pPrec.chi_p)
-
-    # Final chiperp: version 330 uses chis, others use chiperp_low_q
-    chiperp = jnp.where(is_version_330, chis, chiperp_low_q)
-
-    # Compute antisymmetric chiperp
-    antisymmetric_chis = jnp.sqrt(
-        (m1 * m1 * chi1x - m2 * m2 * chi2x) ** 2 +
-        (m1 * m1 * chi1y - m2 * m2 * chi2y) ** 2
-    ) / (m1 * m1)
-
-    chiperp_antisymmetric_weighted = sin_term * sin_term * pPrec.chi_p + cos_term * cos_term * antisymmetric_chis
-    chiperp_antisymmetric = jnp.where(q <= 1.5, chiperp_antisymmetric_weighted, pPrec.chi_p)
+    chiperp, chiperp_antisymmetric = evaluate_chiperp(m1, m2, chi1x, chi1y, chi2x, chi2y, pPrec.chi_p, pPrec.IMRPhenomXPrecVersion)
 
     # Get the total magnitude, Eq. 18 of arXiv:2107.08876
     chi_mag = jnp.sqrt(chipar * chipar + chiperp * chiperp)
@@ -217,6 +194,9 @@ def IMRPhenomX_PNR_GetAndSetPNRVariables(pPrec, pWF: dict) -> int:
     object.__setattr__(pPrec, 'PNRInspiralScaling', PNRInspiralScaling)
 
     return 1  # XLAL_SUCCESS
+
+
+
 
 def IMRPhenomX_PNR_HMInterpolationDeltaF(f_min: float, pWF: dict, pPrec: dict) -> float:
     """
@@ -436,9 +416,239 @@ def XLALSimIMRPhenomXLPNAnsatz(v: float, LNorm: float, L0: float, L1: float, L2:
     # L = L_N \sum_a L_a x^{a/2}
     #   = L_N [ L0 + L1 x^{1/2} + L2 x^{2/2} + L3 x^{3/2} + ... ]
     
-    return LNorm * (L0 + L1*sqx + L2*x + L3*(x*sqx) + L4*x2 + L5*(x2*sqx) + 
+    return LNorm * (L0 + L1*sqx + L2*x + L3*(x*sqx) + L4*x2 + L5*(x2*sqx) +
                     L6*x3 + L7*(x3*sqx) + L8*x4 + L8L*x4*jnp.log(x))
 
 
+def evaluate_chiperp(m1, m2, chi1x, chi1y, chi2x, chi2y, chi_p, IMRPhenomXPrecVersion):
+    """
+    Evaluate chiperp and chiperp_antisymmetric based on LALSimIMRPhenomX_PNR_internals.c logic.
+    JAX-compatible implementation.
+
+    Parameters:
+    -----------
+    m1 : float
+        Mass of first body
+    m2 : float
+        Mass of second body
+    chi1x : float
+        x-component of first spin
+    chi1y : float
+        y-component of first spin
+    chi2x : float
+        x-component of second spin
+    chi2y : float
+        y-component of second spin
+    chi_p : float
+        Precession spin parameter
+    IMRPhenomXPrecVersion : int
+        Version number (e.g., 330)
+
+    Returns:
+    --------
+    chiperp : float
+        Perpendicular effective spin
+    chiperp_antisymmetric : float
+        Antisymmetric perpendicular effective spin
+    """
+
+    # Calculate mass ratio q = m1/m2 (assuming m1 >= m2)
+    q = m1 / m2
+
+    # Calculate symmetric chiperp (chis)
+    chis = jnp.sqrt(
+        (m1 * m1 * chi1x + m2 * m2 * chi2x) ** 2 +
+        (m1 * m1 * chi1y + m2 * m2 * chi2y) ** 2
+    ) / (m1 * m1)
+
+    # For version 330, use chis directly
+    is_version_330 = (IMRPhenomXPrecVersion == 330)
+
+    # Calculate q-dependent weighting terms
+    sin_term = jnp.sin((q - 1.0) * jnp.pi)
+    cos_term = jnp.cos((q - 1.0) * jnp.pi)
+    chiperp_q_weighted = sin_term * sin_term * chi_p + cos_term * cos_term * chis
+
+    # Use chi_p for q > 1.5, otherwise use weighted version
+    chiperp_low_q = jnp.where(q <= 1.5, chiperp_q_weighted, chi_p)
+
+    # Final chiperp: version 330 uses chis, others use chiperp_low_q
+    chiperp = jnp.where(is_version_330, chis, chiperp_low_q)
+
+    # Calculate antisymmetric chiperp
+    antisymmetric_chis = jnp.sqrt(
+        (m1 * m1 * chi1x - m2 * m2 * chi2x) ** 2 +
+        (m1 * m1 * chi1y - m2 * m2 * chi2y) ** 2
+    ) / (m1 * m1)
+
+    chiperp_antisymmetric_weighted = sin_term * sin_term * chi_p + cos_term * cos_term * antisymmetric_chis
+    chiperp_antisymmetric = jnp.where(q <= 1.5, chiperp_antisymmetric_weighted, chi_p)
+
+    return chiperp, chiperp_antisymmetric
 
 
+def IMRPhenomX_PNR_CoprecWindow(pWF: dict) -> float:
+    """
+    Placeholder for coprecessing window function.
+
+    Args:
+        pWF: PhenomX waveform struct (dict)
+
+    Returns:
+        float: Window value for PNR coprecessing tuning
+    """
+    # This is a stub - implement the actual window function as needed
+    return 1.0
+
+
+def IMRPhenomX_PNR_GetAndSetCoPrecParams(pPrec, pWF: dict, lalParams: dict) -> int:
+    """
+    Get and set coprecessing parameters for PhenomXPNR model.
+
+    This function configures the coprecessing frame tuning parameters used in the
+    PhenomXPNR model. It handles toggles for outputting coprecessing models, applying
+    PNR tunings, and setting deviation parameters.
+
+    Args:
+        pWF: PhenomX waveform struct (dict)
+        pPrec: PhenomX precession struct (IMRPhenomXGetAndSetPrecessionVariables instance)
+        lalParams: LAL parameter dictionary containing user-specified options (dict)
+
+    Returns:
+        int: Status (0 for success)
+
+    Note:
+        - Sets various deviation parameters (MU1-4, NU0-6, ZETA1-2) that modify
+          coprecessing frame waveform properties
+        - Handles different versions (e.g., version 330) with specific calibration limits
+    """
+
+    status = 0
+
+    # Get toggle for outputting coprecessing model from LAL dictionary
+    IMRPhenomXReturnCoPrec = False #lalParams.get('IMRPhenomXReturnCoPrec', False)
+    object.__setattr__(pPrec, 'IMRPhenomXReturnCoPrec', IMRPhenomXReturnCoPrec)
+
+    # Get toggle for PNR coprecessing tuning
+    PNRUseTunedCoprec = False#lalParams.get('PNRUseTunedCoprec', False)
+    pWF['IMRPhenomXPNRUseTunedCoprec'] = PNRUseTunedCoprec
+    object.__setattr__(pPrec, 'IMRPhenomXPNRUseTunedCoprec', PNRUseTunedCoprec)
+
+    # Same as above but for l=m=3
+    PNRUseTunedCoprec33 = False #lalParams.get('PNRUseTunedCoprec33', False) and PNRUseTunedCoprec
+    object.__setattr__(pPrec, 'IMRPhenomXPNRUseTunedCoprec33', PNRUseTunedCoprec33)
+    pWF['IMRPhenomXPNRUseTunedCoprec33'] = PNRUseTunedCoprec33
+
+    # Throw error if l=|m|=3 tuning is requested (not supported)
+    if PNRUseTunedCoprec33:
+        raise ValueError("Error: Coprecessing tuning for l=|m|=3 must be off.")
+
+    # Get toggle for enforced use of non-precessing spin
+    PNRUseInputCoprecDeviations = False #lalParams.get('PNRUseInputCoprecDeviations', False)
+    object.__setattr__(pPrec, 'IMRPhenomXPNRUseInputCoprecDeviations', PNRUseInputCoprecDeviations)
+
+    # Get toggle for forcing inspiral phase alignment
+    PNRForceXHMAlignment = False
+    pWF['IMRPhenomXPNRForceXHMAlignment'] = False
+
+    # Validate PNR usage options
+    if PNRUseInputCoprecDeviations and PNRUseTunedCoprec:
+        raise ValueError(
+            "Error: PNRUseTunedCoprec and PNRUseInputCoprecDeviations must not be enabled simultaneously."
+        )
+
+    # Define high-level toggle for whether to apply deviations
+    APPLY_PNR_DEVIATIONS = PNRUseTunedCoprec or PNRUseInputCoprecDeviations
+    pWF['APPLY_PNR_DEVIATIONS'] = APPLY_PNR_DEVIATIONS 
+
+    # If applying PNR deviations with XHM alignment, set phase alignment params
+    # (This part is commented out as it requires additional functions not yet implemented)
+    if APPLY_PNR_DEVIATIONS and PNRForceXHMAlignment:
+         IMRPhenomX_PNR_SetPhaseAlignmentParams(pWF, pPrec)
+
+    # Define single spin parameters for fit evaluation
+    a1 = pPrec.chi_singleSpin
+    pWF['a1'] = a1
+    cos_theta = pPrec.costheta_singleSpin
+
+    # Compute opening angle
+    theta_LS = jnp.arccos(cos_theta)
+    pWF['theta_LS'] = theta_LS
+
+    # Compute window of tuning deviations
+    pnr_window = 0.0  # Default: tunings off
+    if PNRUseTunedCoprec:
+        pnr_window = IMRPhenomX_PNR_CoprecWindow(pWF)
+    pWF['pnr_window'] = pnr_window
+
+    # Store XCP deviation parameter
+    PNR_DEV_PARAMETER = a1 * jnp.sin(theta_LS) * APPLY_PNR_DEVIATIONS
+    if PNRUseTunedCoprec:
+        PNR_DEV_PARAMETER = pnr_window * PNR_DEV_PARAMETER
+    pWF['PNR_DEV_PARAMETER'] = PNR_DEV_PARAMETER
+
+    # Get deviations from lalParams (used for PNRUseInputCoprecDeviations)
+    # All default values are zero
+    pWF['MU1'] = lalParams.get('CPMু1', 0.0)
+    pWF['MU2'] = lalParams.get('CPMU2', 0.0)
+    pWF['MU3'] = lalParams.get('CPMU3', 0.0)
+    pWF['MU4'] = lalParams.get('CPMU4', 0.0)
+    pWF['NU0'] = lalParams.get('CPNU0', 0.0)
+    pWF['NU4'] = lalParams.get('CPNU4', 0.0)
+    pWF['NU5'] = lalParams.get('CPNU5', 0.0)
+    pWF['NU6'] = lalParams.get('CPNU6', 0.0)
+    pWF['ZETA1'] = lalParams.get('CPZETA1', 0.0)
+    pWF['ZETA2'] = lalParams.get('CPZETA2', 0.0)
+
+    # If using tuned coprecessing parameters, get them from model fits
+    if PNRUseTunedCoprec:
+        # Apply flattening for extrapolation outside calibration region
+        is_version_330 = (pPrec.IMRPhenomXPrecVersion == 330)
+
+        # Flatten mass-ratio dependence
+        coprec_eta = jnp.where(
+            pWF['eta'] >= 0.09876,
+            pWF['eta'],
+            jnp.where(
+                is_version_330,
+                0.09876 - (0.09876 - pWF['eta']) * 0.1641,
+                0.09876
+            )
+        )
+
+        # Flatten spin dependence
+        coprec_a1 = jnp.where(pWF['a1'] <= 0.8, pWF['a1'], 0.8 + (pWF['a1'] - 0.8) / 12.0)
+        coprec_a1 = jnp.where(
+            is_version_330,
+            coprec_a1,
+            jnp.where(pWF['a1'] <= 0.8, pWF['a1'], 0.8)
+        )
+        coprec_a1 = jnp.where(coprec_a1 >= 0.2, coprec_a1, 0.2)
+
+        # These functions need to be implemented separately - using placeholders for now
+        # In practice, these would be calls to fit functions from the coprecessing model
+
+        # Placeholder: These should be actual fit functions
+        # pWF['MU1'] = XLALSimIMRPhenomXCP_MU1_l2m2(theta_LS, coprec_eta, coprec_a1)
+        # pWF['MU2'] = XLALSimIMRPhenomXCP_MU2_l2m2(theta_LS, coprec_eta, coprec_a1)
+        # pWF['MU3'] = XLALSimIMRPhenomXCP_MU3_l2m2(theta_LS, coprec_eta, coprec_a1)
+        # pWF['NU0'] = XLALSimIMRPhenomXCP_NU0_l2m2(theta_LS, coprec_eta, coprec_a1)
+        # pWF['NU4'] = XLALSimIMRPhenomXCP_NU4_l2m2(theta_LS, coprec_eta, coprec_a1)
+        # pWF['NU5'] = XLALSimIMRPhenomXCP_NU5_l2m2(theta_LS, coprec_eta, coprec_a1)
+        # pWF['NU6'] = XLALSimIMRPhenomXCP_NU6_l2m2(theta_LS, coprec_eta, coprec_a1)
+        # pWF['ZETA1'] = XLALSimIMRPhenomXCP_ZETA1_l2m2(theta_LS, coprec_eta, coprec_a1)
+        # pWF['ZETA2'] = XLALSimIMRPhenomXCP_ZETA2_l2m2(theta_LS, coprec_eta, coprec_a1)
+
+        # For now, set to zero (would be computed from fits in full implementation)
+        pass
+
+    # Override NU0 (as in original C code)
+    pWF['NU0'] = 0.0
+
+    return status
+
+
+
+
+def IMRPhenomX_PNR_SetPhaseAlignmentParams(fix, _fix):
+    return None

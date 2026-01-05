@@ -9,7 +9,7 @@ from .LALSimInspiralSpinTaylor import XLALSimInspiralSpinTaylorPNEvolveOrbit
 from dataclasses import dataclass, field
 from jax_dataclasses import pytree_dataclass
 
-from .LALSimIMRPhenomX_PNR_internals import (IMRPhenomX_PNR_HMInterpolationDeltaF, IMRPhenomX_PNR_GetAndSetPNRVariables)
+from .LALSimIMRPhenomX_PNR_internals import (IMRPhenomX_PNR_HMInterpolationDeltaF, IMRPhenomX_PNR_GetAndSetPNRVariables, IMRPhenomX_PNR_GetAndSetCoPrecParams)
 from .initialise_MSA_system import IMRPhenomX_Initialize_MSA_System
 
 from .LALSimIMRPhenomX_PNR_alpha import IMRPhenomX_PNR_precompute_alpha_coefficients
@@ -189,8 +189,11 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         self._compute_gravitational_constants()
         self._compute_spin_quantities()
         self._compute_effective_spin_parameters()
-        self._validate_kerr_bound()
-        self._setup_evolved_spins()
+
+        #self._validate_kerr_bound()
+        #self.compute_evolved_spin_using_spintaylor() # Function that uses Spin Taylor approximantion to evolve spins
+        
+        self.compute_evolved_spin_using_msa()
         
 
     def _compute_masses(self):
@@ -374,11 +377,11 @@ class IMRPhenomXGetAndSetPrecessionVariables:
             self.chi2_norm
         )
 
-    def _setup_evolved_spins(self):
+    def compute_evolved_spin_using_spintaylor(self):
         """Setup evolved spins - either via SpinTaylor or use initial values."""
         # Check if we need to run SpinTaylor prescription (versions 300+)
         use_spintaylor = (self.IMRPhenomXPrecVersion // 100 == 3)
-        print('Are we using spin taylor?', use_spintaylor)
+        print('JAX: Are we using spin taylor?', use_spintaylor)
         if use_spintaylor:  
             self._setup_spintaylor_prescription()
         else:
@@ -638,6 +641,53 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
 
 
+    def compute_evolved_spin_using_msa(self):
+        print('Develope MSA code')        
+
+        IMRPhenomX_PNR_GetAndSetPNRVariables(self, self.pWF)
+
+        IMRPhenomX_PNR_GetAndSetCoPrecParams(self,self.pWF, self.lalParams)
+
+        
+
+        '''
+        Line 555-567: initialize some quantities
+
+        line 569 = 
+
+        line 572-574: initialise alpha, beta, and gamma
+
+        line 580 = IMRPhenomX_PNR_GetAndSetCoPrecParams(pWF, pPrec, lalParams)
+
+
+        IMRPhenomX_Initialize_MSA_System(pWF,pPrec,pPrec->ExpansionOrder);
+
+        if MSA_ERROR:
+            default to NNLO by updating PrecVersion to 102. 
+
+        
+        IMRPhenomX_SetPrecessingRemnantParams(pWF,pPrec,lalParams);
+
+        # Cache the orbital angular momentum coefficients for future use; Flag for 223
+
+        Line 764
+
+
+
+
+        
+            
+
+
+
+        
+
+
+
+
+
+        '''
+        return None
 
 def get_deltaF_from_wfstruct(pWF: dict) -> float:
     """
