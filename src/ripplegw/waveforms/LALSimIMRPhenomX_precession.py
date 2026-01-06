@@ -23,7 +23,7 @@ from .LALSimIMRPhenomXHM_internals import IMRPhenomXHM_GenerateRingdownFrequency
 from .LALSimIMRPhenomX_PNR_internals import XLALSimIMRPhenomXFinalSpin2017
 from .LALSimIMRPhenomTHM_fits import evaluate_QNMfit_fring21
 
-
+from .LALSimIMRPhenomX_qnm import (evaluate_QNMfit_fring22, evaluate_QNMfit_fdamp22)
 
 
 @pytree_dataclass
@@ -1093,57 +1093,6 @@ def IMRPhenomX_rotate_y(angle, v):
     return jnp.array([vx_rot, vy_rot, vz_rot])
 
 
-def evaluate_QNMfit_fring22(finalDimlessSpin: float) -> float:
-    """
-    Evaluate QNM fit for fring22 (fundamental mode l=2, m=2).
-    This is typically computed from fitting formulas for the ringdown frequency.
-
-    Args:
-        finalDimlessSpin: Final dimensionless spin (float)
-
-    Returns:
-        float: QNM frequency fit result in geometric units (M*f)
-    """
-    # For the fundamental 22 mode, we use fitting formulas
-    # These coefficients come from fitting to numerical relativity QNM data
-    # Reference: Berti et al fits or similar QNM catalogs
-
-    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
-
-    # Basic fitting formula for the 22 mode
-    # This is a simplified version - actual implementation may use more sophisticated fits
-    f1 = 1.5251
-    f2 = -1.1568
-    f3 = 0.1292
-
-    result = (f1 - f2 * (1.0 - finalDimlessSpin)**f3) / (2.0 * jnp.pi)
-
-    return jnp.where(valid_input, result, jnp.nan)
-
-
-def evaluate_QNMfit_fdamp22(finalDimlessSpin: float) -> float:
-    """
-    Evaluate QNM fit for fdamp22 (damping frequency for l=2, m=2).
-
-    Args:
-        finalDimlessSpin: Final dimensionless spin (float)
-
-    Returns:
-        float: QNM damping frequency in geometric units (M*f)
-    """
-    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
-
-    # Fitting formula for damping frequency
-    # These coefficients come from fitting to numerical relativity QNM data
-    q1 = 0.7000
-    q2 = 1.4187
-    q3 = -0.4990
-
-    result = (q1 + q2 * (1.0 - finalDimlessSpin)**q3) / (2.0 * jnp.pi)
-
-    return jnp.where(valid_input, result, jnp.nan)
-
-
 def XLALSimIMRPhenomXPrecessingFinalSpin2017(
     eta: float,
     chi1L: float,
@@ -1235,30 +1184,19 @@ def IMRPhenomX_SetPrecessingRemnantParams(
     """
     status = 0
 
-    # Extract PNR CoPrec options
-    PNRUseInputCoprecDeviations = False#pPrec.lalParams.get('IMRPhenomXPNRUseInputCoprecDeviations', False)
-    PNRUseTunedCoprec = False#pPrec.lalParams.get('PNRUseTunedCoprec', False)
-    APPLY_PNR_DEVIATIONS = False#pWF.get('APPLY_PNR_DEVIATIONS', False)
+    # Extract PNR CoPrec options #TODO
+    PNRUseInputCoprecDeviations = False #pPrec.lalParams.get('IMRPhenomXPNRUseInputCoprecDeviations', False)
+    PNRUseTunedCoprec = False #pPrec.lalParams.get('PNRUseTunedCoprec', False)
+    APPLY_PNR_DEVIATIONS = False #pWF.get('APPLY_PNR_DEVIATIONS', False)
 
     # Compute basic quantities
     M = pWF['M']
     af_parallel = XLALSimIMRPhenomXFinalSpin2017(pWF['eta'], pPrec.chi1z, pPrec.chi2z)
     Lfinal = M * M * af_parallel - pWF['m1_2'] * pPrec.chi1z - pWF['m2_2'] * pPrec.chi2z
 
-    # Determine final spin flag
-    fsflag = lalParams.get('PhenomXPFinalSpinMod', 0)
-    fsflag = jnp.where((fsflag == 4) & (pPrec.precessing_tag != 3), 3, fsflag)
-
-    # For PhenomPNR with tuned coprec, use modified Pv2 final spin
-    fsflag = jnp.where(PNRUseTunedCoprec & (fsflag < 6), 5, fsflag)
-
-    # When tuning coprecessing model, enforce non-precessing final spin
-    fsflag = jnp.where(PNRUseInputCoprecDeviations, 6, fsflag)
-
-    # Generate ringdown beta if using tuned coprec
-    if PNRUseTunedCoprec:
-        betaRD = IMRPhenomX_PNR_GenerateRingdownPNRBeta(pWF, pPrec)
-        pWF['betaRD'] = betaRD
+    # Determine final spin flag #Line 1377 #TODO
+    fsflag = 3 ##lalParams.get('PhenomXPFinalSpinMod', 0)
+    #fsflag = jnp.where((fsflag == 4) & (pPrec.precessing_tag != 3), 3, fsflag)
 
     # Shorthand for spin components
     chi1L = pPrec.chi1z
@@ -1267,23 +1205,13 @@ def IMRPhenomX_SetPrecessingRemnantParams(
     # Precession version
     pflag = pPrec.IMRPhenomXPrecVersion
 
-    # Compute afinal_prec based on fsflag
-    def case_0():
-        return XLALSimIMRPhenomXPrecessingFinalSpin2017(pWF['eta'], chi1L, chi2L, pPrec.chi_p)
-
-    def case_1():
-        return XLALSimIMRPhenomXPrecessingFinalSpin2017(pWF['eta'], chi1L, chi2L, pPrec.chi1x)
-
-    def case_2():
-        return XLALSimIMRPhenomXPrecessingFinalSpin2017(pWF['eta'], chi1L, chi2L, pPrec.chiTot_perp)
-
     def case_3():
         # MSA-based final spin
         valid_version = (pflag == 220) | (pflag == 221) | (pflag == 222) | (pflag == 223) | (pflag == 224)
 
         def msa_case():
             # Check for MSA error
-            msa_error = pPrec.MSA_ERROR == 1
+            msa_error = 0 #pPrec.MSA_ERROR == 1 #TODO
 
             def fallback():
                 return XLALSimIMRPhenomXPrecessingFinalSpin2017(pWF['eta'], chi1L, chi2L, pPrec.chi_p)
@@ -1312,31 +1240,12 @@ def IMRPhenomX_SetPrecessingRemnantParams(
 
         return jax.lax.cond(valid_version, msa_case, invalid_version)
 
-    def case_5():
-        # PNR final spin: Pv2 magnitude with sign from cos(betaRD)
-        sign = jnp.copysign(1.0, jnp.cos(pWF['betaRD']))
-        afinal_prec_Pv2 = XLALSimIMRPhenomXPrecessingFinalSpin2017(pWF['eta'], chi1L, chi2L, pPrec.chi_p)
-        return sign * jnp.abs(afinal_prec_Pv2)
-
-    def case_6():
-        # Use non-precessing final spin for tuning
-        return pWF['afinal_nonprec']
-
-    def case_7():
-        # Similar to case 5 but with chiTot_perp
-        sign = jnp.copysign(1.0, jnp.cos(pWF['betaRD']))
-        afinal_prec = XLALSimIMRPhenomXPrecessingFinalSpin2017(pWF['eta'], chi1L, chi2L, pPrec.chiTot_perp)
-        return sign * jnp.abs(afinal_prec)
-
     def default_case():
         # Error case - return NaN
         return jnp.nan
 
     # Switch based on fsflag
-    afinal_prec = jax.lax.switch(
-        jnp.clip(fsflag, 0, 7),
-        [case_0, case_1, case_2, case_3, default_case, case_5, case_6, case_7]
-    )
+    afinal_prec = case_3()
 
     pWF['afinal_prec'] = afinal_prec
 
@@ -1360,7 +1269,6 @@ def IMRPhenomX_SetPrecessingRemnantParams(
     pWF['fRING'] = evaluate_QNMfit_fring22(pWF['afinal']) / pWF['Mfinal']
     pWF['fDAMP'] = evaluate_QNMfit_fdamp22(pWF['afinal']) / pWF['Mfinal']
 
-    # Copy IMRPhenomXReturnCoPrec flag
     pWF['IMRPhenomXReturnCoPrec'] = pPrec.lalParams.get('IMRPhenomXReturnCoPrec', False)
 
     # Apply PNR deviations if requested
