@@ -47,6 +47,7 @@ def XLALSimIMRPhenomXSTotR(eta: float, chi1L: float, chi2L: float) -> float:
     return (m1Sq * chi1L + m2Sq * chi2L) / (m1Sq + m2Sq)
 
 
+
 def XLALSimIMRPhenomXFinalSpin2017(eta: float, chi1L: float, chi2L: float) -> float:
     """
     Final Dimensionless Spin, X Jimenez-Forteza et al, PRD, 95, 064024, (2017), arXiv:1611.00332.
@@ -95,6 +96,67 @@ def XLALSimIMRPhenomXFinalSpin2017(eta: float, chi1L: float, chi2L: float) -> fl
     )
 
     return noSpin + eqSpin + uneqSpin
+
+
+def XLALSimIMRPhenomXFinalMass2017(eta: float, chi1L: float, chi2L: float) -> float:
+    """
+    Final Mass in units of total initial mass, X Jimenez-Forteza et al, PRD, 95, 064024, (2017), arXiv:1611.00332.
+
+    This function computes the final mass of the remnant black hole after merger,
+    normalized by the total initial mass (Mfinal/Mtotal). The returned value represents
+    1 - Erad, where Erad is the radiated energy.
+
+    Args:
+        eta: Symmetric mass ratio
+        chi1L: Aligned spin of BH 1
+        chi2L: Aligned spin of BH 2
+
+    Returns:
+        Final mass in units of total initial mass (1 - Erad)
+    """
+    delta = jnp.sqrt(1.0 - 4.0 * eta)
+    eta2 = eta * eta
+    eta3 = eta2 * eta
+    eta4 = eta3 * eta
+
+    S = XLALSimIMRPhenomXSTotR(eta, chi1L, chi2L)
+    S2 = S * S
+    S3 = S2 * S
+
+    dchi = chi1L - chi2L
+    dchi2 = dchi * dchi
+
+    # No-spin contribution
+    noSpin = (
+        0.057190958417936644 * eta
+        + 0.5609904135313374 * eta2
+        - 0.84667563764404 * eta3
+        + 3.145145224278187 * eta4
+    )
+
+    # Equal-spin contribution
+    # Because of the way this is written, we need to subtract the noSpin term
+    eqSpin = (
+        (0.057190958417936644 * eta + 0.5609904135313374 * eta2 - 0.84667563764404 * eta3 + 3.145145224278187 * eta4)
+        * (
+            1
+            + (-0.13084389181783257 - 1.1387311580238488 * eta + 5.49074464410971 * eta2) * S
+            + (-0.17762802148331427 + 2.176667900182948 * eta2) * S2
+            + (-0.6320191645391563 + 4.952698546796005 * eta - 10.023747993978121 * eta2) * S3
+        )
+    ) / (1 + (-0.9919475346968611 + 0.367620218664352 * eta + 4.274567337924067 * eta2) * S)
+
+    eqSpin = eqSpin - noSpin
+
+    # Unequal-spin contribution
+    uneqSpin = (
+        -0.09803730445895877 * dchi * delta * (1 - 3.2283713377939134 * eta) * eta2
+        + 0.01118530335431078 * dchi2 * eta3
+        - 0.01978238971523653 * dchi * delta * (1 - 4.91667749015812 * eta) * eta * S
+    )
+
+    # Mfinal = 1 - Erad, assuming that M = m1 + m2 = 1
+    return 1.0 - (noSpin + eqSpin + uneqSpin)
 
 
 def IMRPhenomX_PNR_GetAndSetPNRVariables(pPrec, pWF: dict) -> int:

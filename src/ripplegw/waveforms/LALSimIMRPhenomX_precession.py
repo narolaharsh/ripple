@@ -20,7 +20,7 @@ from .LALSimIMRPhenomX_PNR_beta import (
 
 from .LALSimIMRPhenomXHM_internals import IMRPhenomXHM_GenerateRingdownFrequency
 
-from .LALSimIMRPhenomX_PNR_internals import XLALSimIMRPhenomXFinalSpin2017
+from .LALSimIMRPhenomX_PNR_internals import (XLALSimIMRPhenomXFinalSpin2017, XLALSimIMRPhenomXFinalMass2017)
 from .LALSimIMRPhenomTHM_fits import evaluate_QNMfit_fring21
 
 from .LALSimIMRPhenomX_qnm import (evaluate_QNMfit_fring22, evaluate_QNMfit_fdamp22)
@@ -667,6 +667,9 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
 
 
+
+
+
         '''
 
         IMRPhenomX_Initialize_MSA_System(pWF,pPrec,pPrec->ExpansionOrder);
@@ -1192,6 +1195,7 @@ def IMRPhenomX_SetPrecessingRemnantParams(
     # Compute basic quantities
     M = pWF['M']
     af_parallel = XLALSimIMRPhenomXFinalSpin2017(pWF['eta'], pPrec.chi1z, pPrec.chi2z)
+    Mfinal = XLALSimIMRPhenomXFinalMass2017(pWF['eta'], pPrec.chi1z, pPrec.chi2z)
     Lfinal = M * M * af_parallel - pWF['m1_2'] * pPrec.chi1z - pWF['m2_2'] * pPrec.chi2z
 
     # Determine final spin flag #Line 1377 #TODO
@@ -1247,29 +1251,24 @@ def IMRPhenomX_SetPrecessingRemnantParams(
     # Switch based on fsflag
     afinal_prec = case_3()
 
-    pWF['afinal_prec'] = afinal_prec
-
     # Handle afinal assignment
     if not PNRUseTunedCoprec:
-        pWF['afinal'] = afinal_prec
+        afinal = afinal_prec
     else:
         # Apply windowing for PNR
         pnr_window = pWF.get('pnr_window', 1.0)
         pWF['afinal'] = pnr_window * pWF['afinal_nonprec'] + (1.0 - pnr_window) * afinal_prec
 
     # Enforce Kerr bound on final spins
-    if jnp.abs(pWF['afinal']) > 1.0:
+    if jnp.abs(afinal) > 1.0:
         pWF['afinal'] = jnp.copysign(1.0, pWF['afinal'])
 
     if jnp.abs(afinal_prec) > 1.0:
         afinal_prec = jnp.copysign(1.0, afinal_prec)
-        pWF['afinal_prec'] = afinal_prec
 
     # Update ringdown and damping frequencies
-    pWF['fRING'] = evaluate_QNMfit_fring22(pWF['afinal']) / pWF['Mfinal']
-    pWF['fDAMP'] = evaluate_QNMfit_fdamp22(pWF['afinal']) / pWF['Mfinal']
-
-    pWF['IMRPhenomXReturnCoPrec'] = pPrec.lalParams.get('IMRPhenomXReturnCoPrec', False)
+    fRING = evaluate_QNMfit_fring22(afinal) / Mfinal
+    fDAMP = evaluate_QNMfit_fdamp22(afinal) / Mfinal
 
     # Apply PNR deviations if requested
     if APPLY_PNR_DEVIATIONS:
@@ -1278,8 +1277,8 @@ def IMRPhenomX_SetPrecessingRemnantParams(
 
     # Define effective ringdown frequencies for HMs if using PNR tuned coprec
     if PNRUseTunedCoprec and (pWF.get('PNR_SINGLE_SPIN', 0) != 1):
-        fRING22_prec = evaluate_QNMfit_fring22(afinal_prec) / pWF['Mfinal']
-        fRING21_prec = evaluate_QNMfit_fring21(afinal_prec) / pWF['Mfinal']
+        fRING22_prec = evaluate_QNMfit_fring22(afinal_prec) / Mfinal
+        fRING21_prec = evaluate_QNMfit_fring21(afinal_prec) / Mfinal
         pWF['fRING22_prec'] = fRING22_prec
 
         # Calculate effective ringdown frequency shift
@@ -1291,4 +1290,10 @@ def IMRPhenomX_SetPrecessingRemnantParams(
         pnr_window = pWF.get('pnr_window', 1.0)
         pWF['fRING'] = pWF['fRING'] - (1.0 - pnr_window) * emm * fRINGEffShiftDividedByEmm
 
-    return status
+    print('jax Mfinal', Mfinal)
+    print('jax afinal', afinal)
+    print('jax fRing', fRING)
+    print('jax fdamp', fDAMP)
+    print('jax fdamp', fDAMP)
+
+    return Mfinal, afinal, fRING, fDAMP
