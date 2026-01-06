@@ -1116,6 +1116,9 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v):
     vout2 = zeta + zeta_MSA
     vout3 = cos_theta_L
 
+    jax.debug.print("JAX debug phiz_MSA and phiz {} {} \n  J_norm {}", phiz_MSA, phiz, J_norm)
+
+
     return jnp.array([vout1, vout2, vout3])
 
 
