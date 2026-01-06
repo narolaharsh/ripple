@@ -20,10 +20,6 @@ from ripplegw import Mc_eta_to_ms
 from .spherical_harmonics import (compute_sminus2_l2, compute_sminus2_l3, compute_sminus2_l4)
 
 
-def test_link():
-    print('link OK')
-    return
-
 
 '''
 Steps to construct the XPHM waveform from relative binning project

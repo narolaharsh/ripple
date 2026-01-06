@@ -5,6 +5,7 @@ This module provides JAX-compatible implementations of elliptic integrals,
 specifically the incomplete elliptic integral of the first kind (F).
 """
 
+import jax
 import jax.numpy as jnp
 from jax import jit
 from jax.scipy.integrate import trapezoid
@@ -129,3 +130,138 @@ def ellint_F_carlson(phi: float, k: float) -> float:
     """
     # For now, fall back to the trapezoidal integration method
     return ellint_F(phi, k)
+
+
+@jit
+def gsl_sf_elljac_e(u: float, m: float, max_iter: int = 16):
+    """
+    Compute the Jacobian elliptic functions sn(u|m), cn(u|m), dn(u|m).
+
+    This function computes the Jacobian elliptic functions using the descending
+    Landen transformation, which is the same algorithm used by GSL.
+
+    The Jacobian elliptic functions are defined by the inverse of the elliptic
+    integral of the first kind:
+        u = F(φ, k) = ∫₀^φ dt / √(1 - k² sin²(t))
+
+    Then:
+        sn(u|m) = sin(φ)
+        cn(u|m) = cos(φ)
+        dn(u|m) = √(1 - k² sin²(φ))
+
+    where m = k² is the parameter (0 ≤ m ≤ 1).
+
+    This is equivalent to GSL's gsl_sf_elljac_e(u, m, &sn, &cn, &dn).
+
+    Args:
+        u: The argument
+        m: The parameter (m = k², where k is the modulus), 0 ≤ m ≤ 1
+        max_iter: Maximum number of Landen transformations (default: 16)
+
+    Returns:
+        A tuple (sn, cn, dn) containing the three Jacobian elliptic functions
+
+    Notes:
+        - For m = 0: sn(u|0) = sin(u), cn(u|0) = cos(u), dn(u|0) = 1
+        - For m = 1: sn(u|1) = tanh(u), cn(u|1) = sech(u), dn(u|1) = sech(u)
+        - The implementation uses the descending Landen transformation for accuracy
+        - JAX-compatible (can be used in jit, grad, vmap, etc.)
+
+    References:
+        - Abramowitz & Stegun, Chapter 16
+        - GSL library: gsl_sf_elljac.c
+        - NIST DLMF: https://dlmf.nist.gov/22.20
+
+    Examples:
+        >>> sn, cn, dn = gsl_sf_elljac_e(1.0, 0.5)
+        >>> sn, cn, dn = gsl_sf_elljac_e(jnp.array([0.5, 1.0]), 0.8)
+    """
+    u = jnp.asarray(u)
+    m = jnp.asarray(m)
+
+    # Handle special case: m = 0
+    # sn(u|0) = sin(u), cn(u|0) = cos(u), dn(u|0) = 1
+    def case_m_zero():
+        sin_u = jnp.sin(u)
+        cos_u = jnp.cos(u)
+        return sin_u, cos_u, jnp.ones_like(u)
+
+    # Handle special case: m = 1
+    # sn(u|1) = tanh(u), cn(u|1) = sech(u), dn(u|1) = sech(u)
+    def case_m_one():
+        tanh_u = jnp.tanh(u)
+        sech_u = 1.0 / jnp.cosh(u)
+        return tanh_u, sech_u, sech_u
+
+    # General case: use descending Landen transformation
+    def case_general():
+        # This implements Abramowitz & Stegun 16.14.1-2
+        # Based on GSL's gsl_sf_elljac.c implementation
+
+        # Build the Landen transformation sequence
+        # a[0] = 1, c[0] = k, b[0] = sqrt(1-k^2)
+        def landen_forward(carry, i):
+            a_prev, c_prev = carry
+            # b = sqrt(a^2 - c^2) = sqrt((a-c)(a+c))
+            b_prev = jnp.sqrt((a_prev - c_prev) * (a_prev + c_prev))
+            # Apply the transformation
+            a_next = 0.5 * (a_prev + b_prev)
+            c_next = 0.5 * (a_prev - b_prev)
+            return (a_next, c_next), (a_next, c_next)
+
+        k = jnp.sqrt(m)
+        (a_final, c_final), (a_arr, c_arr) = jax.lax.scan(
+            landen_forward,
+            (1.0, k),
+            jnp.arange(max_iter)
+        )
+
+        # phi_n = 2^n * a_n * u (in the limit, this approaches the final angle)
+        phi_n = jnp.power(2.0, max_iter) * a_final * u
+
+        # Now work backward using the inverse transformation
+        # sin(phi_{n-1}) = (a_n / a_{n-1}) * sin(phi_n)
+        # and phi_{n-1} = (phi_n + arcsin(c_n/a_n * sin(phi_n))) / 2
+        def landen_backward(phi_curr, i):
+            idx = max_iter - 1 - i
+            a_i = a_arr[idx]
+            c_i = c_arr[idx]
+
+            sin_phi = jnp.sin(phi_curr)
+            # The inverse transformation
+            # phi_prev = (phi_curr + arcsin(c * sin(phi_curr) / a)) / 2
+            arg = jnp.clip(c_i * sin_phi / a_i, -1.0, 1.0)  # Clip to avoid numerical issues
+            phi_prev = 0.5 * (phi_curr + jnp.arcsin(arg))
+
+            return phi_prev, None
+
+        phi_0, _ = jax.lax.scan(landen_backward, phi_n, jnp.arange(max_iter))
+
+        # Compute the elliptic functions from phi_0
+        sin_phi = jnp.sin(phi_0)
+        cos_phi = jnp.cos(phi_0)
+
+        sn = sin_phi
+        cn = cos_phi
+        dn = jnp.sqrt(1.0 - m * sin_phi * sin_phi)
+
+        return sn, cn, dn
+
+    # Select appropriate case based on m value
+    abs_m = jnp.abs(m)
+    is_m_zero = abs_m < 1e-10
+    is_m_one = jnp.abs(abs_m - 1.0) < 1e-10
+
+    # Nested conditional: check m=0 first, then m=1, then general
+    def select_result():
+        return jax.lax.cond(
+            is_m_zero,
+            case_m_zero,
+            lambda: jax.lax.cond(
+                is_m_one,
+                case_m_one,
+                case_general
+            )
+        )
+
+    return select_result()

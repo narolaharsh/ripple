@@ -556,7 +556,7 @@ def IMRPhenomX_Initialize_MSA_System(pPrec, pWF: dict, ExpansionOrder: int):
     object.__setattr__(pPrec, 'phiz_0', -phiz_0 - vMSA[0])
     object.__setattr__(pPrec, 'zeta_0', -zeta_0 - vMSA[1])
 
-    return None
+    return pPrec
 
 
 
@@ -580,7 +580,7 @@ def IMRPhenomX_Return_Roots_MSA(LNorm, JNorm, pPrec):
     theta = jnp.arccos(acosarg) / 3.0
     cos_theta = jnp.cos(theta)
     
-    print(f'{p=}, {sqrtarg=}, {theta=}, {B=}, {B2=}, {C=}')
+    #print(f'{p=}, {sqrtarg=}, {theta=}, {B=}, {B2=}, {C=}')
     
     vector_condition = jnp.logical_or(jnp.isnan(theta),
                                                    (jnp.isnan(sqrtarg)))
@@ -623,7 +623,7 @@ def IMRPhenomX_Return_Roots_MSA(LNorm, JNorm, pPrec):
         roots_when_valid()
     )
     
-    print(f'{roots_array=}')
+    #print(f'{roots_array=}')
 
     return roots_array
 
@@ -804,7 +804,7 @@ def compute_psi0(pPrec, L_0, S1v, S2v):
         
         # Check if we're in boundary case
         boundary_condition = jnp.logical_or(tmpB < 0.0, tmpB > 1.0)
-        jax.debug.print('JAX debug {} {} {}', handle_boundary_cases(), normal_case(), boundary_condition)
+        #jax.debug.print('JAX debug {} {} {}', handle_boundary_cases(), normal_case(), boundary_condition)
 
         return jax.lax.cond(boundary_condition, handle_boundary_cases, normal_case)
     

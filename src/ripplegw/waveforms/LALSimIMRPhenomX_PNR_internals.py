@@ -159,7 +159,7 @@ def XLALSimIMRPhenomXFinalMass2017(eta: float, chi1L: float, chi2L: float) -> fl
     return 1.0 - (noSpin + eqSpin + uneqSpin)
 
 
-def IMRPhenomX_PNR_GetAndSetPNRVariables(pPrec, pWF: dict) -> int:
+def IMRPhenomX_PNR_GetAndSetPNRVariables(pPrec, pWF: dict):
     """
     Get and set PNR (Precessing Numerical Relativity) variables for single-spin mapping.
 
@@ -256,7 +256,7 @@ def IMRPhenomX_PNR_GetAndSetPNRVariables(pPrec, pWF: dict) -> int:
     )
     object.__setattr__(pPrec, 'PNRInspiralScaling', PNRInspiralScaling)
 
-    return 1  # XLAL_SUCCESS
+    return pPrec  # XLAL_SUCCESS
 
 
 
@@ -564,7 +564,7 @@ def IMRPhenomX_PNR_CoprecWindow(pWF: dict) -> float:
     return 1.0
 
 
-def IMRPhenomX_PNR_GetAndSetCoPrecParams(pPrec, pWF: dict, lalParams: dict) -> int:
+def IMRPhenomX_PNR_GetAndSetCoPrecParams(pPrec, pWF: dict, lalParams: dict):
     """
     Get and set coprecessing parameters for PhenomXPNR model.
 
@@ -708,7 +708,7 @@ def IMRPhenomX_PNR_GetAndSetCoPrecParams(pPrec, pWF: dict, lalParams: dict) -> i
     # Override NU0 (as in original C code)
     pWF['NU0'] = 0.0
 
-    return status
+    return pPrec
 
 
 

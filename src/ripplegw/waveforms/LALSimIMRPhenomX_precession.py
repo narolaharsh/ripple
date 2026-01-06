@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import math
+from typing import Any
 from ..typing import Array
 from ..constants import G, MSUN, C, MTSUN_SI, GAMMA
 import jax
@@ -24,7 +25,7 @@ from .LALSimIMRPhenomX_PNR_internals import (XLALSimIMRPhenomXFinalSpin2017, XLA
 from .LALSimIMRPhenomTHM_fits import evaluate_QNMfit_fring21
 
 from .LALSimIMRPhenomX_qnm import (evaluate_QNMfit_fring22, evaluate_QNMfit_fdamp22)
-
+from .elliptic_integrals import gsl_sf_elljac_e
 
 @pytree_dataclass
 class CommonConstants:
@@ -180,6 +181,108 @@ class IMRPhenomXGetAndSetPrecessionVariables:
     IMRPhenomXPrecVersion: int = field(init=False)
     PolarizationSymmetry: float = field(init=False)
 
+    # MSA system fields (set by IMRPhenomX_Initialize_MSA_System)
+    qq: float = field(init=False, default=0.0)
+    invqq: float = field(init=False, default=0.0)
+    delta_qq: float = field(init=False, default=0.0)
+    delta2_qq: float = field(init=False, default=0.0)
+    delta3_qq: float = field(init=False, default=0.0)
+    delta4_qq: float = field(init=False, default=0.0)
+    Lhat_cos_theta: float = field(init=False, default=0.0)
+    Lhat_phi: float = field(init=False, default=0.0)
+    Lhat_theta: float = field(init=False, default=0.0)
+    S1_0: Any = field(init=False, default=None)
+    S2_0: Any = field(init=False, default=None)
+    v_0: float = field(init=False, default=0.0)
+    v_0_2: float = field(init=False, default=0.0)
+    L_0: Any = field(init=False, default=None)
+    dotS1L: float = field(init=False, default=0.0)
+    dotS2L: float = field(init=False, default=0.0)
+    dotS1S2: float = field(init=False, default=0.0)
+    dotS1Ln: float = field(init=False, default=0.0)
+    dotS2Ln: float = field(init=False, default=0.0)
+    constants_L: Any = field(init=False, default=None)
+    Seff: float = field(init=False, default=0.0)
+    Seff2: float = field(init=False, default=0.0)
+    S_0: Any = field(init=False, default=None)
+    J_0: Any = field(init=False, default=None)
+    S_0_norm: float = field(init=False, default=0.0)
+    S_0_norm_2: float = field(init=False, default=0.0)
+    L_0_norm: float = field(init=False, default=0.0)
+    J_0_norm: float = field(init=False, default=0.0)
+    J_0_norm_2: float = field(init=False, default=0.0)
+    L_0_norm_2: float = field(init=False, default=0.0)
+    Spl2: float = field(init=False, default=0.0)
+    Smi2: float = field(init=False, default=0.0)
+    S32: float = field(init=False, default=0.0)
+    Spl2pSmi2: float = field(init=False, default=0.0)
+    Spl2mSmi2: float = field(init=False, default=0.0)
+    Spl: float = field(init=False, default=0.0)
+    Smi: float = field(init=False, default=0.0)
+    SAv2: float = field(init=False, default=0.0)
+    SAv: float = field(init=False, default=0.0)
+    invSAv2: float = field(init=False, default=0.0)
+    invSAv: float = field(init=False, default=0.0)
+    c1: float = field(init=False, default=0.0)
+    c12: float = field(init=False, default=0.0)
+    c1_over_eta: float = field(init=False, default=0.0)
+    S1L_pav: float = field(init=False, default=0.0)
+    S2L_pav: float = field(init=False, default=0.0)
+    S1S2_pav: float = field(init=False, default=0.0)
+    S1Lsq_pav: float = field(init=False, default=0.0)
+    S2Lsq_pav: float = field(init=False, default=0.0)
+    S1LS2L_pav: float = field(init=False, default=0.0)
+    beta3: float = field(init=False, default=0.0)
+    beta5: float = field(init=False, default=0.0)
+    beta6: float = field(init=False, default=0.0)
+    beta7: float = field(init=False, default=0.0)
+    sigma4: float = field(init=False, default=0.0)
+    a0: float = field(init=False, default=0.0)
+    a2: float = field(init=False, default=0.0)
+    a3: float = field(init=False, default=0.0)
+    a4: float = field(init=False, default=0.0)
+    a5: float = field(init=False, default=0.0)
+    a6: float = field(init=False, default=0.0)
+    a7: float = field(init=False, default=0.0)
+    a0_2: float = field(init=False, default=0.0)
+    a0_3: float = field(init=False, default=0.0)
+    a2_2: float = field(init=False, default=0.0)
+    g0: float = field(init=False, default=0.0)
+    g2: float = field(init=False, default=0.0)
+    g3: float = field(init=False, default=0.0)
+    g4: float = field(init=False, default=0.0)
+    g5: float = field(init=False, default=0.0)
+    psi0: float = field(init=False, default=0.0)
+    psi1: float = field(init=False, default=0.0)
+    psi2: float = field(init=False, default=0.0)
+    Delta: float = field(init=False, default=0.0)
+    Omegaz0: float = field(init=False, default=0.0)
+    Omegaz1: float = field(init=False, default=0.0)
+    Omegaz2: float = field(init=False, default=0.0)
+    Omegaz3: float = field(init=False, default=0.0)
+    Omegaz4: float = field(init=False, default=0.0)
+    Omegaz5: float = field(init=False, default=0.0)
+    MSA_ERROR: int = field(init=False, default=0)
+    Omegaz0_coeff: float = field(init=False, default=0.0)
+    Omegaz1_coeff: float = field(init=False, default=0.0)
+    Omegaz2_coeff: float = field(init=False, default=0.0)
+    Omegaz3_coeff: float = field(init=False, default=0.0)
+    Omegaz4_coeff: float = field(init=False, default=0.0)
+    Omegaz5_coeff: float = field(init=False, default=0.0)
+    Omegazeta0: float = field(init=False, default=0.0)
+    Omegazeta1: float = field(init=False, default=0.0)
+    Omegazeta2: float = field(init=False, default=0.0)
+    Omegazeta3: float = field(init=False, default=0.0)
+    Omegazeta4: float = field(init=False, default=0.0)
+    Omegazeta5: float = field(init=False, default=0.0)
+    Omegazeta0_coeff: float = field(init=False, default=0.0)
+    Omegazeta1_coeff: float = field(init=False, default=0.0)
+    Omegazeta2_coeff: float = field(init=False, default=0.0)
+    Omegazeta3_coeff: float = field(init=False, default=0.0)
+    Omegazeta4_coeff: float = field(init=False, default=0.0)
+    Omegazeta5_coeff: float = field(init=False, default=0.0)
+    phiz_0: float = field(init=False, default=0.0)
+    zeta_0: float = field(init=False, default=0.0)
 
 
     def __post_init__(self):
@@ -197,6 +300,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         #self.compute_evolved_spin_using_spintaylor() # Function that uses Spin Taylor approximantion to evolve spins
         
         self.compute_evolved_spin_using_msa()
+        self.compute_and_set_spherical_harmonics()
         
 
     def _compute_masses(self):
@@ -303,7 +407,6 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         # Convert version 300 to 223
         version = jnp.where(self.IMRPhenomXPrecVersion == 300, 223, self.IMRPhenomXPrecVersion)
         object.__setattr__(self, 'IMRPhenomXPrecVersion', version)
-        print('IMRPhenomXPrecVersion is updated to', self.IMRPhenomXPrecVersion)
 
         # Calculate in-plane spin magnitude
         chi_in_plane = jnp.sqrt(
@@ -384,8 +487,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         """Setup evolved spins - either via SpinTaylor or use initial values."""
         # Check if we need to run SpinTaylor prescription (versions 300+)
         use_spintaylor = (self.IMRPhenomXPrecVersion // 100 == 3)
-        print('JAX: Are we using spin taylor?', use_spintaylor)
-        if use_spintaylor:  
+        if use_spintaylor:
             self._setup_spintaylor_prescription()
         else:
             # For non-SpinTaylor versions, evolved spins are just the initial spins
@@ -429,7 +531,6 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
     def _compute_path1_parameters(self):
         """Compute integration parameters for PNRUseTunedAngles == False."""
-        print('Not using PNRUseTunedAngles')
         integration_buffer_path1 = jnp.where(self.pWF['deltaF'] > 0., 3. * self.pWF['deltaF'], 0.5)
         flow_path1 = (self.pWF['fMin'] - integration_buffer_path1) * 2 / self.M_MAX
         return integration_buffer_path1, flow_path1
@@ -464,7 +565,6 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         # Temporarily set version to 223 for PNR variable computation
         precVersion_save = self.IMRPhenomXPrecVersion
         object.__setattr__(self, 'IMRPhenomXPrecVersion', 223)
-        print('precversion', self.IMRPhenomXPrecVersion)
         IMRPhenomX_PNR_GetAndSetPNRVariables(self, self.pWF) ## First precversion is set to 223
 
         alphaParams = IMRPhenomX_PNR_precompute_alpha_coefficients(self.pWF, self)
@@ -480,7 +580,6 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         MF_high_cut = Mf_beta_lower
 
         self.pWF['fCutDef'] = jnp.where(self.pWF['chiEff']>0.99, 0.33, 0.3)
-        print('Generating ringdown frequency', self.pWF['Mfinal'])
         self.pWF['IMRPhenomXPNRUseTunedCoprec'] = False
         self.pWF['fRing'] = IMRPhenomXHM_GenerateRingdownFrequency(2, 2, self.pWF)
 
@@ -665,19 +764,18 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         """
 
         phenom_xp_convention = 1
-        print('Develope MSA code')        
 
         #Line 569
-        IMRPhenomX_PNR_GetAndSetPNRVariables(self, self.pWF)
+        self = IMRPhenomX_PNR_GetAndSetPNRVariables(self, self.pWF)
         #What is the output of this function?
 
         #Line 580
-        IMRPhenomX_PNR_GetAndSetCoPrecParams(self,self.pWF, self.lalParams)
+        self = IMRPhenomX_PNR_GetAndSetCoPrecParams(self, self.pWF, self.lalParams)
         # What is the output of this function?
 
         #if pflag in 220, 221, 222, 223, 224...
         #Line 597
-        IMRPhenomX_Initialize_MSA_System(self, self.pWF, self.lalParams['ExpansionOrder'])
+        self = IMRPhenomX_Initialize_MSA_System(self, self.pWF, self.lalParams['ExpansionOrder'])
         # What is the output of this function?
 
 
@@ -750,6 +848,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         # Compress line 931-966
         thetaJN, Nz_Jf, Nx_Jf = thetaJN_Nz_Nx_1_6_7(N_Sf, J0_Sf, J0)
+        object.__setattr__(self, 'thetaJN', thetaJN)
 
         '''
         Define the polarizations used. This follows the conventions adopted for IMRPhenomPv2.
@@ -819,6 +918,23 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         cexp_i_epsilon = 0.
         cexp_i_betah   = 0.
 
+        object.__setattr__(self, 'alpha_offset', alpha_offset)
+        object.__setattr__(self, 'epsilon_offset', epsilon_offset)
+        object.__setattr__(self, 'alpha_offset_1', alpha_offset_1)
+        object.__setattr__(self, 'epsilon_offset_1', epsilon_offset_1)
+        object.__setattr__(self, 'alpha_offset_3', alpha_offset_3)
+        object.__setattr__(self, 'epsilon_offset_3', epsilon_offset_3)
+        object.__setattr__(self, 'alpha_offset_4', alpha_offset_4)
+        object.__setattr__(self, 'epsilon_offset_4', epsilon_offset_4)
+
+        object.__setattr__(self, 'cexp_i_alpha', cexp_i_alpha)
+        object.__setattr__(self, 'cexp_i_epsilon', cexp_i_epsilon)
+        object.__setattr__(self, 'cexp_i_betah', cexp_i_betah)
+
+
+
+       
+
         # When L + SL < 0 and q>7, we disable multibanding NH: I will skip this function
         #self.IMRPhenomXPCheckMaxOpeningAngle()
 
@@ -829,13 +945,46 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         # At high mass ratios, we find there can be numerical instabilities in the model, although the waveforms continue to be well behaved.
         # We warn to user of the possibility of these instabilities.
-        # printf(pWF->q)
-        jax.lax.cond(self.pWF["q"] > 80, 
-                     lambda _: jax.debug.print("Very high mass ratio, possibility of numerical instabilities. Waveforms remain well behaved."), 
-                     lambda _: None, 
-                     operand = None)
 
         return None
+
+    def compute_and_set_spherical_harmonics(self):
+        """
+        Compute all required spin-weighted spherical harmonics and assign them to self.
+
+        This method computes Y_{l,m}^{-2}(theta, phi=0) for:
+        - l=2, m in [-2, -1, 0, 1, 2]
+        - l=3, m in [-3, -2, -1, 0, 1, 2, 3]
+        - l=4, m in [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+
+        The spherical harmonics are evaluated at theta = self.thetaJN and phi = 0.
+        """
+        # l=2 modes
+        object.__setattr__(self, 'Y2m2', compute_sminus2_l2(theta=self.thetaJN, m=-2))
+        object.__setattr__(self, 'Y2m1', compute_sminus2_l2(theta=self.thetaJN, m=-1))
+        object.__setattr__(self, 'Y20', compute_sminus2_l2(theta=self.thetaJN, m=0))
+        object.__setattr__(self, 'Y21', compute_sminus2_l2(theta=self.thetaJN, m=1))
+        object.__setattr__(self, 'Y22', compute_sminus2_l2(theta=self.thetaJN, m=2))
+
+        # l=3 modes
+        object.__setattr__(self, 'Y3m3', compute_sminus2_l3(theta=self.thetaJN, m=-3))
+        object.__setattr__(self, 'Y3m2', compute_sminus2_l3(theta=self.thetaJN, m=-2))
+        object.__setattr__(self, 'Y3m1', compute_sminus2_l3(theta=self.thetaJN, m=-1))
+        object.__setattr__(self, 'Y30', compute_sminus2_l3(theta=self.thetaJN, m=0))
+        object.__setattr__(self, 'Y31', compute_sminus2_l3(theta=self.thetaJN, m=1))
+        object.__setattr__(self, 'Y32', compute_sminus2_l3(theta=self.thetaJN, m=2))
+        object.__setattr__(self, 'Y33', compute_sminus2_l3(theta=self.thetaJN, m=3))
+
+        # l=4 modes
+        object.__setattr__(self, 'Y4m4', compute_sminus2_l4(theta=self.thetaJN, m=-4))
+        object.__setattr__(self, 'Y4m3', compute_sminus2_l4(theta=self.thetaJN, m=-3))
+        object.__setattr__(self, 'Y4m2', compute_sminus2_l4(theta=self.thetaJN, m=-2))
+        object.__setattr__(self, 'Y4m1', compute_sminus2_l4(theta=self.thetaJN, m=-1))
+        object.__setattr__(self, 'Y40', compute_sminus2_l4(theta=self.thetaJN, m=0))
+        object.__setattr__(self, 'Y41', compute_sminus2_l4(theta=self.thetaJN, m=1))
+        object.__setattr__(self, 'Y42', compute_sminus2_l4(theta=self.thetaJN, m=2))
+        object.__setattr__(self, 'Y43', compute_sminus2_l4(theta=self.thetaJN, m=3))
+        object.__setattr__(self, 'Y44', compute_sminus2_l4(theta=self.thetaJN, m=4))
 
 
 
@@ -890,10 +1039,6 @@ def convention_five_or_seven_false(pPrec, pWF, piM, fRef, alpha0, epsilon0):
 
 def Get_alphaepsilon_atfref(pPrec, pWF, mprime, piM, fRef, alpha0, epsilon0):
     omega_ref = piM * fRef * 2 / mprime
-    pflag = 223
-
-    #/* Explicitly enumerate MSA flags */
-    cond = (pflag == 220) | (pflag == 221) | (pflag == 222) | (pflag == 223) | (pflag == 224)
 
     alpha_offset, epsilon_offset = Get_alphaepsilon_atfref_pflag_true(pPrec, pWF, omega_ref, alpha0, epsilon0)
     
@@ -905,26 +1050,22 @@ def Get_alphaepsilon_atfref_pflag_true(pPrec, pWF, omega_ref, alpha0, epsilon0):
     v = jnp.cbrt(omega_ref)
     vangles  = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v) # FIXME
 
-    alpha_offset = vangles['x'] - alpha0
-    epsilon_offset = vangles['x'] - epsilon0
+    alpha_offset = vangles[0] - alpha0
+    epsilon_offset = vangles[1] - epsilon0
     return alpha_offset, epsilon_offset
     
 
 def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v):
     # Wrapper to generate \f$\phi_z\f$, \f$\zeta\f$ and \f$\cos \theta_L\f$ at a given frequency
 
-    vout = jnp.array([0, 0, 0])
-    pPrec = None
-
+    
 
     L_norm = pWF['eta']/v
+
     J_norm = IMRPhenomX_JNorm_MSA(L_norm, pPrec)
 
-    L_norm3PN       = 0.0
-
     # Compressing line 2212 - 2220
-    cond = (pPrec.IMRPhenomXPrecVersion == 222) | (pPrec.IMRPhenomXPrecVersion == 223)
-    L_norm3PN = jax.lax.cond(cond, IMRPhenomX_L_norm_3PN_of_v, XLALSimIMRPhenomXLPNAnsatz, v, L_norm, pPrec)
+    L_norm3PN = IMRPhenomX_L_norm_3PN_of_v(v, L_norm, pPrec)
 
     '''
     if (pPrec.IMRPhenomXPrecVersion == 222) | (pPrec.IMRPhenomXPrecVersion == 223):
@@ -938,21 +1079,20 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v):
     J_norm3PN = IMRPhenomX_JNorm_MSA(L_norm3PN, pPrec)
     vRoots    = IMRPhenomX_Return_Roots_MSA(L_norm, J_norm, pPrec)
 
+    object.__setattr__(pPrec, 'S32', vRoots[0])
+    object.__setattr__(pPrec, 'Smi2', vRoots[1])
+    object.__setattr__(pPrec, 'Spl2', vRoots[2])
 
-    pPrec.S32  = vRoots.x
-    pPrec.Smi2 = vRoots.y
-    pPrec.Spl2 = vRoots.z
-
-    pPrec.Spl2mSmi2   = pPrec.Spl2 - pPrec.Smi2
-    pPrec.Spl2pSmi2   = pPrec.Spl2 + pPrec.Smi2
-    pPrec.Spl         = jnp.sqrt(pPrec.Spl2)
-    pPrec.Smi         = jnp.sqrt(pPrec.Smi2)
+    object.__setattr__(pPrec, 'Spl2mSmi2', pPrec.Spl2 - pPrec.Smi2)
+    object.__setattr__(pPrec, 'Spl2pSmi2', pPrec.Spl2 + pPrec.Smi2)
+    object.__setattr__(pPrec, 'Spl', jnp.sqrt(pPrec.Spl2))
+    object.__setattr__(pPrec, 'Smi', jnp.sqrt(pPrec.Smi2))
 
     SNorm = IMRPhenomX_Return_SNorm_MSA(v, pPrec)
-    pPrec.S_norm      = SNorm
-    pPrec.S_norm_2    = SNorm * SNorm
+    object.__setattr__(pPrec, 'S_norm', SNorm)
+    object.__setattr__(pPrec, 'S_norm_2', SNorm * SNorm)
 
-    vMSA = {0.,0.,0.}
+    vMSA = jnp.array([0., 0., 0.])
 
     # Compressing line 2245-2249
     vMSA_correction = IMRPhenomX_Return_MSA_Corrections_MSA(v, L_norm, J_norm, pPrec)
@@ -960,23 +1100,23 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v):
     vMSA = jnp.where(cond, vMSA_correction, vMSA)
     '''
     if(jnp.abs(pPrec.Smi2 - pPrec.Spl2) > 1.e-5):
-    
+
         #Get phiz_0_MSA and zeta_0_MSA
         vMSA = IMRPhenomX_Return_MSA_Corrections_MSA(v, L_norm, J_norm, pPrec)
     '''
 
-    phiz_MSA     = vMSA.x
-    zeta_MSA     = vMSA.y
+    phiz_MSA     = vMSA[0]
+    zeta_MSA     = vMSA[1]
 
     phiz         = IMRPhenomX_Return_phiz_MSA(v, J_norm, pPrec)
     zeta         = IMRPhenomX_Return_zeta_MSA(v, pPrec)
     cos_theta_L        = IMRPhenomX_costhetaLJ(L_norm3PN, J_norm3PN, SNorm)
 
-    vout[0] = phiz + phiz_MSA
-    vout[1] = zeta + zeta_MSA
-    vout[2] = cos_theta_L
+    vout1 = phiz + phiz_MSA
+    vout2 = zeta + zeta_MSA
+    vout3 = cos_theta_L
 
-    return vout
+    return jnp.array([vout1, vout2, vout3])
 
 
 
@@ -998,7 +1138,6 @@ def IMRPhenomX_L_norm_3PN_of_v(v: jax.Array, L_norm: float, pPrec)->float:
     L_norm3PN = L_norm*(1. + v2*(term_0 + v*term_1 + v2*(term_2 + v*term_3 + v2*(term_4))))
 
     return L_norm3PN
-
 
 
 def XLALSimIMRPhenomXLPNAnsatz(v: float, LNorm: float, L0: float, L1: float, L2: float, 
@@ -1058,9 +1197,7 @@ def IMRPhenomX_Return_Roots_MSA(LNorm, JNorm, pPrec):
 
     theta = jnp.arccos(acosarg) / 3.0
     cos_theta = jnp.cos(theta)
-    
-    print(f'{p=}, {sqrtarg=}, {theta=}, {B=}, {B2=}, {C=}')
-    
+
     vector_condition = jnp.logical_or(jnp.isnan(theta),
                                                    (jnp.isnan(sqrtarg)))
     scalar_condition = jnp.logical_or.reduce(jnp.array([(pPrec.dotS1Ln == 1.0),
@@ -1102,7 +1239,6 @@ def IMRPhenomX_Return_Roots_MSA(LNorm, JNorm, pPrec):
         roots_when_valid()
     )
     
-    print(f'{roots_array=}')
 
     return roots_array
 
@@ -1177,6 +1313,8 @@ def IMRPhenomX_Return_SNorm_MSA(v, pPrec):
     SNorm2 = pPrec.Spl2 + (pPrec.Smi2 - pPrec.Spl2) * sn * sn
 
     return jnp.sqrt(SNorm2)
+
+
 
 
 def IMRPhenomX_psiofv(v, v2, psi0, psi1, psi2, pPrec):
@@ -1943,7 +2081,7 @@ def IMRPhenomX_SetPrecessingRemnantParams(
     pPrec,
     pWF: dict,
     lalParams: dict
-) -> int:
+):
     """
     Set precessing remnant (final black hole) parameters for IMRPhenomX.
 
@@ -2058,11 +2196,5 @@ def IMRPhenomX_SetPrecessingRemnantParams(
         emm = 2
         pnr_window = pWF.get('pnr_window', 1.0)
         pWF['fRING'] = pWF['fRING'] - (1.0 - pnr_window) * emm * fRINGEffShiftDividedByEmm
-
-    print('jax Mfinal', Mfinal)
-    print('jax afinal', afinal)
-    print('jax fRing', fRING)
-    print('jax fdamp', fDAMP)
-    print('jax fdamp', fDAMP)
 
     return Mfinal, afinal, fRING, fDAMP
