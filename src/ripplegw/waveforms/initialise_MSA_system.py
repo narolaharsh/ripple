@@ -623,7 +623,6 @@ def IMRPhenomX_Return_Roots_MSA(LNorm, JNorm, pPrec):
         roots_when_valid()
     )
     
-    #print(f'{roots_array=}')
 
     return roots_array
 
