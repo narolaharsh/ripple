@@ -651,13 +651,18 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         L3   = (-7*(self.chi1L + self.chi2L + self.chi1L*self.delta - self.chi2L*self.delta) + 5*(self.chi1L + self.chi2L)*self.eta)/6.
         L4   = (81 + (-57 + self.eta)*self.eta)/24.
         L5   = (-1650*(self.chi1L + self.chi2L + self.chi1L*self.delta - self.chi2L*self.delta) + 1336*(self.chi1L + self.chi2L)*self.eta + 511*(self.chi1L - self.chi2L)*self.delta*self.eta + 28*(self.chi1L + self.chi2L)*self.eta2)/600.
-        L6   = (10935 + self.eta*(-62001 + 1674*self.eta + 7*self.eta2 + 2214*self.power_of_lalpi_2))/1296.
+        L6   = (10935 + self.eta*(-62001 + 1674*self.eta + 7*self.eta2 + 2214*self.common_constants.power_of_lalpi_2))/1296.
         L7   = 0.0
         L8   = 0.0
-        return L0, L1, L2, L3, L4, L5, L6, L7, L8
+        L8L = 0.0
+        return L0, L1, L2, L3, L4, L5, L6, L7, L8, L8L
 
 
     def compute_evolved_spin_using_msa(self):
+
+        """
+        What is compute_evolved_spin_using_msa function supposed to return?
+        """
 
         phenom_xp_convention = 1
         print('Develope MSA code')        
@@ -685,7 +690,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
 
         # case 223: Line 691 compute orbital angular momentum
-        L0, L1, L2, L3, L4, L5, L6, L7, L8 = self.flag_222_223_twoPN_non_spinning_orbitan_angular_momentum()
+        L0, L1, L2, L3, L4, L5, L6, L7, L8, L8L = self.flag_222_223_twoPN_non_spinning_orbitan_angular_momentum()
 
         LRef = self.M * self.M * XLALSimIMRPhenomXLPNAnsatz(self.pWF['v_ref'], self.pWF['eta'] / self.pWF['v_ref'], L0, L1, L2, L3, L4, L5, L6, L7, L8, L8L) 
 
@@ -708,12 +713,12 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         tol_condition = (jnp.abs(J0x_Sf) < MAX_TOL_ATAN) & (jnp.abs(J0y_Sf) < MAX_TOL_ATAN)
         # Compress line 797-825
         #Get azimuthal angle of J0 in the source frame
-        phiJ_Sf = self.get_phiJ_Sf(tol_condition, phiRef, phenom_xp_convention, J0_Sf)
+        phiJ_Sf = get_phiJ_Sf(tol_condition, J0_Sf)
 
-        phi0_aligned = phiJ_Sf
+        #phi0_aligned = phiJ_Sf
 
         #Compress line 828 - 846 #FIXME in function set_phi0 I am not sure what to do for cases 5, 6, 7. What is the old value?
-        phi0 = self.set_phi0(phenom_xp_convention, phi0_aligned)
+        phi0 = 0 #phenom_xp_convention=1 it is zero
 
         #Determine kappa via rotations, as above */
         Nx_Sf = jnp.sin(self.pWF['inclination'])*jnp.cos((jnp.pi / 2.0) - phiRef)
@@ -740,11 +745,11 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         # Compress line 887 - 930
         tol_condition = (jnp.abs(vout[0]) < MAX_TOL_ATAN) & (jnp.abs(vout[1]) < MAX_TOL_ATAN)
-        alpha0 = self.set_alpha0(tol_condition, phenom_xp_convention, vout[0], vout[1], kappa)
+        alpha0 = jnp.pi - kappa # For phenom_xp_convention = 1
         
 
         # Compress line 931-966
-        thetaJN, Nz_Jf, Nx_Jf = self.thetaJN_Nz_Nx_1_6_7(v_in, N_Sf, J0_Sf, phiJ_Sf, thetaJ_Sf, kappa)
+        thetaJN, Nz_Jf, Nx_Jf = thetaJN_Nz_Nx_1_6_7(N_Sf, J0_Sf, J0)
 
         '''
         Define the polarizations used. This follows the conventions adopted for IMRPhenomPv2.
@@ -781,11 +786,11 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         '''
 
         #Compress line 1002-1034
-        PArun_Jf, QArun_Jf = self.PQ_Arun_1_6_7()
+        PArun_Jf, QArun_Jf = PQ_Arun_1_6_7(Nx_Jf, Nz_Jf)
 
         #As it is line 1035-1043
         #(X . P)
-        XdotPArun = (vout[0] * PArun_Jf[0]) + (vout[1] * self.PArun_Jf[1]) + (vout[2] * PArun_Jf[2])
+        XdotPArun = (vout[0] * PArun_Jf[0]) + (vout[1] * PArun_Jf[1]) + (vout[2] * PArun_Jf[2])
 
         #(X . Q)
         XdotQArun = (vout[0] * QArun_Jf[0]) + (vout[1] * QArun_Jf[1]) + (vout[2] * QArun_Jf[2])
@@ -800,13 +805,14 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         #/* ********** PN Euler Angle Coefficients ********** */
         # Compress line 1050-1143
-        alpha1, alpha2, alpha3, alpha4L, alpha5, epsilon1, epsilon2, epsilon3, epsilon4L, epsilon5 = self.compute_alpha_epsilon_220_330()
+        alpha1, alpha2, alpha3, alpha4L, alpha5, epsilon1, epsilon2, epsilon3, epsilon4L, epsilon5 = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,  
+        #self.compute_alpha_epsilon_220_330()
 
         # Compressed line 1163-1177
         epsilon0 = set_epsilon0(phenom_xp_convention, phiJ_Sf)
 
         ## Compression line 1178-1202
-        alpha_offset, epsilon_offset, alpha_offset_1, epsilon_offset_1, alpha_offset_3, epsilon_offset_3, alpha_offset_4, epsilon_offset_4 = convention_five_or_seven_false(alpha0)
+        alpha_offset, epsilon_offset, alpha_offset_1, epsilon_offset_1, alpha_offset_3, epsilon_offset_3, alpha_offset_4, epsilon_offset_4 = convention_five_or_seven_false(self, self.pWF, self.pWF['piM'], self.pWF['fRef'], alpha0, epsilon0)
 
 
         cexp_i_alpha   = 0.
@@ -817,7 +823,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
         #self.IMRPhenomXPCheckMaxOpeningAngle()
 
         # Activate multibanding for Euler angles it threshold !=0. Only for PhenomXPHM. */
-        MBandPrecVersion = jax.lax.cond(self.lalParams['PhenomXPHMThresholdMband']==0, lambda _: 0, lambda _: 1, operand = None)
+        #MBandPrecVersion = jax.lax.cond(self.lalParams['PhenomXPHMThresholdMband']==0, lambda _: 0, lambda _: 1, operand = None)
         ## NH: I do not implement PhenomXPHMThresholdMband==1 option. The output of the above line will always be self.MBandPrecVersion = 0. 
 
 
@@ -834,38 +840,77 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
 
 
+def PQ_Arun_1_6_7(Nx_Jf, Nz_Jf):
+    # Get polar angle of X vector in J frame in the P,Q basis of Arun et al
+    PArunx_Jf = Nz_Jf
+    PAruny_Jf = 0.0
+    PArunz_Jf = -Nx_Jf
 
-def convention_five_or_seven_false(pWF, piM, fRef, alpha0, epsilon0):
+    QArunx_Jf = 0.0
+    QAruny_Jf = 1.0
+    QArunz_Jf = 0.0
+
+    return jnp.array([PArunx_Jf, PAruny_Jf, PArunz_Jf]), jnp.array([QArunx_Jf, QAruny_Jf, QArunz_Jf])
+
+def thetaJN_Nz_Nx_1_6_7(N_Sf, J0_Sf, J0):
+    # Line 957-962
+
+    J0dotN     = (J0_Sf[0] * N_Sf[0]) + (J0_Sf[1] * N_Sf[1]) + (J0_Sf[2] * N_Sf[2])
+    thetaJN = jnp.acos( J0dotN / J0 )
+    Nz_Jf     = jnp.cos(thetaJN)
+    Nx_Jf     = jnp.sin(thetaJN)
+
+    return thetaJN, Nz_Jf, Nx_Jf
+
+def get_phiJ_Sf(tol_condition, J0_Sf):
+    """
+    Compute phiJ_Sf based on tolerance condition.
+
+    Since convention_condition is always False, this simplifies to:
+    - If tol_condition is True: return 0.0
+    - Otherwise: return atan2(J0_Sf[1], J0_Sf[0])
+    """
+    phiJ_Sf = jax.lax.cond(
+        tol_condition,
+        lambda _: 0.0,
+        lambda _: jnp.atan2(J0_Sf[1], J0_Sf[0]),
+        operand=None
+    )
+
+    return phiJ_Sf
+
+
+def convention_five_or_seven_false(pPrec, pWF, piM, fRef, alpha0, epsilon0):
     # Get initial Get \alpha and \epsilon offsets at \omega = pi * M * f_{Ref} */
     mprime = 2
-    alpha_offset, epsilon_offset = Get_alphaepsilon_atfref(pWF, mprime, piM, fRef, alpha0, epsilon0)
+    alpha_offset, epsilon_offset = Get_alphaepsilon_atfref(pPrec, pWF, mprime, piM, fRef, alpha0, epsilon0)
     return alpha_offset, epsilon_offset, alpha_offset, epsilon_offset, alpha_offset, epsilon_offset, alpha_offset, epsilon_offset
 
 
 
-def Get_alphaepsilon_atfref(pWF, mprime, piM, fRef, alpha0, epsilon0):
+def Get_alphaepsilon_atfref(pPrec, pWF, mprime, piM, fRef, alpha0, epsilon0):
     omega_ref = piM * fRef * 2 / mprime
     pflag = 223
 
     #/* Explicitly enumerate MSA flags */
     cond = (pflag == 220) | (pflag == 221) | (pflag == 222) | (pflag == 223) | (pflag == 224)
 
-    alpha_offset, epsilon_offset = Get_alphaepsilon_atfref_pflag_true(pWF, omega_ref, alpha0, epsilon0)
+    alpha_offset, epsilon_offset = Get_alphaepsilon_atfref_pflag_true(pPrec, pWF, omega_ref, alpha0, epsilon0)
     
     return alpha_offset, epsilon_offset
 
 
-def Get_alphaepsilon_atfref_pflag_true(pWF, omega_ref, alpha0, epsilon0):
+def Get_alphaepsilon_atfref_pflag_true(pPrec, pWF, omega_ref, alpha0, epsilon0):
 
     v = jnp.cbrt(omega_ref)
-    vangles  = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v, pWF) # FIXME
+    vangles  = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v) # FIXME
 
     alpha_offset = vangles['x'] - alpha0
     epsilon_offset = vangles['x'] - epsilon0
     return alpha_offset, epsilon_offset
     
 
-def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, v, pWF):
+def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v):
     # Wrapper to generate \f$\phi_z\f$, \f$\zeta\f$ and \f$\cos \theta_L\f$ at a given frequency
 
     vout = jnp.array([0, 0, 0])
@@ -1361,7 +1406,7 @@ def IMRPhenomX_Return_phiz_MSA(
  
     # \phi_{z,-1} = \sum^5_{n=0} <\Omega_z>^(n) \phi_z^(n) + \phi_{z,-1}^0
  
-    # Note that the <\Omega_z>^(n) are given by self.Omegazn_coeff's as in Eqs. D15-D20
+    # Note that the <\Omega_z>^(n) are given by Omegazn_coeff's as in Eqs. D15-D20
     phiz_out = (
         phiz_0_coeff * pPrec.Omegaz0_coeff
         + phiz_1_coeff * pPrec.Omegaz1_coeff
