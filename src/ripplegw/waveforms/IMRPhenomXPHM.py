@@ -3,21 +3,14 @@ import jax
 import jax.numpy as jnp
 from jax import vmap
 
-from .IMRPhenomD_utils import (
-    get_coeffs,
-    get_delta0,
-    get_delta1,
-    get_delta2,
-    get_delta3,
-    get_delta4,
-    get_transition_frequencies,
-)
-
 from .IMRPhenomD_QNMdata import fM_CUT
 from ..constants import EulerGamma, gt, m_per_Mpc, C, PI
 from ..typing import Array
 from ripplegw import Mc_eta_to_ms
 from .spherical_harmonics import (compute_sminus2_l2, compute_sminus2_l3, compute_sminus2_l4)
+
+
+
 
 
 

@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from .LALSimIMRPhenomX_precession import (IMRPhenomX_Return_phi_zeta_costhetaL_MSA, IMRPhenomXGetAndSetPrecessionVariables, XLALSimIMRPhenomXUtilsHztoMf)
 from .LALSimIMRPhenomX_internals import (IMRPhenomXGetPhaseCoefficients, IMRPhenomXGetAmplitudeCoefficients)
 from .LALSimIMRPhenomXHM_multiband import (deltaF_mergerBin, deltaF_ringdownBin)
+from .LALSimIMRPhenomXHM_internals import (IMRPhenomXHM_Initialize_QNMs, IMRPhenomXHM_SetHMWaveformVariables)
 import jax
 
 

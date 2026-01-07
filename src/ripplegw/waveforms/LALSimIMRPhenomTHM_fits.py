@@ -247,3 +247,237 @@ def evaluate_QNMfit_fdamp44(finalDimlessSpin: float) -> float:
 
     # Return NaN if input is invalid, otherwise return the computed value
     return jnp.where(valid_input, return_val, jnp.nan)
+
+
+# Mixing coefficient functions for (3,2) mode
+# These are used to transform spheroidal-harmonic ringdown ansatz to spherical-harmonic
+
+def evaluate_QNMfit_re_l2m2lp2(finalDimlessSpin: float) -> float:
+    """
+    Evaluate real part of QNM mixing coefficient for l=2, m=2, lp=2
+
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+
+    Returns:
+        float: Real part of mixing coefficient
+    """
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+
+    numerator = (1 - 2.2956993576253635*finalDimlessSpin + 1.461988775298876*x2 +
+                 0.0043296365593147035*x3 - 0.1695667458204109*x4 -
+                 0.0006267849034466508*x5)
+
+    denominator = (1 - 2.2956977727459043*finalDimlessSpin + 1.4646339137818438*x2 -
+                   0.16843226886562457*x4 - 0.00007150540890128118*x6)
+
+    return_val = numerator / denominator
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+
+def evaluate_QNMfit_im_l2m2lp2(finalDimlessSpin: float) -> float:
+    """
+    Evaluate imaginary part of QNM mixing coefficient for l=2, m=2, lp=2
+
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+
+    Returns:
+        float: Imaginary part of mixing coefficient
+    """
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+
+    numerator = (finalDimlessSpin * (0.3826673013161342 - 0.47531267226013896*finalDimlessSpin -
+                 0.05898102880105067*x2 + 0.0724525431346487*x3 +
+                 0.054714637311702986*x4 + 0.024544862718252784*x5))
+
+    denominator = (-38.70835035062785 + 69.82140084545878*finalDimlessSpin -
+                   27.99036444363243*x2 - 4.152310472191899*x4 + 1.*x6)
+
+    return_val = numerator / denominator
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+
+def evaluate_QNMfit_re_l3m2lp2(finalDimlessSpin: float) -> float:
+    """
+    Evaluate real part of QNM mixing coefficient for l=3, m=2, lp=2
+
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+
+    Returns:
+        float: Real part of mixing coefficient
+    """
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+
+    numerator = (finalDimlessSpin * (0.47513455283841244 - 0.9016636384605536*finalDimlessSpin +
+                 0.3844811236426182*x2 + 0.0855565148647794*x3 -
+                 0.03620067426672167*x4 - 0.006557249133752502*x5))
+
+    denominator = (-6.76894063440646 + 15.170831931186493*finalDimlessSpin -
+                   9.406169787571082*x2 + 1.*x4)
+
+    return_val = numerator / denominator
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+
+def evaluate_QNMfit_im_l3m2lp2(finalDimlessSpin: float) -> float:
+    """
+    Evaluate imaginary part of QNM mixing coefficient for l=3, m=2, lp=2
+
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+
+    Returns:
+        float: Imaginary part of mixing coefficient
+    """
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+
+    numerator = (finalDimlessSpin * (-2.8704762147145533 + 4.436434016918535*finalDimlessSpin -
+                 1.0115343326360486*x2 - 0.08965314412106505*x3 -
+                 0.4236810894599512*x4 - 0.041787576033810676*x5))
+
+    denominator = (-171.80908957903395 + 272.362882450877*finalDimlessSpin -
+                   76.68544453077854*x2 - 25.14197656531123*x4 + 1.*x6)
+
+    return_val = numerator / denominator
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+
+def evaluate_QNMfit_re_l2m2lp3(finalDimlessSpin: float) -> float:
+    """
+    Evaluate real part of QNM mixing coefficient for l=2, m=2, lp=3
+
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+
+    Returns:
+        float: Real part of mixing coefficient
+    """
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+
+    numerator = (finalDimlessSpin * (18.522563276099167 - 37.978140351289014*finalDimlessSpin +
+                 19.030390708998894*x2 + 3.0355668591803386*x3 -
+                 2.210028290847915*x4 - 0.37117112862247975*x5))
+
+    denominator = (164.52480238697507 - 377.9093045285145*finalDimlessSpin +
+                   243.3353695550844*x2 - 30.79738566181734*x4 + 1.*x6)
+
+    return_val = numerator / denominator
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+
+def evaluate_QNMfit_im_l2m2lp3(finalDimlessSpin: float) -> float:
+    """
+    Evaluate imaginary part of QNM mixing coefficient for l=2, m=2, lp=3
+
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+
+    Returns:
+        float: Imaginary part of mixing coefficient
+    """
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+
+    numerator = (finalDimlessSpin * (-49.7688437256778 + 120.43773704442333*finalDimlessSpin -
+                 82.95323455645332*x2 + 1.721453011852496*x3 +
+                 11.540237244397877*x4 - 0.9819458637589314*x5))
+
+    denominator = (2858.5790831181725 - 6305.619505422591*finalDimlessSpin +
+                   3825.6742092829054*x2 - 377.7822297815406*x4 + 1.*x6)
+
+    return_val = numerator / denominator
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+
+def evaluate_QNMfit_re_l3m2lp3(finalDimlessSpin: float) -> float:
+    """
+    Evaluate real part of QNM mixing coefficient for l=3, m=2, lp=3
+
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+
+    Returns:
+        float: Real part of mixing coefficient
+    """
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+
+    numerator = (1 - 2.107852425643677*finalDimlessSpin + 1.1906393634562715*x2 +
+                 0.02244848864087732*x3 - 0.09593447799423722*x4 -
+                 0.0021343381708933025*x5 - 0.005319515989331159*x6)
+
+    denominator = (1 - 2.1078515887706324*finalDimlessSpin + 1.2043484690080966*x2 -
+                   0.08910191596778137*x4 - 0.005471749827809503*x6)
+
+    return_val = numerator / denominator
+    return jnp.where(valid_input, return_val, jnp.nan)
+
+
+def evaluate_QNMfit_im_l3m2lp3(finalDimlessSpin: float) -> float:
+    """
+    Evaluate imaginary part of QNM mixing coefficient for l=3, m=2, lp=3
+
+    Args:
+        finalDimlessSpin: Final dimensionless spin (float)
+
+    Returns:
+        float: Imaginary part of mixing coefficient
+    """
+    valid_input = jnp.abs(finalDimlessSpin) <= 1.0
+
+    x2 = finalDimlessSpin * finalDimlessSpin
+    x3 = x2 * finalDimlessSpin
+    x4 = x2 * x2
+    x5 = x3 * x2
+    x6 = x3 * x3
+
+    numerator = (finalDimlessSpin * (12.45701482868677 - 29.398484595717147*finalDimlessSpin +
+                 18.26221675782779*x2 + 1.9308599142669403*x3 -
+                 3.159763242921214*x4 - 0.0910871567367674*x5))
+
+    denominator = (345.52914639836257 - 815.4349339779621*finalDimlessSpin +
+                   538.3888932415709*x2 - 69.3840921447381*x4 + 1.*x6)
+
+    return_val = numerator / denominator
+    return jnp.where(valid_input, return_val, jnp.nan)
