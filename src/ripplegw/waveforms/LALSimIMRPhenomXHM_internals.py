@@ -21,6 +21,9 @@ from .LALSimIMRPhenomTHM_fits import (evaluate_QNMfit_re_l2m2lp2,
                                       evaluate_QNMfit_im_l3m2lp3
                                       )
 
+from .LALSimIMRPhenomXHM_inspiral import *
+from .LALSimIMRPhenomXHM_intermediate import *
+
 from .LALSimIMRPhenomXUtilities import IMRPhenomXPsi4ToStrain
 
 import jax
@@ -449,3 +452,160 @@ def IMRPhenomXHM_SetHMWaveformVariables(
     wf['fAmpRDfalloff'] = 0.0
 
     return wf
+
+
+def IMRPhenomXHM_FillAmpFitsArray() -> dict:
+    """
+    Fill arrays with function references for amplitude coefficient/collocation point fits.
+
+    This function creates a mapping of fit functions for amplitude coefficients
+    and collocation points across three regions (inspiral, intermediate, ringdown)
+    and four modes (21, 33, 32, 44).
+
+    Returns:
+        dict: Dictionary containing three arrays:
+            - 'InspiralAmpFits': List of 12 functions for inspiral amplitude fits
+            - 'IntermediateAmpFits': List of 24 functions for intermediate amplitude fits
+            - 'RingdownAmpFits': List of 26 functions for ringdown amplitude fits
+
+    Note:
+        The actual fit functions (e.g., IMRPhenomXHM_Insp_Amp_21_iv1) are not yet
+        implemented in this Python translation. Placeholders (None) are used and
+        should be replaced with the actual fit functions when available.
+    """
+    pAmp = {}
+
+    # Initialize arrays with None placeholders
+    # In the full implementation, these would be function references
+    pAmp['InspiralAmpFits'] = [None] * 12
+    pAmp['IntermediateAmpFits'] = [None] * 24
+    pAmp['RingdownAmpFits'] = [None] * 26
+
+    # ******Inspiral Fits for collocation points******
+    # Each mode (21, 33, 32, 44) has 3 collocation points at different frequencies
+
+    # Mode 21
+    pAmp['InspiralAmpFits'][0] = IMRPhenomXHM_Insp_Amp_21_iv1  # fcutInsp
+    pAmp['InspiralAmpFits'][1] = IMRPhenomXHM_Insp_Amp_21_iv2  # fcutInsp*0.75
+    pAmp['InspiralAmpFits'][2] = IMRPhenomXHM_Insp_Amp_21_iv3  # fcutInsp*0.5
+
+    # Mode 33
+    pAmp['InspiralAmpFits'][3] = IMRPhenomXHM_Insp_Amp_33_iv1  # fcutInsp
+    pAmp['InspiralAmpFits'][4] = IMRPhenomXHM_Insp_Amp_33_iv2  # fcutInsp*0.75
+    pAmp['InspiralAmpFits'][5] = IMRPhenomXHM_Insp_Amp_33_iv3  # fcutInsp*0.5
+
+    # Mode 32
+    pAmp['InspiralAmpFits'][6] = IMRPhenomXHM_Insp_Amp_32_iv1  # fcutInsp
+    pAmp['InspiralAmpFits'][7] = IMRPhenomXHM_Insp_Amp_32_iv2  # fcutInsp*0.75
+    pAmp['InspiralAmpFits'][8] = IMRPhenomXHM_Insp_Amp_32_iv3  # fcutInsp*0.5
+
+    # Mode 44
+    pAmp['InspiralAmpFits'][9] = IMRPhenomXHM_Insp_Amp_44_iv1   # fcutInsp
+    pAmp['InspiralAmpFits'][10] = IMRPhenomXHM_Insp_Amp_44_iv2  # fcutInsp*0.75
+    pAmp['InspiralAmpFits'][11] = IMRPhenomXHM_Insp_Amp_44_iv3  # fcutInsp*0.5
+
+    # *****Intermediate Fits for EMR collocation points, 2 Intermediate regions*****
+
+    # Mode 21
+    pAmp['IntermediateAmpFits'][0] = IMRPhenomXHM_Inter_Amp_21_int1  # fcutInsp + (fcutRD-fcutInsp)/3
+    pAmp['IntermediateAmpFits'][1] = IMRPhenomXHM_Inter_Amp_21_int2  # fcutInsp + 2(fcutRD-fcutInsp)/3
+
+    # Mode 33
+    pAmp['IntermediateAmpFits'][2] = IMRPhenomXHM_Inter_Amp_33_int1  # fcutInsp + (fcutRD-fcutInsp)/3
+    pAmp['IntermediateAmpFits'][3] = IMRPhenomXHM_Inter_Amp_33_int2  # fcutInsp + 2(fcutRD-fcutInsp)/3
+
+    # Mode 32
+    pAmp['IntermediateAmpFits'][4] = IMRPhenomXHM_Inter_Amp_32_int1  # fcutInsp + (fcutRD-fcutInsp)/3
+    pAmp['IntermediateAmpFits'][5] = IMRPhenomXHM_Inter_Amp_32_int2  # fcutInsp + 2(fcutRD-fcutInsp)/3
+
+    # Mode 44
+    pAmp['IntermediateAmpFits'][6] = IMRPhenomXHM_Inter_Amp_44_int1  # fcutInsp + (fcutRD-fcutInsp)/3
+    pAmp['IntermediateAmpFits'][7] = IMRPhenomXHM_Inter_Amp_44_int2  # fcutInsp + 2(fcutRD-fcutInsp)/3
+
+    # Additional intermediate fits for EMR
+    # Mode 21
+    pAmp['IntermediateAmpFits'][8] = IMRPhenomXHM_Inter_Amp_21_int0   # fcutInsp + (fInt1 - fcutInsp)/3
+    pAmp['IntermediateAmpFits'][9] = IMRPhenomXHM_Inter_Amp_21_dint0  # fcutInsp + (fInt1 - fcutInsp)/3
+
+    # Mode 33
+    pAmp['IntermediateAmpFits'][10] = IMRPhenomXHM_Inter_Amp_33_int0   # fcutInsp + (fInt1 - fcutInsp)/3
+    pAmp['IntermediateAmpFits'][11] = IMRPhenomXHM_Inter_Amp_33_dint0  # fcutInsp + (fInt1 - fcutInsp)/3
+
+    # Mode 32
+    pAmp['IntermediateAmpFits'][12] = IMRPhenomXHM_Inter_Amp_32_int0   # fcutInsp + (fInt1 - fcutInsp)/3
+    pAmp['IntermediateAmpFits'][13] = IMRPhenomXHM_Inter_Amp_32_dint0  # fcutInsp + (fInt1 - fcutInsp)/3
+
+    # Mode 44
+    pAmp['IntermediateAmpFits'][14] = IMRPhenomXHM_Inter_Amp_44_int0   # fcutInsp + (fInt1 - fcutInsp)/3
+    pAmp['IntermediateAmpFits'][15] = IMRPhenomXHM_Inter_Amp_44_dint0  # fcutInsp + (fInt1 - fcutInsp)/3
+
+    # Additional intermediate fits
+    # Mode 21
+    pAmp['IntermediateAmpFits'][16] = IMRPhenomXHM_Inter_Amp_21_int3
+    pAmp['IntermediateAmpFits'][17] = IMRPhenomXHM_Inter_Amp_21_int4
+
+    # Mode 33
+    pAmp['IntermediateAmpFits'][18] = IMRPhenomXHM_Inter_Amp_33_int3
+    pAmp['IntermediateAmpFits'][19] = IMRPhenomXHM_Inter_Amp_33_int4
+
+    # Mode 32
+    pAmp['IntermediateAmpFits'][20] = IMRPhenomXHM_Inter_Amp_32_int3
+    pAmp['IntermediateAmpFits'][21] = IMRPhenomXHM_Inter_Amp_32_int4
+
+    # Mode 44
+    pAmp['IntermediateAmpFits'][22] = IMRPhenomXHM_Inter_Amp_44_int3
+    pAmp['IntermediateAmpFits'][23] = IMRPhenomXHM_Inter_Amp_44_int4
+
+    # ****Ringdown Fits for coefficients****
+
+    # Mode 21
+    pAmp['RingdownAmpFits'][0] = IMRPhenomXHM_RD_Amp_21_alambda
+    pAmp['RingdownAmpFits'][1] = IMRPhenomXHM_RD_Amp_21_lambda
+    pAmp['RingdownAmpFits'][2] = IMRPhenomXHM_RD_Amp_21_sigma
+
+    # Mode 33
+    pAmp['RingdownAmpFits'][3] = IMRPhenomXHM_RD_Amp_33_alambda
+    pAmp['RingdownAmpFits'][4] = IMRPhenomXHM_RD_Amp_33_lambda
+    pAmp['RingdownAmpFits'][5] = IMRPhenomXHM_RD_Amp_33_sigma  # currently constant
+
+    # Mode 32
+    pAmp['RingdownAmpFits'][6] = IMRPhenomXHM_RD_Amp_32_alambda
+    pAmp['RingdownAmpFits'][7] = IMRPhenomXHM_RD_Amp_32_lambda
+    pAmp['RingdownAmpFits'][8] = IMRPhenomXHM_RD_Amp_32_sigma  # currently constant
+
+    # Mode 44
+    pAmp['RingdownAmpFits'][9] = IMRPhenomXHM_RD_Amp_44_alambda
+    pAmp['RingdownAmpFits'][10] = IMRPhenomXHM_RD_Amp_44_lambda
+    pAmp['RingdownAmpFits'][11] = IMRPhenomXHM_RD_Amp_44_sigma  # currently constant
+
+    # ****Ringdown Fits for Collocation Points****
+
+    # Mode 21
+    pAmp['RingdownAmpFits'][12] = IMRPhenomXHM_RD_Amp_21_rdcp1
+    pAmp['RingdownAmpFits'][13] = IMRPhenomXHM_RD_Amp_21_rdcp2
+    pAmp['RingdownAmpFits'][14] = IMRPhenomXHM_RD_Amp_21_rdcp3
+
+    # Mode 33
+    pAmp['RingdownAmpFits'][15] = IMRPhenomXHM_RD_Amp_33_rdcp1
+    pAmp['RingdownAmpFits'][16] = IMRPhenomXHM_RD_Amp_33_rdcp2
+    pAmp['RingdownAmpFits'][17] = IMRPhenomXHM_RD_Amp_33_rdcp3
+
+    # Mode 32
+    pAmp['RingdownAmpFits'][18] = IMRPhenomXHM_RD_Amp_32_rdcp1
+    pAmp['RingdownAmpFits'][19] = IMRPhenomXHM_RD_Amp_32_rdcp2
+    pAmp['RingdownAmpFits'][20] = IMRPhenomXHM_RD_Amp_32_rdcp3
+
+    # Mode 44
+    pAmp['RingdownAmpFits'][21] = IMRPhenomXHM_RD_Amp_44_rdcp1
+    pAmp['RingdownAmpFits'][22] = IMRPhenomXHM_RD_Amp_44_rdcp2
+    pAmp['RingdownAmpFits'][23] = IMRPhenomXHM_RD_Amp_44_rdcp3
+
+    # Mode 32 auxiliary fits
+    pAmp['RingdownAmpFits'][24] = IMRPhenomXHM_RD_Amp_32_rdaux1
+    pAmp['RingdownAmpFits'][25] = IMRPhenomXHM_RD_Amp_32_rdaux2
+
+    return pAmp
+
+
+
+
