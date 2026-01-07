@@ -1040,3 +1040,205 @@ def IMRPhenomXHM_Insp_Amp_44_iv3(pWF: dict, InspAmpFlag: int) -> float:
         raise ValueError(f"Error in IMRPhenomXHM_Insp_Amp_44_iv3: version {InspAmpFlag} is not valid.")
 
     return total
+
+
+# ==================== Inspiral Phase Functions ====================
+
+def IMRPhenomXHM_Insp_Phase_21_lambda(pWF: dict, InspPhaseFlag: int) -> float:
+    """
+    Compute the lambda coefficient for the 21 mode inspiral phase.
+
+    Args:
+        pWF: Waveform structure dictionary containing eta, STotR, dchi, etc.
+        InspPhaseFlag: Flag to select the fitting formula (122019)
+
+    Returns:
+        The lambda phase coefficient for the 21 mode
+
+    Raises:
+        ValueError: If InspPhaseFlag is not one of the valid values
+    """
+    if InspPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta2 * eta
+        eta4 = eta3 * eta
+        eta5 = eta4 * eta
+        S2 = S ** 2
+
+        noSpin = (
+            13.664473636545068 - 170.08866400251395 * eta + 3535.657736681598 * eta2
+            - 26847.690494515424 * eta3 + 96463.68163125668 * eta4 - 133820.89317471132 * eta5
+        )
+
+        eqSpin = (
+            S * (
+                18.52571430563905 - 41.55066592130464 * S
+                + eta3 * (83493.24265292779 + 16501.749243703132 * S - 149700.4915210766 * S2)
+                + eta * (3642.5891077598003 + 1198.4163078715173 * S - 6961.484805326852 * S2)
+                + 33.8697137964237 * S2
+                + eta2 * (-35031.361998480075 - 7233.191207000735 * S + 62149.00902591944 * S2)
+            )
+        ) / (6.880288191574696 + 1. * S)
+
+        uneqSpin = -134.27742343186577 * pWF['dchi'] * jnp.sqrt(1. - 4. * eta) * eta2
+
+        total = noSpin + eqSpin + uneqSpin
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Insp_Phase_21_lambda: version {InspPhaseFlag} is not valid. "
+            f"Recommended version is 122019."
+        )
+
+    return total
+
+
+def IMRPhenomXHM_Insp_Phase_33_lambda(pWF: dict, InspPhaseFlag: int) -> float:
+    """
+    Compute the lambda coefficient for the 33 mode inspiral phase.
+
+    Args:
+        pWF: Waveform structure dictionary containing eta, STotR, dchi, etc.
+        InspPhaseFlag: Flag to select the fitting formula (122019)
+
+    Returns:
+        The lambda phase coefficient for the 33 mode
+
+    Raises:
+        ValueError: If InspPhaseFlag is not one of the valid values
+    """
+    if InspPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        delta = jnp.sqrt(1. - 4. * eta)
+        eta2 = eta ** 2
+        eta3 = eta2 * eta
+
+        noSpin = (
+            4.1138398568400705 + 9.772510519809892 * eta - 103.92956504520747 * eta2
+            + 242.3428625556764 * eta3
+        )
+
+        eqSpin = (
+            (-0.13253553909611435 + 26.644159828590055 * eta - 105.09339163109497 * eta2) * S
+        ) / (1. + 0.11322426762297967 * S)
+
+        uneqSpin = -19.705359163581168 * pWF['dchi'] * eta2 * delta
+
+        total = noSpin + eqSpin + uneqSpin
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Insp_Phase_33_lambda: version {InspPhaseFlag} is not valid. "
+            f"Recommended version is 122019."
+        )
+
+    return total
+
+
+def IMRPhenomXHM_Insp_Phase_32_lambda(pWF: dict, InspPhaseFlag: int) -> float:
+    """
+    Compute the lambda coefficient for the 32 mode inspiral phase.
+
+    Args:
+        pWF: Waveform structure dictionary containing eta, STotR, dchi, chi1L, chi2L, etc.
+        InspPhaseFlag: Flag to select the fitting formula (122019)
+
+    Returns:
+        The lambda phase coefficient for the 32 mode
+
+    Raises:
+        ValueError: If InspPhaseFlag is not one of the valid values
+    """
+    if InspPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta2 * eta
+        eta4 = eta3 * eta
+        S2 = S ** 2
+        S3 = S2 * S
+        S4 = S3 * S
+
+        noSpin = (
+            9.913819875501506 + 18.424900617803107 * eta - 574.8672384388947 * eta2
+            + 2671.7813055097877 * eta3 - 6244.001932443913 * eta4
+        ) / (1. - 0.9103118343073325 * eta)
+
+        eqSpin = (
+            (-4.367632806613781 + 245.06757304950986 * eta - 2233.9319708029775 * eta2
+             + 5894.355429022858 * eta3) * S
+            + (-1.375112297530783 - 1876.760129419146 * eta + 17608.172965575013 * eta2
+               - 40928.07304790013 * eta3) * S2
+            + (-1.28324755577382 - 138.36970336658558 * eta + 708.1455154504333 * eta2
+               - 273.23750933544176 * eta3) * S3
+            + (1.8403161863444328 + 2009.7361967331492 * eta - 18636.271414571278 * eta2
+               + 42379.205045791656 * eta3) * S4
+        )
+
+        uneqSpin = (
+            pWF['dchi'] * jnp.sqrt(1. - 4. * eta) * eta2 * (
+                -105.34550407768225 - 1566.1242344157668 * pWF['chi1L'] * eta
+                + 1566.1242344157668 * pWF['chi2L'] * eta + 2155.472229664981 * eta * S
+            )
+        )
+
+        total = noSpin + eqSpin + uneqSpin
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Insp_Phase_32_lambda: version {InspPhaseFlag} is not valid. "
+            f"Recommended version is 122019."
+        )
+
+    return total
+
+
+def IMRPhenomXHM_Insp_Phase_44_lambda(pWF: dict, InspPhaseFlag: int) -> float:
+    """
+    Compute the lambda coefficient for the 44 mode inspiral phase.
+
+    Args:
+        pWF: Waveform structure dictionary containing eta, STotR, dchi, etc.
+        InspPhaseFlag: Flag to select the fitting formula (122019)
+
+    Returns:
+        The lambda phase coefficient for the 44 mode
+
+    Raises:
+        ValueError: If InspPhaseFlag is not one of the valid values
+    """
+    if InspPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta2 * eta
+        eta4 = eta3 * eta
+        eta5 = eta4 * eta
+        S2 = S ** 2
+
+        noSpin = (
+            5.254484747463392 - 21.277760168559862 * eta + 160.43721442910618 * eta2
+            - 1162.954360723399 * eta3 + 1685.5912722190276 * eta4 - 1538.6661348106031 * eta5
+        )
+
+        eqSpin = (
+            (0.007067861615983771 - 10.945895160727437 * eta + 246.8787141453734 * eta2
+             - 810.7773268493444 * eta3) * S
+            + (0.17447830920234977 + 4.530539154777984 * eta - 176.4987316167203 * eta2
+               + 621.6920322846844 * eta3) * S2
+        )
+
+        uneqSpin = -8.384066369867833 * pWF['dchi'] * jnp.sqrt(1. - 4. * eta) * eta2
+
+        total = noSpin + eqSpin + uneqSpin
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Insp_Phase_44_lambda: version {InspPhaseFlag} is not valid. "
+            f"Recommended version is 122019."
+        )
+
+    return total

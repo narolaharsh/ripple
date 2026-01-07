@@ -23,6 +23,7 @@ from .LALSimIMRPhenomTHM_fits import (evaluate_QNMfit_re_l2m2lp2,
 
 from .LALSimIMRPhenomXHM_inspiral import *
 from .LALSimIMRPhenomXHM_intermediate import *
+from .LALSimIMRPhenomXHM_ringdown import *
 
 from .LALSimIMRPhenomXUtilities import IMRPhenomXPsi4ToStrain
 
@@ -607,5 +608,90 @@ def IMRPhenomXHM_FillAmpFitsArray() -> dict:
     return pAmp
 
 
+def IMRPhenomXHM_FillPhaseFitsArray() -> dict:
+    """
+    Fill arrays with function references for phase coefficient/collocation point fits.
+
+    This function creates a mapping of fit functions for phase coefficients
+    and collocation points across three regions (inspiral, intermediate, ringdown)
+    and four modes (21, 33, 32, 44).
+
+    Returns:
+        dict: Dictionary containing three arrays:
+            - 'InspiralPhaseFits': List of 4 functions for inspiral phase lambda fits
+            - 'IntermediatePhaseFits': List of 24 functions for intermediate phase fits
+            - 'RingdownPhaseFits': List of 5 functions for ringdown phase fits (32 mode spheroidal)
+
+    Note:
+        The actual fit functions (e.g., IMRPhenomXHM_Insp_Phase_21_lambda) need to be
+        implemented in the corresponding phase modules (inspiral, intermediate, ringdown).
+        Placeholders (None) are used and should be replaced with actual fit functions.
+    """
+    pPhase = {}
+
+    # Initialize arrays with None placeholders
+    # In the full implementation, these would be function references
+    pPhase['InspiralPhaseFits'] = [None] * 4
+    pPhase['IntermediatePhaseFits'] = [None] * 24
+    pPhase['RingdownPhaseFits'] = [None] * 5
+
+    # ******Inspiral Phase Fits for lambda coefficients******
+
+    # Mode 21
+    pPhase['InspiralPhaseFits'][0] = IMRPhenomXHM_Insp_Phase_21_lambda
+
+    # Mode 33
+    pPhase['InspiralPhaseFits'][1] = IMRPhenomXHM_Insp_Phase_33_lambda
+
+    # Mode 32
+    pPhase['InspiralPhaseFits'][2] = IMRPhenomXHM_Insp_Phase_32_lambda
+
+    # Mode 44
+    pPhase['InspiralPhaseFits'][3] = IMRPhenomXHM_Insp_Phase_44_lambda
+
+    # ******Intermediate Phase Fits for collocation points******
+
+    # Mode 21 - 6 collocation points (p1 through p6)
+    pPhase['IntermediatePhaseFits'][0] = IMRPhenomXHM_Inter_Phase_21_p1
+    pPhase['IntermediatePhaseFits'][1] = IMRPhenomXHM_Inter_Phase_21_p2
+    pPhase['IntermediatePhaseFits'][2] = IMRPhenomXHM_Inter_Phase_21_p3
+    pPhase['IntermediatePhaseFits'][3] = IMRPhenomXHM_Inter_Phase_21_p4
+    pPhase['IntermediatePhaseFits'][4] = IMRPhenomXHM_Inter_Phase_21_p5
+    pPhase['IntermediatePhaseFits'][5] = IMRPhenomXHM_Inter_Phase_21_p6
+
+    # Mode 33 - 6 collocation points (p1 through p6)
+    pPhase['IntermediatePhaseFits'][6] = IMRPhenomXHM_Inter_Phase_33_p1
+    pPhase['IntermediatePhaseFits'][7] = IMRPhenomXHM_Inter_Phase_33_p2
+    pPhase['IntermediatePhaseFits'][8] = IMRPhenomXHM_Inter_Phase_33_p3
+    pPhase['IntermediatePhaseFits'][9] = IMRPhenomXHM_Inter_Phase_33_p4
+    pPhase['IntermediatePhaseFits'][10] = IMRPhenomXHM_Inter_Phase_33_p5
+    pPhase['IntermediatePhaseFits'][11] = IMRPhenomXHM_Inter_Phase_33_p6
+
+    # Mode 32 - 6 collocation points (p1 through p6)
+    pPhase['IntermediatePhaseFits'][12] = IMRPhenomXHM_Inter_Phase_32_p1
+    pPhase['IntermediatePhaseFits'][13] = IMRPhenomXHM_Inter_Phase_32_p2
+    pPhase['IntermediatePhaseFits'][14] = IMRPhenomXHM_Inter_Phase_32_p3
+    pPhase['IntermediatePhaseFits'][15] = IMRPhenomXHM_Inter_Phase_32_p4
+    pPhase['IntermediatePhaseFits'][16] = IMRPhenomXHM_Inter_Phase_32_p5
+    pPhase['IntermediatePhaseFits'][17] = IMRPhenomXHM_Inter_Phase_32_p6
+
+    # Mode 44 - 6 collocation points (p1 through p6)
+    pPhase['IntermediatePhaseFits'][18] = IMRPhenomXHM_Inter_Phase_44_p1
+    pPhase['IntermediatePhaseFits'][19] = IMRPhenomXHM_Inter_Phase_44_p2
+    pPhase['IntermediatePhaseFits'][20] = IMRPhenomXHM_Inter_Phase_44_p3
+    pPhase['IntermediatePhaseFits'][21] = IMRPhenomXHM_Inter_Phase_44_p4
+    pPhase['IntermediatePhaseFits'][22] = IMRPhenomXHM_Inter_Phase_44_p5
+    pPhase['IntermediatePhaseFits'][23] = IMRPhenomXHM_Inter_Phase_44_p6
+
+    # ******Ringdown Phase Fits (32 Spheroidal)******
+
+    # Mode 32 - 5 collocation points for spheroidal ringdown phase
+    pPhase['RingdownPhaseFits'][0] = IMRPhenomXHM_RD_Phase_32_p1
+    pPhase['RingdownPhaseFits'][1] = IMRPhenomXHM_RD_Phase_32_p2
+    pPhase['RingdownPhaseFits'][2] = IMRPhenomXHM_RD_Phase_32_p3
+    pPhase['RingdownPhaseFits'][3] = IMRPhenomXHM_RD_Phase_32_p4
+    pPhase['RingdownPhaseFits'][4] = IMRPhenomXHM_RD_Phase_32_p5
+
+    return pPhase
 
 

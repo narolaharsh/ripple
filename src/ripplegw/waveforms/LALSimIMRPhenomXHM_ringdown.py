@@ -1451,3 +1451,369 @@ def IMRPhenomXHM_RD_Amp_44_rdcp3(pWF: dict, RDAmpFlag: int) -> float:
         raise ValueError(f"Error in IMRPhenomXHM_RD_Amp_44_rdcp3: version {RDAmpFlag} is not valid.")
 
     return total
+
+
+# ==================== Mode 32 Ringdown Phase Functions ====================
+
+def IMRPhenomXHM_RD_Phase_32_p1(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute the p1 collocation point for the 32 mode ringdown phase.
+
+    Args:
+        pWF: Waveform structure dictionary
+        RDPhaseFlag: Flag to select the fitting formula (122019 or 122022)
+
+    Returns:
+        The p1 collocation point for the 32 mode phase
+
+    Raises:
+        ValueError: If RDPhaseFlag is not one of the valid values
+    """
+    if RDPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta ** 3
+        eta4 = eta ** 4
+        eta5 = eta ** 5
+        S2 = S ** 2
+        S3 = S ** 3
+        S4 = S ** 4
+        S5 = S ** 5
+
+        noSpin = (
+            3169.372056189274 + 426.8372805022653 * eta - 12569.748101922158 * eta2
+            + 149846.7281073725 * eta3 - 817182.2896823225 * eta4 + 1.5674053633767858e6 * eta5
+        )
+
+        eqSpin = (
+            (19.23408352151287 - 1762.6573670619173 * eta + 7855.316419853637 * eta2
+             - 3785.49764771212 * eta3) * S
+            + (-42.88446003698396 + 336.8340966473415 * eta - 5615.908682338113 * eta2
+               + 20497.5021807654 * eta3) * S2
+            + (13.918237996338371 + 10145.53174542332 * eta - 91664.12621864353 * eta2
+               + 201204.5096556517 * eta3) * S3
+            + (-24.72321125342808 - 4901.068176970293 * eta + 53893.9479532688 * eta2
+               - 139322.02687945773 * eta3) * S4
+            + (-61.01931672442576 - 16556.65370439302 * eta + 162941.8009556697 * eta2
+               - 384336.57477596396 * eta3) * S5
+        )
+
+        uneqSpin = (
+            pWF['dchi'] * jnp.sqrt(1. - 4. * eta) * eta2
+            * (641.2473192044652 - 1600.240100295189 * pWF['chi1L'] * eta
+               + 1600.240100295189 * pWF['chi2L'] * eta + 13275.623692212472 * eta * S)
+        )
+
+        total = noSpin + eqSpin + uneqSpin
+
+    elif RDPhaseFlag == 122022:
+        eta = pWF['eta']
+        delta = pWF['delta']
+        S = pWF['STotR']
+        chidiff = pWF['dchi_half']
+
+        eta1 = eta
+        eta2 = eta1 * eta1
+        eta3 = eta1 * eta2
+        eta4 = eta1 * eta3
+        S1 = S
+        S2 = S1 * S1
+        chidiff1 = chidiff
+
+        total = (
+            3221.932636435056 - 134.59521937837278 * eta1
+            + chidiff1 * delta * (319.06177738567885 * eta2 - 20578.40007594641 * eta3
+                                 + 101859.1659970414 * eta4)
+            + S1 * (
+                24.059115241154707 * (436.41245673494626 * eta2 - 2938.503437122471 * eta3
+                                     + 5027.414440730744 * eta4)
+                + 21.848741292340005 * (1251.706577839354 * eta2 - 14171.490147583942 * eta3
+                                       + 36914.6553449061 * eta4) * S1
+                + 15.901300902033508 * (-149.2789474539545 * eta2 + 3483.608736789833 * eta3
+                                       - 11289.97178789606 * eta4) * S2
+            ) / (-1.803337035190313 + S1)
+            - 0.012868288384497346 / (0.000187943994873322 + (-0.1923690355128322 + eta1) ** 2)
+        )
+
+    else:
+        raise ValueError(f"Error in IMRPhenomXHM_RD_Phase_32_p1: version {RDPhaseFlag} is not valid.")
+
+    return total
+
+
+def IMRPhenomXHM_RD_Phase_32_p2(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute the p2 collocation point for the 32 mode ringdown phase.
+
+    Args:
+        pWF: Waveform structure dictionary
+        RDPhaseFlag: Flag to select the fitting formula (122019 or 122022)
+
+    Returns:
+        The p2 collocation point for the 32 mode phase
+
+    Raises:
+        ValueError: If RDPhaseFlag is not one of the valid values
+    """
+    if RDPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta ** 3
+        S2 = S ** 2
+        S3 = S ** 3
+        S4 = S ** 4
+
+        noSpin = (
+            3131.0260952676376 + 206.09687819102305 * eta - 2636.4344627081873 * eta2
+            + 7475.062269742079 * eta3
+        )
+
+        eqSpin = (
+            (49.90874152040307 - 691.9815135740145 * eta - 434.60154548208334 * eta2
+             + 10514.68111669422 * eta3) * S
+            + (97.3078084654917 - 3458.2579971189534 * eta + 26748.805404989867 * eta2
+               - 56142.13736008524 * eta3) * S2
+            + (-132.49105074500454 + 429.0787542102207 * eta + 7269.262546204149 * eta2
+               - 27654.067482558712 * eta3) * S3
+            + (-227.8023564332453 + 5119.138772157134 * eta - 34444.2579678986 * eta2
+               + 69666.01833764123 * eta3) * S4
+        )
+
+        uneqSpin = 477.51566939885424 * pWF['dchi'] * jnp.sqrt(1. - 4. * eta) * eta2
+
+        total = noSpin + eqSpin + uneqSpin
+
+    elif RDPhaseFlag == 122022:
+        eta = pWF['eta']
+        delta = pWF['delta']
+        S = pWF['STotR']
+        chidiff = pWF['dchi_half']
+
+        eta1 = eta
+        eta2 = eta1 * eta1
+        eta3 = eta1 * eta2
+        eta4 = eta1 * eta3
+        S1 = S
+        chidiff1 = chidiff
+
+        total = (
+            3169.5772463611165 + 56.56534589293562 * eta1 - 863.5731390762933 * eta2
+            + 2693.8619211321557 * eta3
+            + chidiff1 * delta * (-2818.2944800258847 * eta2 + 15684.658457287562 * eta3
+                                 + 14379.128341035908 * eta4)
+            + S1 * (
+                -0.16388886708177886 * (334.30009385854424 * eta2 - 154749.10305716714 * eta3
+                                       + 613903.6107269318 * eta4)
+                + 11.950465013745157 * (1079.481585746054 * eta2 - 11981.85336876442 * eta3
+                                       + 30911.708103120814 * eta4) * S1
+            ) / (-1.169876031327984 + S1)
+            - 0.009425837438775205 / (0.00016960223009674388 + (-0.20083535429185695 + eta1) ** 2)
+        )
+
+    else:
+        raise ValueError(f"Error in IMRPhenomXHM_RD_Phase_32_p2: version {RDPhaseFlag} is not valid.")
+
+    return total
+
+
+def IMRPhenomXHM_RD_Phase_32_p3(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute the p3 collocation point for the 32 mode ringdown phase.
+
+    Args:
+        pWF: Waveform structure dictionary
+        RDPhaseFlag: Flag to select the fitting formula (122019 or 122022)
+
+    Returns:
+        The p3 collocation point for the 32 mode phase
+
+    Raises:
+        ValueError: If RDPhaseFlag is not one of the valid values
+    """
+    if RDPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta ** 3
+        S2 = S ** 2
+        S3 = S ** 3
+        S4 = S ** 4
+
+        noSpin = (
+            3082.803556599222 + 76.94679795837645 * eta - 586.2469821978381 * eta2
+            + 977.6115755788503 * eta3
+        )
+
+        eqSpin = (
+            (45.08944710349874 - 807.7353772747749 * eta + 1775.4343704616288 * eta2
+             + 2472.6476419567534 * eta3) * S
+            + (95.57355060136699 - 2224.9613131172046 * eta + 13821.251641893134 * eta2
+               - 25583.314298758105 * eta3) * S2
+            + (-144.96370424517866 + 2268.4693587493093 * eta - 10971.864789147161 * eta2
+               + 16259.911572457446 * eta3) * S3
+            + (-227.8023564332453 + 5119.138772157134 * eta - 34444.2579678986 * eta2
+               + 69666.01833764123 * eta3) * S4
+        )
+
+        uneqSpin = 378.2359918274837 * pWF['dchi'] * jnp.sqrt(1. - 4. * eta) * eta2
+
+        total = noSpin + eqSpin + uneqSpin
+
+    elif RDPhaseFlag == 122022:
+        eta = pWF['eta']
+        delta = pWF['delta']
+        S = pWF['STotR']
+        chidiff = pWF['dchi_half']
+
+        eta1 = eta
+        eta2 = eta1 * eta1
+        eta3 = eta1 * eta2
+        eta4 = eta1 * eta3
+        eta5 = eta1 * eta4
+        eta6 = eta1 * eta5
+        S1 = S
+        chidiff1 = chidiff
+
+        total = (
+            3119.6603946770488 + 168.61554447853712 * eta1 - 1777.6654596491376 * eta2
+            + 5037.407962552042 * eta3
+            + chidiff1 * delta * (45693.135566736484 * eta2 - 789332.4959926775 * eta3
+                                 + 4.460496312695218e6 * eta4 - 8.176309211912101e6 * eta5)
+            + chidiff1 * delta * (7840.121424232572 * eta2 - 47166.09840761356 * eta3
+                                 + 66597.52917033392 * eta4) * S1
+            + S1 * (
+                -6.019579546899472 * (14538.163921822728 * eta2 - 318911.4362763759 * eta3
+                                     + 2.6041867832020866e6 * eta4 - 9.288489508236282e6 * eta5
+                                     + 1.2170972980338342e7 * eta6)
+                - 7.739304888898913 * (11114.219992659659 * eta2 - 231541.9569739445 * eta3
+                                      + 1.8069370995120746e6 * eta4 - 6.203273456127891e6 * eta5
+                                      + 7.874294046591697e6 * eta6) * S1
+            )
+            - 0.0003538235766427527 / (8.2810517855422e-6 + (-0.2075868299995718 + eta1) ** 2)
+        )
+
+    else:
+        raise ValueError(f"Error in IMRPhenomXHM_RD_Phase_32_p3: version {RDPhaseFlag} is not valid.")
+
+    return total
+
+
+def IMRPhenomXHM_RD_Phase_32_p4(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute the p4 collocation point for the 32 mode ringdown phase.
+
+    Args:
+        pWF: Waveform structure dictionary
+        RDPhaseFlag: Flag to select the fitting formula (122019 or 122022)
+
+    Returns:
+        The p4 collocation point for the 32 mode phase
+
+    Raises:
+        ValueError: If RDPhaseFlag is not one of the valid values
+    """
+    if RDPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta ** 3
+        S2 = S ** 2
+        S3 = S ** 3
+        S4 = S ** 4
+
+        noSpin = 3077.0657367004565 + 64.99844502520415 * eta - 357.38692756785395 * eta2
+
+        eqSpin = (
+            (34.793450080444714 - 986.7751755509875 * eta - 9490.641676924794 * eta3
+             + 5700.682624203565 * eta2) * S
+            + (57.38106384558743 - 1644.6690499868596 * eta - 19906.416384606226 * eta3
+               + 11008.881935880598 * eta2) * S2
+            + (-126.02362949830213 + 3169.3397351803583 * eta + 62863.79877094988 * eta3
+               - 26766.730897942085 * eta2) * S3
+            + (-169.30909412804587 + 4900.706039920717 * eta + 95314.99988114933 * eta3
+               - 41414.05689348732 * eta2) * S4
+        )
+
+        uneqSpin = 390.5443469721231 * pWF['dchi'] * jnp.sqrt(1. - 4. * eta) * eta2
+
+        total = noSpin + eqSpin + uneqSpin
+
+    elif RDPhaseFlag == 122022:
+        eta = pWF['eta']
+        delta = pWF['delta']
+        S = pWF['STotR']
+        chidiff = pWF['dchi_half']
+
+        eta1 = eta
+        eta2 = eta1 * eta1
+        eta3 = eta1 * eta2
+        eta4 = eta1 * eta3
+        eta5 = eta1 * eta4
+        eta6 = eta1 * eta5
+        eta7 = eta1 * eta6
+        S1 = S
+        chidiff1 = chidiff
+
+        total = (
+            3063.2702533356364 + 74.20321762511647 * eta1 - 346.6653326379183 * eta2
+            + chidiff1 * delta * (2604.6711121030685 * eta2 - 25322.83641432119 * eta3
+                                 + 64521.907625802785 * eta4)
+            + 17.748987975469845 * (6659.676835974436 * eta2 - 207712.54687648916 * eta3
+                                   + 2.5247192995989644e6 * eta4 - 1.4825576629165621e7 * eta5
+                                   + 4.215660954626601e7 * eta6 - 4.662796037240443e7 * eta7) * S1
+            / (-1.2617538728082525 + S1)
+            - 2.211595095940034e-6 / (-0.000010240443266599763 + (-0.17594819839300638 + eta1) ** 2)
+        )
+
+    else:
+        raise ValueError(f"Error in IMRPhenomXHM_RD_Phase_32_p4: version {RDPhaseFlag} is not valid.")
+
+    return total
+
+
+def IMRPhenomXHM_RD_Phase_32_p5(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute the p5 collocation point for the 32 mode ringdown phase.
+
+    Args:
+        pWF: Waveform structure dictionary
+        RDPhaseFlag: Flag to select the fitting formula (122022)
+
+    Returns:
+        The p5 collocation point for the 32 mode phase
+
+    Raises:
+        ValueError: If RDPhaseFlag is not one of the valid values
+    """
+    if RDPhaseFlag == 122022:
+        eta = pWF['eta']
+        delta = pWF['delta']
+        S = pWF['STotR']
+        chidiff = pWF['dchi_half']
+
+        eta1 = eta
+        eta2 = eta1 * eta1
+        eta3 = eta1 * eta2
+        eta4 = eta1 * eta3
+        eta5 = eta1 * eta4
+        eta6 = eta1 * eta5
+        eta7 = eta1 * eta6
+        S1 = S
+        chidiff1 = chidiff
+
+        total = (
+            3099.009925231132 - 5.823302919769178 * eta1
+            + chidiff1 * delta * (1936.2628510750844 * eta2 - 32280.62038532877 * eta3
+                                 + 97943.49145078743 * eta4)
+            + 2.8281136508769498 * (6856.762845446495 * eta2 - 201653.94475043533 * eta3
+                                   + 2.4217205751584964e6 * eta4 - 1.4582166806161262e7 * eta5
+                                   + 4.377208838391116e7 * eta6 - 5.214533274483399e7 * eta7) * S1
+            / (-1.0624647822393556 + S1)
+        )
+
+    else:
+        raise ValueError(f"Error in IMRPhenomXHM_RD_Phase_32_p5: version {RDPhaseFlag} is not valid.")
+
+    return total
