@@ -1116,7 +1116,7 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v):
     vout2 = zeta + zeta_MSA
     vout3 = cos_theta_L
 
-    jax.debug.print("JAX debug v {} phiz_MSA {} and phiz {} J_norm {}", v, phiz, phiz_MSA, J_norm)
+    jax.debug.print("JAX debug v {} cos_theta_L {} ", v, cos_theta_L)
 
 
     return jnp.array([vout1, vout2, vout3])
@@ -1486,7 +1486,7 @@ def IMRPhenomX_costhetaLJ(
     J_norm: float, 
     S_norm: float
     ) -> float:
-    costhetaLJ = 0.5 * (J_norm**2 + L_norm**2 - S_norm**2) / L_norm * J_norm
+    costhetaLJ = 0.5 * (J_norm**2 + L_norm**2 - S_norm**2) / (L_norm * J_norm)
 
     # Clamp the value to the interval [-1.0, 1.0]
     costhetaLJ = jnp.clip(costhetaLJ, -1.0, 1.0)
@@ -1595,6 +1595,8 @@ def IMRPhenomX_Return_zeta_MSA(
 
     # Replace NaNs with 0 using jnp.nan_to_num
     zeta_out = jnp.nan_to_num(zeta_out, nan=0.0)
+
+    jax.debug.print("JAX debug velocity {} Omegazeta0_coeff: {}, Omegazeta1_coeff: {}, Omegazeta2_coeff: {}, Omegazeta3_coeff: {}, Omegazeta4_coeff: {}, Omegazeta5_coeff: {}", v, pPrec.Omegazeta0_coeff, pPrec.Omegazeta1_coeff, pPrec.Omegazeta2_coeff, pPrec.Omegazeta3_coeff, pPrec.Omegazeta4_coeff, pPrec.Omegazeta5_coeff)
 
     return zeta_out
 

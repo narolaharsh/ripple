@@ -493,8 +493,6 @@ def IMRPhenomX_Initialize_MSA_System(pPrec, pWF: dict, ExpansionOrder: int):
     #object.__setattr__(pPrec, 'Omegaz5_coeff', 3.0 * (g0 * pPrec.Omegaz5 + pPrec.g2*pPrec.Omegaz3 + pPrec.g3*pPrec.Omegaz2 + pPrec.g4*pPrec.Omegaz1 + pPrec.g5*pPrec.Omegaz0))
     object.__setattr__(pPrec, 'Omegaz5_coeff', 0.0) #FIXME
     
-    #jax.debug.print("jax debug $$$ Omegaz5_coeff {}", pPrec.Omegaz5_coeff)
-
     # Coefficients of zeta: in Appendix E of PRD, 95, 104004, (2017), arXiv:1703.03967
     c1oveta2 = c_1 / eta2
     object.__setattr__(pPrec, 'Omegazeta0', pPrec.Omegaz0)
@@ -509,7 +507,8 @@ def IMRPhenomX_Initialize_MSA_System(pPrec, pWF: dict, ExpansionOrder: int):
     object.__setattr__(pPrec, 'Omegazeta2_coeff', -3.0*(pPrec.g0 * pPrec.Omegazeta2 + pPrec.g2*pPrec.Omegazeta0))
     object.__setattr__(pPrec, 'Omegazeta3_coeff', 3.0*(pPrec.g0 * pPrec.Omegazeta3 + pPrec.g2*pPrec.Omegazeta1 + pPrec.g3*pPrec.Omegazeta0))
     object.__setattr__(pPrec, 'Omegazeta4_coeff', 3.0*(pPrec.g0 * pPrec.Omegazeta4 + pPrec.g2*pPrec.Omegazeta2 + pPrec.g3*pPrec.Omegazeta1 + pPrec.g4*pPrec.Omegazeta0))
-    object.__setattr__(pPrec, 'Omegazeta5_coeff', 1.5*(pPrec.g0*pPrec.Omegazeta5 + pPrec.g2*pPrec.Omegazeta3 + pPrec.g3*pPrec.Omegazeta2 + pPrec.g4*pPrec.Omegazeta1 + pPrec.g5*pPrec.Omegazeta0))
+    #object.__setattr__(pPrec, 'Omegazeta5_coeff', 1.5*(pPrec.g0*pPrec.Omegazeta5 + pPrec.g2*pPrec.Omegazeta3 + pPrec.g3*pPrec.Omegazeta2 + pPrec.g4*pPrec.Omegazeta1 + pPrec.g5*pPrec.Omegazeta0))
+    object.__setattr__(pPrec, 'Omegazeta5_coeff', 0.0) #FIXME
         
     #Line 2887 - 2943 compressed
     pPrec = apply_expansion_order(pPrec, ExpansionOrder)
