@@ -150,5 +150,5 @@ def XLALSimIMRPhenomXPMSAAngles(
     # Vectorize over frequency array
 
     alphas, gammas, cosbetas = jax.vmap(compute_angles_at_freq)(freqs)
-    print("JAX DEBUG pPrec.alpha_offset, pPrec.epsilon_offset", pPrec.alpha_offset, pPrec.epsilon_offset)
+    #print("JAX DEBUG pPrec.alpha_offset, pPrec.epsilon_offset", pPrec.alpha_offset, pPrec.epsilon_offset)
     return alphas, gammas, cosbetas
