@@ -1116,7 +1116,7 @@ def IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v):
     vout2 = zeta + zeta_MSA
     vout3 = cos_theta_L
 
-    jax.debug.print("JAX debug v {} cos_theta_L {} ", v, cos_theta_L)
+    #jax.debug.print("JAX debug v {} cos_theta_L {} ", v, cos_theta_L)
 
 
     return jnp.array([vout1, vout2, vout3])
@@ -1344,7 +1344,7 @@ def IMRPhenomX_Return_MSA_Corrections_MSA(
     c0, c2, c4 = c_vec
     d0, d2, d4 = d_vec
 
-    jax.debug.print("jax D vector {} {} {}", d0, d2, d4)
+    #jax.debug.print("jax D vector {} {} {}", d0, d2, d4)
 
     two_d0 = 2.0 * d0
     
@@ -1562,9 +1562,9 @@ def IMRPhenomX_Return_phiz_MSA(
         + pPrec.phiz_0
     )
 
-    jax.debug.print("JAX debug velocity {} Omegaz0_coeff: {}, Omegaz1_coeff: {}, Omegaz2_coeff: {}, Omegaz3_coeff: {}, Omegaz4_coeff: {}, Omegaz5_coeff: {}, pPrec.phiz_0 {}", v, pPrec.Omegaz0_coeff, pPrec.Omegaz1_coeff, pPrec.Omegaz2_coeff, pPrec.Omegaz3_coeff, pPrec.Omegaz4_coeff, pPrec.Omegaz5_coeff, pPrec.phiz_0)
+    #jax.debug.print("JAX debug velocity {} Omegaz0_coeff: {}, Omegaz1_coeff: {}, Omegaz2_coeff: {}, Omegaz3_coeff: {}, Omegaz4_coeff: {}, Omegaz5_coeff: {}, pPrec.phiz_0 {}", v, pPrec.Omegaz0_coeff, pPrec.Omegaz1_coeff, pPrec.Omegaz2_coeff, pPrec.Omegaz3_coeff, pPrec.Omegaz4_coeff, pPrec.Omegaz5_coeff, pPrec.phiz_0)
     
-    jax.debug.print("JAX debug velocity {} phiz_0_coeff: {}, phiz_1_coeff: {}, phiz_2_coeff: {}, phiz_3_coeff: {}, phiz_4_coeff: {}, phiz_5_coeff: {}\n\n", v, phiz_0_coeff, phiz_1_coeff, phiz_2_coeff, phiz_3_coeff, phiz_4_coeff, phiz_5_coeff)
+    #jax.debug.print("JAX debug velocity {} phiz_0_coeff: {}, phiz_1_coeff: {}, phiz_2_coeff: {}, phiz_3_coeff: {}, phiz_4_coeff: {}, phiz_5_coeff: {}\n\n", v, phiz_0_coeff, phiz_1_coeff, phiz_2_coeff, phiz_3_coeff, phiz_4_coeff, phiz_5_coeff)
 
     # Ensure no NaN (replace with 0.0 if NaN)
     phiz_out = jnp.nan_to_num(phiz_out, nan=0.0)
@@ -1596,7 +1596,7 @@ def IMRPhenomX_Return_zeta_MSA(
     # Replace NaNs with 0 using jnp.nan_to_num
     zeta_out = jnp.nan_to_num(zeta_out, nan=0.0)
 
-    jax.debug.print("JAX debug velocity {} Omegazeta0_coeff: {}, Omegazeta1_coeff: {}, Omegazeta2_coeff: {}, Omegazeta3_coeff: {}, Omegazeta4_coeff: {}, Omegazeta5_coeff: {}", v, pPrec.Omegazeta0_coeff, pPrec.Omegazeta1_coeff, pPrec.Omegazeta2_coeff, pPrec.Omegazeta3_coeff, pPrec.Omegazeta4_coeff, pPrec.Omegazeta5_coeff)
+    #jax.debug.print("JAX debug velocity {} Omegazeta0_coeff: {}, Omegazeta1_coeff: {}, Omegazeta2_coeff: {}, Omegazeta3_coeff: {}, Omegazeta4_coeff: {}, Omegazeta5_coeff: {}", v, pPrec.Omegazeta0_coeff, pPrec.Omegazeta1_coeff, pPrec.Omegazeta2_coeff, pPrec.Omegazeta3_coeff, pPrec.Omegazeta4_coeff, pPrec.Omegazeta5_coeff)
 
     return zeta_out
 
