@@ -14,6 +14,9 @@ from .LALSimIMRPhenomX_PNR_internals import (
     XLALSimIMRPhenomXFinalMass2017,
     XLALSimIMRPhenomXFinalSpin2017,
 )
+
+from .LALSimIMRPhenomX_internals import (IMRPhenomX_Inspiral_Phase_22_d13, IMRPhenomX_Inspiral_Phase_22_d23, IMRPhenomX_Inspiral_Phase_22_v3, IMRPhenomX_Inspiral_Phase_22_d43, IMRPhenomX_Inspiral_Phase_22_d53)
+
 from .LALSimIMRPhenomX_qnm import evaluate_QNMfit_fring22, evaluate_QNMfit_fdamp22
 from .LALSimIMRPhenomX_precession import XLALSimIMRPhenomXUtilsHztoMf
 
@@ -435,3 +438,521 @@ def IMRPhenomXSetWaveformVariables(
     wf['APPLY_PNR_DEVIATIONS'] = 0
 
     return wf
+
+
+
+
+
+
+def _compute_powers_of_pi():
+    """
+    Compute useful powers of pi (analogous to powers_of_lalpi in C code).
+
+    Returns:
+        Dictionary containing various powers of pi
+    """
+    return {
+        'seven_sixths': jnp.pi ** (7.0 / 6.0),
+        'one_sixth': jnp.pi ** (1.0 / 6.0),
+        'ten_thirds': jnp.pi ** (10.0 / 3.0),
+        'eight_thirds': jnp.pi ** (8.0 / 3.0),
+        'seven_thirds': jnp.pi ** (7.0 / 3.0),
+        'five_thirds': jnp.pi ** (5.0 / 3.0),
+        'four_thirds': jnp.pi ** (4.0 / 3.0),
+        'two_thirds': jnp.pi ** (2.0 / 3.0),
+        'one_third': jnp.pi ** (1.0 / 3.0),
+        'five': jnp.pi ** 5.0,
+        'four': jnp.pi ** 4.0,
+        'three': jnp.pi ** 3.0,
+        'two': jnp.pi ** 2.0,
+        'sqrt': jnp.sqrt(jnp.pi),
+        'itself': jnp.pi,
+        'm_sqrt': jnp.pi ** (-0.5),
+        'm_one': 1.0 / jnp.pi,
+        'm_two': jnp.pi ** (-2.0),
+        'm_three': jnp.pi ** (-3.0),
+        'm_four': jnp.pi ** (-4.0),
+        'm_five': jnp.pi ** (-5.0),
+        'm_six': jnp.pi ** (-6.0),
+        'm_one_third': jnp.pi ** (-1.0 / 3.0),
+        'm_two_thirds': jnp.pi ** (-2.0 / 3.0),
+        'm_four_thirds': jnp.pi ** (-4.0 / 3.0),
+        'm_five_thirds': jnp.pi ** (-5.0 / 3.0),
+        'm_seven_thirds': jnp.pi ** (-7.0 / 3.0),
+        'm_eight_thirds': jnp.pi ** (-8.0 / 3.0),
+        'm_ten_thirds': jnp.pi ** (-10.0 / 3.0),
+        'm_one_sixth': jnp.pi ** (-1.0 / 6.0),
+        'm_seven_sixths': jnp.pi ** (-7.0 / 6.0),
+        'log': jnp.log(jnp.pi),
+    }
+
+
+# Pre-compute powers of pi (used throughout phase calculations)
+powers_of_lalpi = _compute_powers_of_pi()
+
+
+def IMRPhenomXGetPhaseCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calculate phenomenological phase coefficients for IMRPhenomX.
+
+    This function computes the phase coefficients for the inspiral, intermediate,
+    and ringdown regions of the IMRPhenomX waveform model. It sets up and solves
+    systems of linear equations using collocation methods to determine coefficients
+    that match calibrated values at specific frequency points.
+
+    The function implements:
+    - Ringdown phase collocation (5 points)
+    - Inspiral phase collocation (4 or 5 points depending on version)
+    - TaylorF2 Post-Newtonian coefficients up to 4.5PN
+    - Pseudo-PN coefficient conversions
+
+    Parameters
+    ----------
+    pWF : dict
+        Waveform parameter dictionary containing masses, spins, and version flags.
+        Must contain keys like 'eta', 'chi1L', 'chi2L', 'fRING', 'fDAMP', 'fMECO',
+        'fISCO', 'IMRPhenomXRingdownPhaseVersion', 'IMRPhenomXInspiralPhaseVersion', etc.
+
+    Returns
+    -------
+    pPhase : dict
+        Dictionary containing all phase coefficients including:
+        - Matching frequencies (fPhaseMatchIN, fPhaseMatchIM)
+        - Inspiral/intermediate/ringdown frequency bounds
+        - Phenomenological coefficients (a0-a4, b0-b4, c0-c4, etc.)
+        - PN phase coefficients (phi0-phi12, dphi0-dphi12)
+        - Connection coefficients (initialized to zero, computed later)
+        - Collocation points and values
+
+    References
+    ----------
+    - Pratten et al., PRD 102, 064001 (2020) [arXiv:2001.11412]
+    - LALSimulation: LALSimIMRPhenomX_internals.c
+
+    Notes
+    -----
+    This is a JAX translation of the C function IMRPhenomXGetPhaseCoefficients.
+    The linear systems are solved using jnp.linalg.solve instead of GSL's LU decomposition.
+    """
+
+    # Initialize phase coefficient dictionary
+    pPhase = {}
+
+    # Get useful constants
+    LAL_GAMMA = 0.577215664901532860606512090082  # Euler-Mascheroni constant
+    LAL_PI = jnp.pi
+
+    # Matching regions
+    # Eq. 5.11 in arXiv:2001.11412
+    fIMmatch = 0.6 * (0.5 * pWF['fRING'] + pWF['fISCO'])
+
+    # MECO frequency
+    fINmatch = pWF['fMECO']
+
+    # Eq. 5.10 in arXiv:2001.11412
+    deltaf = (fIMmatch - fINmatch) * 0.03
+
+    # Transition frequencies (Eq. 7.7)
+    pPhase['fPhaseMatchIN'] = fINmatch - 1.0 * deltaf  # f_L
+    pPhase['fPhaseMatchIM'] = fIMmatch + 0.5 * deltaf  # f_H
+
+    # Inspiral region bounds (Eq. 7.4)
+    pPhase['fPhaseInsMin'] = 0.0026  # f_L
+    pPhase['fPhaseInsMax'] = 1.020 * pWF['fMECO']  # f_H
+
+    # Ringdown region bounds (Eq. 7.12)
+    pPhase['fPhaseRDMin'] = fIMmatch  # f_L
+    pPhase['fPhaseRDMax'] = pWF['fRING'] + 1.25 * pWF['fDAMP']  # f_H
+
+    # Phase normalization
+    pPhase['phiNorm'] = -(3.0 * powers_of_lalpi['m_five_thirds']) / 128.0
+
+    # Extract useful quantities from waveform struct
+    chi1L = pWF['chi1L']
+    chi2L = pWF['chi2L']
+    chi1L2L = chi1L * chi2L
+    chi1L2 = chi1L * chi1L
+    chi1L3 = chi1L * chi1L2
+    chi2L2 = chi2L * chi2L
+    chi2L3 = chi2L * chi2L2
+    eta = pWF['eta']
+    eta2 = eta * eta
+    eta3 = eta * eta2
+    delta = pWF['delta']
+
+    # Pre-initialize all phenomenological coefficients
+    pPhase['a0'] = 0.0
+    pPhase['a1'] = 0.0
+    pPhase['a2'] = 0.0
+    pPhase['a3'] = 0.0
+    pPhase['a4'] = 0.0
+
+    pPhase['b0'] = 0.0
+    pPhase['b1'] = 0.0
+    pPhase['b2'] = 0.0
+    pPhase['b3'] = 0.0
+    pPhase['b4'] = 0.0
+
+    pPhase['c0'] = 0.0
+    pPhase['c1'] = 0.0
+    pPhase['c2'] = 0.0
+    pPhase['c3'] = 0.0
+    pPhase['c4'] = 0.0
+    pPhase['cL'] = 0.0
+    pPhase['cRD'] = 0.0
+
+    pPhase['c2PN_tidal'] = 0.0
+    pPhase['c3PN_tidal'] = 0.0
+    pPhase['c3p5PN_tidal'] = 0.0
+
+    pPhase['sigma0'] = 0.0
+    pPhase['sigma1'] = 0.0
+    pPhase['sigma2'] = 0.0
+    pPhase['sigma3'] = 0.0
+    pPhase['sigma4'] = 0.0
+    pPhase['sigma5'] = 0.0
+
+    # ========================================================================
+    # RINGDOWN PHASE COEFFICIENTS
+    # ========================================================================
+
+    # Gauss-Chebyshev collocation points
+    gpoints5 = jnp.array([
+        0.0,
+        1.0/2.0 - 1.0/(2.0*jnp.sqrt(2.0)),
+        1.0/2.0,
+        1.0/2.0 + 1.0/(2.0*jnp.sqrt(2.0)),
+        1.0
+    ])
+
+    # Set up ringdown collocation points
+    deltax = pPhase['fPhaseRDMax'] - pPhase['fPhaseRDMin']
+    xmin = pPhase['fPhaseRDMin']
+
+    CollocationPointsPhaseRD = gpoints5 * deltax + xmin
+    # Collocation point 4 is set to the ringdown frequency
+    CollocationPointsPhaseRD = CollocationPointsPhaseRD.at[3].set(pWF['fRING'])
+
+    pPhase['CollocationPointsPhaseRD'] = CollocationPointsPhaseRD
+
+    # Check phase version
+    if pWF['IMRPhenomXRingdownPhaseVersion'] == 105:
+        pPhase['NCollocationPointsRD'] = 5
+    else:
+        raise ValueError(f"IMRPhenomXRingdownPhaseVersion {pWF['IMRPhenomXRingdownPhaseVersion']} is not valid")
+
+    # NOTE: The calibrated collocation values would need to be imported from
+    # the appropriate coefficient functions (IMRPhenomX_Ringdown_Phase_22_*).
+    # For now, I'm setting placeholders that should be replaced with actual
+    # function calls to the calibrated fits.
+
+    # These functions need to be implemented separately - they contain the
+    # calibrated fits from NR simulations (see LALSimIMRPhenomX_ringdown.c)
+    # v4 = IMRPhenomX_Ringdown_Phase_22_v4(eta, STotR, dchi, delta, version)
+    # For now, use placeholder values - these MUST be replaced with actual calibration
+
+    # Placeholder for calibrated values (NEEDS ACTUAL IMPLEMENTATION)
+    RDv4 = 0.0  # Should call IMRPhenomX_Ringdown_Phase_22_v4(...)
+    CollocationValuesPhaseRD = jnp.zeros(5)
+    # CollocationValuesPhaseRD[0] = IMRPhenomX_Ringdown_Phase_22_d12(...)
+    # CollocationValuesPhaseRD[1] = IMRPhenomX_Ringdown_Phase_22_d24(...)
+    # CollocationValuesPhaseRD[2] = IMRPhenomX_Ringdown_Phase_22_d34(...)
+    # CollocationValuesPhaseRD[3] = RDv4
+    # CollocationValuesPhaseRD[4] = IMRPhenomX_Ringdown_Phase_22_d54(...)
+
+    # Accumulate collocation values: v_j = d_{j4} + v4
+    # CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[4].set(CollocationValuesPhaseRD[4] + CollocationValuesPhaseRD[3])
+    # CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[2].set(CollocationValuesPhaseRD[2] + CollocationValuesPhaseRD[3])
+    # CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[1].set(CollocationValuesPhaseRD[1] + CollocationValuesPhaseRD[3])
+    # CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[0].set(CollocationValuesPhaseRD[0] + CollocationValuesPhaseRD[1])
+
+    pPhase['CollocationValuesPhaseRD'] = CollocationValuesPhaseRD
+
+    # Set up the linear system for ringdown: A x = b
+    # Ansatz (Eq. 7.12): phi_RD(f) = a_0 + a_1 f^{-1/3} + a_2 f^{-2} + a_4 f^{-4} + cL / (f_damp^2 + (f - f_ring)^2)
+
+    A_RD = jnp.zeros((5, 5))
+    b_RD = CollocationValuesPhaseRD
+
+    for i in range(5):
+        ff = CollocationPointsPhaseRD[i]
+        invff = 1.0 / ff
+        ff1 = jnp.cbrt(invff)  # f^{-1/3}
+        ff2 = invff * invff  # f^{-2}
+        ff3 = ff2 * ff2  # f^{-4}
+        ff4 = -pWF['dphase0'] / (pWF['fDAMP']**2 + (ff - pWF['fRING'])**2)
+
+        A_RD = A_RD.at[i, 0].set(1.0)  # Constant term
+        A_RD = A_RD.at[i, 1].set(ff1)  # f^{-1/3}
+        A_RD = A_RD.at[i, 2].set(ff2)  # f^{-2}
+        A_RD = A_RD.at[i, 3].set(ff3)  # f^{-4}
+        A_RD = A_RD.at[i, 4].set(ff4)  # Lorentzian
+
+    # Solve the linear system using JAX
+    x_RD = jnp.linalg.solve(A_RD, b_RD)
+
+    pPhase['c0'] = x_RD[0]  # a0
+    pPhase['c1'] = x_RD[1]  # a1
+    pPhase['c2'] = x_RD[2]  # a2
+    pPhase['c4'] = x_RD[3]  # a4
+    pPhase['cRD'] = x_RD[4]  # a_RD
+    pPhase['cL'] = -pWF['dphase0'] * pPhase['cRD']
+
+    # Apply NR tuning for precessing cases (if applicable)
+    # pPhase['cL'] = pPhase['cL'] + (pWF['PNR_DEV_PARAMETER'] * pWF['NU4'])
+
+    # ========================================================================
+    # INSPIRAL PHASE COEFFICIENTS
+    # ========================================================================
+
+    deltax = pPhase['fPhaseInsMax'] - pPhase['fPhaseInsMin']
+    xmin = pPhase['fPhaseInsMin']
+
+    # Determine number of pseudo-PN coefficients based on version
+    version = pWF['IMRPhenomXInspiralPhaseVersion']
+    if version == 104:
+        NPseudoPN = 4
+        NCollocationPointsPhaseIns = 4
+    elif version == 105:
+        NPseudoPN = 5
+        NCollocationPointsPhaseIns = 5
+    elif version == 114:
+        NPseudoPN = 4
+        NCollocationPointsPhaseIns = 4
+    elif version == 115:
+        NPseudoPN = 5
+        NCollocationPointsPhaseIns = 5
+    else:
+        raise ValueError(f"IMRPhenomXInspiralPhaseVersion {version} is not valid")
+
+    pPhase['NPseudoPN'] = NPseudoPN
+    pPhase['NCollocationPointsPhaseIns'] = NCollocationPointsPhaseIns
+
+    # Gauss-Chebyshev points for inspiral
+    if NPseudoPN == 4:
+        gpoints = jnp.array([0.0, 1.0/4.0, 3.0/4.0, 1.0])
+    else:  # NPseudoPN == 5
+        gpoints = gpoints5
+
+    # Set up inspiral collocation points
+    CollocationPointsPhaseIns = gpoints * deltax + xmin
+    pPhase['CollocationPointsPhaseIns'] = CollocationPointsPhaseIns
+
+    # Placeholder for calibrated inspiral values (NEEDS ACTUAL IMPLEMENTATION)
+    CollocationValuesPhaseIns = jnp.zeros(NCollocationPointsPhaseIns)
+    # These functions need to be imported from LALSimIMRPhenomX_inspiral.c
+    CollocationValuesPhaseIns[0] = IMRPhenomX_Inspiral_Phase_22_d13(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    CollocationValuesPhaseIns[1] = IMRPhenomX_Inspiral_Phase_22_d23(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    CollocationValuesPhaseIns[2] = IMRPhenomX_Inspiral_Phase_22_v3(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    CollocationValuesPhaseIns[3] = IMRPhenomX_Inspiral_Phase_22_d43(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    if NPseudoPN == 5:
+         CollocationValuesPhaseIns[4] = IMRPhenomX_Inspiral_Phase_22_d53(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+
+    # Accumulate: v_j = d_j3 + v_3
+    CollocationValuesPhaseIns = CollocationValuesPhaseIns.at[0].set(CollocationValuesPhaseIns[0] + CollocationValuesPhaseIns[2])
+    CollocationValuesPhaseIns = CollocationValuesPhaseIns.at[1].set(CollocationValuesPhaseIns[1] + CollocationValuesPhaseIns[2])
+    CollocationValuesPhaseIns = CollocationValuesPhaseIns.at[3].set(CollocationValuesPhaseIns[3] + CollocationValuesPhaseIns[2])
+    if NPseudoPN == 5:
+        CollocationValuesPhaseIns = CollocationValuesPhaseIns.at[4].set(CollocationValuesPhaseIns[4] + CollocationValuesPhaseIns[2])
+
+    pPhase['CollocationValuesPhaseIns'] = CollocationValuesPhaseIns
+
+    # Set up the linear system for inspiral: A x = b
+    # Ansatz (Eq. 7.4): phi_Ins(f) = a_0 + a_1 f^{1/3} + a_2 f^{2/3} + a_3 f + a_4 f^{4/3}
+
+    A_Ins = jnp.zeros((NCollocationPointsPhaseIns, NCollocationPointsPhaseIns))
+    b_Ins = CollocationValuesPhaseIns
+
+    for i in range(NCollocationPointsPhaseIns):
+        ff = CollocationPointsPhaseIns[i]
+        ff1 = jnp.cbrt(ff)  # f^{1/3}
+        ff2 = ff1 * ff1  # f^{2/3}
+        ff3 = ff  # f^{1}
+
+        A_Ins = A_Ins.at[i, 0].set(1.0)
+        A_Ins = A_Ins.at[i, 1].set(ff1)
+        A_Ins = A_Ins.at[i, 2].set(ff2)
+        A_Ins = A_Ins.at[i, 3].set(ff3)
+
+        if NPseudoPN == 5:
+            ff4 = ff * ff1  # f^{4/3}
+            A_Ins = A_Ins.at[i, 4].set(ff4)
+
+    # Solve the linear system
+    x_Ins = jnp.linalg.solve(A_Ins, b_Ins)
+
+    pPhase['a0'] = x_Ins[0]
+    pPhase['a1'] = x_Ins[1]
+    pPhase['a2'] = x_Ins[2]
+    pPhase['a3'] = x_Ins[3]
+    if NPseudoPN == 5:
+        pPhase['a4'] = x_Ins[4]
+    else:
+        pPhase['a4'] = 0.0
+
+    # Convert pseudo-PN coefficients (normalized by (dphase0 / eta) * f^{8/3})
+    # Re-scale by f^{-8/3} in the PN phasing
+    pPhase['sigma1'] = (-5.0/3.0) * pPhase['a0']
+    pPhase['sigma2'] = (-5.0/4.0) * pPhase['a1']
+    pPhase['sigma3'] = (-5.0/5.0) * pPhase['a2']
+    pPhase['sigma4'] = (-5.0/6.0) * pPhase['a3']
+    pPhase['sigma5'] = (-5.0/7.0) * pPhase['a4']
+
+    # ========================================================================
+    # TAYLORF2 POST-NEWTONIAN COEFFICIENTS
+    # ========================================================================
+
+    # Initialize all PN coefficients to zero
+    for key in ['dphi0', 'dphi1', 'dphi2', 'dphi3', 'dphi4', 'dphi5', 'dphi6',
+                'dphi7', 'dphi8', 'dphi9', 'dphi10', 'dphi11', 'dphi12',
+                'dphi5L', 'dphi6L', 'dphi8L', 'dphi9L',
+                'phi0', 'phi1', 'phi2', 'phi3', 'phi4', 'phi5', 'phi6',
+                'phi7', 'phi8', 'phi9', 'phi10', 'phi11', 'phi12',
+                'phi5L', 'phi6L', 'phi8L', 'phi9L']:
+        pPhase[key] = 0.0
+
+    # Split into non-spinning and spinning coefficients
+    # These are the TaylorF2 PN coefficients normalized by 3 / (128 * eta * [pi M f]^{5/3})
+
+    # 0.0 PN (Newtonian)
+    phi0NS = 1.0
+
+    # 0.5 PN
+    phi1NS = 0.0
+
+    # 1.0 PN - Non-Spinning
+    phi2NS = (3715.0/756.0 + (55.0*eta)/9.0) * powers_of_lalpi['two_thirds']
+
+    # 1.5 PN
+    phi3NS = -16.0 * powers_of_lalpi['two']
+    phi3S = ((113.0*(chi1L + chi2L + chi1L*delta - chi2L*delta) -
+              76.0*(chi1L + chi2L)*eta) / 6.0) * powers_of_lalpi['itself']
+
+    # 2.0 PN
+    phi4NS = (15293365.0/508032.0 + (27145.0*eta)/504.0 +
+              (3085.0*eta2)/72.0) * powers_of_lalpi['four_thirds']
+    phi4S = ((-5.0*(81.0*chi1L2*(1.0 + delta - 2.0*eta) + 316.0*chi1L2L*eta -
+                    81.0*chi2L2*(-1.0 + delta + 2.0*eta))) / 16.0) * powers_of_lalpi['four_thirds']
+
+    # 2.5 PN
+    phi5NS = 0.0
+    phi5S = 0.0
+
+    # 2.5 PN - Log terms
+    phi5LNS = ((5.0*(46374.0 - 6552.0*eta)*LAL_PI) / 4536.0) * powers_of_lalpi['five_thirds']
+    phi5LS = ((-732985.0*(chi1L + chi2L + chi1L*delta - chi2L*delta) -
+               560.0*(-1213.0*(chi1L + chi2L) + 63.0*(chi1L - chi2L)*delta)*eta +
+               85680.0*(chi1L + chi2L)*eta2) / 4536.0) * powers_of_lalpi['five_thirds']
+
+    # 3.0 PN
+    phi6NS = (11583231236531.0/4.69421568e9 -
+              (5.0*eta*(3147553127.0 + 588.0*eta*(-45633.0 + 102260.0*eta))) / 3.048192e6 -
+              (6848.0*LAL_GAMMA) / 21.0 - (640.0*powers_of_lalpi['two']) / 3.0 +
+              (2255.0*eta*powers_of_lalpi['two']) / 12.0 - (13696.0*jnp.log(2.0)) / 21.0 -
+              (6848.0*powers_of_lalpi['log']) / 63.0) * powers_of_lalpi['two']
+    phi6S = ((5.0*(227.0*(chi1L + chi2L + chi1L*delta - chi2L*delta) -
+                   156.0*(chi1L + chi2L)*eta)*LAL_PI) / 3.0) * powers_of_lalpi['two']
+    phi6S += ((5.0*(20.0*chi1L2L*eta*(11763.0 + 12488.0*eta) +
+                    7.0*chi2L2*(-15103.0*(-1.0 + delta) + 2.0*(-21683.0 + 6580.0*delta)*eta - 9808.0*eta2) -
+                    7.0*chi1L2*(-15103.0*(1.0 + delta) + 2.0*(21683.0 + 6580.0*delta)*eta + 9808.0*eta2))) / 4032.0) * powers_of_lalpi['two']
+
+    # 3.0 PN - Log terms
+    phi6LNS = (-6848.0/63.0) * powers_of_lalpi['two']
+    phi6LS = 0.0
+
+    # 3.5 PN
+    phi7NS = ((5.0*(15419335.0 + 168.0*(75703.0 - 29618.0*eta)*eta)*LAL_PI) / 254016.0) * powers_of_lalpi['seven_thirds']
+    phi7S = ((5.0*(-5030016755.0*(chi1L + chi2L + chi1L*delta - chi2L*delta) +
+                   4.0*(2113331119.0*(chi1L + chi2L) + 675484362.0*(chi1L - chi2L)*delta)*eta -
+                   1008.0*(208433.0*(chi1L + chi2L) + 25011.0*(chi1L - chi2L)*delta)*eta2 +
+                   90514368.0*(chi1L + chi2L)*eta3)) / 6.096384e6) * powers_of_lalpi['seven_thirds']
+    phi7S += (-5.0*(57.0*chi1L2*(1.0 + delta - 2.0*eta) + 220.0*chi1L2L*eta -
+                    57.0*chi2L2*(-1.0 + delta + 2.0*eta))*LAL_PI) * powers_of_lalpi['seven_thirds']
+    phi7S += ((14585.0*(-(chi2L3*(-1.0 + delta)) + chi1L3*(1.0 + delta)) -
+               5.0*(chi2L3*(8819.0 - 2985.0*delta) + 8439.0*chi1L*chi2L2*(-1.0 + delta) -
+                    8439.0*chi1L2*chi2L*(1.0 + delta) + chi1L3*(8819.0 + 2985.0*delta))*eta +
+               40.0*(chi1L + chi2L)*(17.0*chi1L2 - 14.0*chi1L2L + 17.0*chi2L2)*eta2) / 48.0) * powers_of_lalpi['seven_thirds']
+
+    # 4.0 PN
+    phi8NS = 0.0
+    phi8S = ((-5.0*(1263141.0*(chi1L + chi2L + chi1L*delta - chi2L*delta) -
+                    2.0*(794075.0*(chi1L + chi2L) + 178533.0*(chi1L - chi2L)*delta)*eta +
+                    94344.0*(chi1L + chi2L)*eta2)*LAL_PI*(-1.0 + powers_of_lalpi['log'])) / 9072.0) * powers_of_lalpi['eight_thirds']
+
+    # 4.0 PN - Log terms
+    phi8LNS = 0.0
+    phi8LS = ((-5.0*(1263141.0*(chi1L + chi2L + chi1L*delta - chi2L*delta) -
+                     2.0*(794075.0*(chi1L + chi2L) + 178533.0*(chi1L - chi2L)*delta)*eta +
+                     94344.0*(chi1L + chi2L)*eta2)*LAL_PI) / 9072.0) * powers_of_lalpi['eight_thirds']
+
+    # 4.5 PN
+    phi9NS = 0.0
+    phi9S = 0.0
+    phi9LNS = 0.0
+    phi9LS = 0.0
+
+    # Additional terms for versions 114/115
+    if version == 114 or version == 115:
+        # 3.5PN Leading Order Spin-Spin Tail Term
+        phi7S += ((5.0*(65.0*chi1L2*(1.0 + delta - 2.0*eta) + 252.0*chi1L2L*eta -
+                        65.0*chi2L2*(-1.0 + delta + 2.0*eta))*LAL_PI) / 4.0) * powers_of_lalpi['seven_thirds']
+
+        # 4.5PN Tail Term
+        phi9NS += ((5.0*(-256.0 + 451.0*eta)*powers_of_lalpi['three']) / 6.0 +
+                   (LAL_PI*(105344279473163.0 + 700.0*eta*(-298583452147.0 +
+                            96.0*eta*(99645337.0 + 14453257.0*eta)) -
+                            12246091038720.0*LAL_GAMMA - 24492182077440.0*jnp.log(2.0))) / 1.877686272e10 -
+                   (13696.0*LAL_PI*powers_of_lalpi['log']) / 63.0) * powers_of_lalpi['three']
+
+        phi9LNS += ((-13696.0*LAL_PI) / 63.0) * powers_of_lalpi['three']
+
+    # Assign PN phase coefficients
+    pPhase['phi0'] = phi0NS
+    pPhase['phi1'] = phi1NS
+    pPhase['phi2'] = phi2NS
+    pPhase['phi3'] = phi3NS + phi3S
+    pPhase['phi4'] = phi4NS + phi4S
+    pPhase['phi5'] = phi5NS + phi5S
+    pPhase['phi5L'] = phi5LNS + phi5LS
+    pPhase['phi6'] = phi6NS + phi6S
+    pPhase['phi6L'] = phi6LNS + phi6LS
+    pPhase['phi7'] = phi7NS + phi7S
+    pPhase['phi8'] = phi8NS + phi8S
+    pPhase['phi8L'] = phi8LNS + phi8LS
+    pPhase['phi9'] = phi9NS + phi9S
+    pPhase['phi9L'] = phi9LNS + phi9LS
+
+    # Higher order terms (10PN, 11PN, 12PN) - not used in standard model
+    pPhase['phi10'] = 0.0
+    pPhase['phi11'] = 0.0
+    pPhase['phi12'] = 0.0
+
+    # Tidal corrections (placeholder - assumes BBH with no tides)
+    pPhase['phi_minus2'] = 0.0
+    pPhase['phi_minus1'] = 0.0
+
+    # Calculate phase derivatives (for intermediate region matching)
+    # These follow from the definition: dphi_n = (N/5) * phi_n where N is the PN order
+    pPhase['dphi_minus2'] = (7.0 / 5.0) * pPhase['phi_minus2']
+    pPhase['dphi_minus1'] = (6.0 / 5.0) * pPhase['phi_minus1']
+    pPhase['dphi0'] = (5.0 / 5.0) * pPhase['phi0']
+    pPhase['dphi1'] = (4.0 / 5.0) * pPhase['phi1']
+    pPhase['dphi2'] = (3.0 / 5.0) * pPhase['phi2']
+    pPhase['dphi3'] = (2.0 / 5.0) * pPhase['phi3']
+    pPhase['dphi4'] = (1.0 / 5.0) * pPhase['phi4']
+    pPhase['dphi5'] = -(3.0 / 5.0) * pPhase['phi5L']
+    pPhase['dphi6'] = -(1.0 / 5.0) * pPhase['phi6'] - (3.0 / 5.0) * pPhase['phi6L']
+    pPhase['dphi6L'] = -(1.0 / 5.0) * pPhase['phi6L']
+    pPhase['dphi7'] = -(2.0 / 5.0) * pPhase['phi7']
+    pPhase['dphi8'] = -(3.0 / 5.0) * pPhase['phi8'] - (3.0 / 5.0) * pPhase['phi8L']
+    pPhase['dphi8L'] = -(3.0 / 5.0) * pPhase['phi8L']
+    pPhase['dphi9'] = -(4.0 / 5.0) * pPhase['phi9'] - (3.0 / 5.0) * pPhase['phi9L']
+    pPhase['dphi9L'] = -(3.0 / 5.0) * pPhase['phi9L']
+
+    # Initialize connection coefficients (computed later by separate function)
+    pPhase['C1Int'] = 0.0
+    pPhase['C2Int'] = 0.0
+    pPhase['C1MRD'] = 0.0
+    pPhase['C2MRD'] = 0.0
+
+    return pPhase
