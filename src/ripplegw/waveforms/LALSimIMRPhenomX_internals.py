@@ -956,3 +956,426 @@ def IMRPhenomXGetPhaseCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
     pPhase['C2MRD'] = 0.0
 
     return pPhase
+
+
+# ============================================================================
+# Amplitude Coefficient Functions (Placeholder stubs - need full implementation)
+# ============================================================================
+
+# ============================================================================
+# Utility class for pre-computing powers of frequency
+# ============================================================================
+
+class IMRPhenomX_UsefulPowers:
+    """Container for pre-computed powers of frequency to avoid repeated calculations."""
+
+    def __init__(self):
+        self.one_sixth = 0.0
+        self.one_third = 0.0
+        self.two_thirds = 0.0
+        self.four_thirds = 0.0
+        self.five_thirds = 0.0
+        self.seven_sixths = 0.0
+        self.m_one_sixth = 0.0
+        self.m_seven_sixths = 0.0
+        self.itself = 0.0
+
+
+def IMRPhenomX_Initialize_Powers(powers: IMRPhenomX_UsefulPowers, f: float) -> None:
+    """Initialize useful powers of frequency."""
+    powers.one_sixth = f ** (1.0 / 6.0)
+    powers.one_third = f ** (1.0 / 3.0)
+    powers.two_thirds = f ** (2.0 / 3.0)
+    powers.four_thirds = f ** (4.0 / 3.0)
+    powers.five_thirds = f ** (5.0 / 3.0)
+    powers.seven_sixths = f ** (7.0 / 6.0)
+    powers.m_one_sixth = f ** (-1.0 / 6.0)
+    powers.m_seven_sixths = f ** (-7.0 / 6.0)
+    powers.itself = f
+
+
+# ============================================================================
+# Main Amplitude Coefficient Function
+# ============================================================================
+
+def IMRPhenomXGetAmplitudeCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calculate phenomenological amplitude coefficients for IMRPhenomX.
+
+    This function computes the amplitude coefficients for the inspiral, intermediate,
+    and ringdown regions of the IMRPhenomX waveform model. It sets up and solves
+    systems of linear equations using collocation methods to determine coefficients
+    that match calibrated values at specific frequency points.
+
+    The function implements:
+    - Ringdown amplitude deformed Lorentzian coefficients (gamma1, gamma2, gamma3)
+    - Inspiral amplitude TaylorF2 PN coefficients up to 6PN
+    - Pseudo-PN amplitude coefficient conversions (rho1, rho2, rho3)
+    - Intermediate region polynomial coefficients (delta0-delta5)
+
+    Parameters
+    ----------
+    pWF : dict
+        Waveform parameter dictionary containing masses, spins, and version flags.
+        Must contain keys like 'eta', 'chi1L', 'chi2L', 'fRING', 'fDAMP', 'fMECO',
+        'fISCO', 'STotR', 'dchi', 'delta', 'IMRPhenomXRingdownAmpVersion',
+        'IMRPhenomXInspiralAmpVersion', 'IMRPhenomXIntermediateAmpVersion', etc.
+
+    Returns
+    -------
+    pAmp : dict
+        Dictionary containing all amplitude coefficients including:
+        - Matching frequencies (fAmpMatchIN, fAmpMatchIM)
+        - Inspiral/intermediate/ringdown frequency bounds
+        - Ringdown coefficients (gamma1, gamma2, gamma3, gammaR, gammaD2, gammaD13)
+        - PN amplitude coefficients (pnInitial, pnOneThird, pnTwoThirds, etc.)
+        - Pseudo-PN coefficients (rho1, rho2, rho3 = pnSevenThirds, pnEightThirds, pnNineThirds)
+        - Intermediate polynomial coefficients (delta0-delta5)
+        - Collocation points and values
+
+    References
+    ----------
+    - Pratten et al., PRD 102, 064001 (2020) [arXiv:2001.11412]
+    - LALSimulation: LALSimIMRPhenomX_internals.c
+
+    Notes
+    -----
+    This is a JAX translation of the C function IMRPhenomXGetAmplitudeCoefficients.
+    The linear systems are solved using jnp.linalg.solve instead of GSL's LU decomposition.
+
+    WARNING: This implementation currently uses placeholder stub functions for many
+    calibrated fits. These need to be replaced with actual implementations from:
+    - LALSimIMRPhenomX_ringdown.c (ringdown amplitude calibration)
+    - LALSimIMRPhenomX_inspiral.c (inspiral amplitude calibration)
+    - LALSimIMRPhenomX_intermediate.c (intermediate amplitude calibration)
+    """
+
+    debug = pWF.get('debug', False)
+
+    # Initialize amplitude coefficient dictionary
+    pAmp = {}
+
+    # Extract local spin variables for convenience
+    chi1L = pWF['chi1L']
+    chi2L = pWF['chi2L']
+    chi1L2 = pWF['chi1L2']
+    chi1L3 = pWF['chi1L3']
+    chi2L2 = pWF['chi2L2']
+
+    # Local PN symmetry parameter
+    delta = pWF['delta']
+
+    # Local powers of the symmetric mass ratio
+    eta = pWF['eta']
+    eta2 = pWF['eta2']
+    eta3 = pWF['eta3']
+
+    if debug:
+        print(f"chi1L  = {chi1L:.6f}")
+        print(f"chi1L2 = {chi1L2:.6f}")
+        print(f"chi1L3 = {chi1L3:.6f}")
+        print(f"chi2L2 = {chi2L2:.6f}")
+        print(f"delta  = {delta:.6f}")
+        print(f"eta2   = {eta2:.6f}")
+        print(f"eta3   = {eta3:.6f}")
+
+    # ========================================================================
+    # RINGDOWN AMPLITUDE COEFFICIENTS
+    # ========================================================================
+
+    # Phenomenological ringdown coefficients: gamma2 = lambda, gamma3 = sigma in arXiv:2001.11412
+    pAmp['gamma2'] = IMRPhenomX_Ringdown_Amp_22_gamma2(
+        pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownAmpVersion']
+    )
+    pAmp['gamma3'] = IMRPhenomX_Ringdown_Amp_22_gamma3(
+        pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownAmpVersion']
+    )
+
+    # Apply modifications in the style of PhenomDCP: https://arxiv.org/pdf/2107.08876.pdf (Eq. 500)
+    pAmp['gamma3'] = pAmp['gamma3'] + (pWF['PNR_DEV_PARAMETER'] * pWF['MU2'])
+
+    # Get peak ringdown frequency, Eq. 5.14 in arXiv:2001.11412
+    pAmp['fAmpRDMin'] = IMRPhenomX_Ringdown_Amp_22_PeakFrequency(
+        pAmp['gamma2'], pAmp['gamma3'], pWF['fRING'], pWF['fDAMP'], pWF['IMRPhenomXRingdownAmpVersion']
+    )
+
+    # Value of v1RD at fAmpRDMin is used to calculate gamma1 (amplitude of deformed Lorentzian)
+    pAmp['v1RD'] = IMRPhenomX_Ringdown_Amp_22_v1(
+        pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownAmpVersion']
+    )
+    F1 = pAmp['fAmpRDMin']
+
+    # Apply modifications in the style of PhenomDCP (Eq. 500) - modify ringdown amplitude
+    pAmp['v1RD'] = pAmp['v1RD'] + (pWF['PNR_DEV_PARAMETER'] * pWF['MU1'])
+
+    # Solving linear equation: ansatzRD(F1) == v1
+    pAmp['gamma1'] = (
+        (pAmp['v1RD'] / (pWF['fDAMP'] * pAmp['gamma3'])) *
+        (F1*F1 - 2.0*F1*pWF['fRING'] + pWF['fRING']*pWF['fRING'] +
+         pWF['fDAMP']*pWF['fDAMP']*pAmp['gamma3']*pAmp['gamma3']) *
+        jnp.exp((F1 - pWF['fRING']) * pAmp['gamma2'] / (pWF['fDAMP'] * pAmp['gamma3']))
+    )
+
+    # Pre-cache these constants for the ringdown amplitude
+    pAmp['gammaR'] = pAmp['gamma2'] / (pWF['fDAMP'] * pAmp['gamma3'])
+    pAmp['gammaD2'] = (pAmp['gamma3'] * pWF['fDAMP']) * (pAmp['gamma3'] * pWF['fDAMP'])
+    pAmp['gammaD13'] = pWF['fDAMP'] * pAmp['gamma1'] * pAmp['gamma3']
+
+    if debug:
+        print(f"V1     = {pAmp['v1RD']:.6f}")
+        print(f"gamma1 = {pAmp['gamma1']:.6f}")
+        print(f"gamma2 = {pAmp['gamma2']:.6f}")
+        print(f"gamma3 = {pAmp['gamma3']:.6f}")
+        print(f"fmax   = {pAmp['fAmpRDMin']:.6f}")
+
+    # ========================================================================
+    # INSPIRAL-INTERMEDIATE TRANSITION FREQUENCIES
+    # ========================================================================
+
+    # Inspiral-Intermediate transition frequencies, see Eq. 5.7 in arXiv:2001.11412
+    pAmp['fAmpInsMin'] = 0.0026
+    pAmp['fAmpInsMax'] = pWF['fMECO'] + 0.25 * (pWF['fISCO'] - pWF['fMECO'])
+
+    # Inspiral-Intermediate matching frequency, Eq. 5.16 in arXiv:2001.11412
+    pAmp['fAmpMatchIN'] = pAmp['fAmpInsMax']
+
+    # End of intermediate region, Eq. 5.16 in arXiv:2001.11412
+    pAmp['fAmpIntMax'] = pAmp['fAmpRDMin']
+
+    # ========================================================================
+    # TAYLORF2 PN AMPLITUDE COEFFICIENTS
+    # ========================================================================
+
+    # TaylorF2 PN Amplitude Coefficients from usual PN re-expansion of Hlm's
+    pAmp['pnInitial'] = 1.0
+    pAmp['pnOneThird'] = 0.0
+    pAmp['pnTwoThirds'] = ((-969.0 + 1804.0*eta) / 672.0) * powers_of_lalpi['two_thirds']
+    pAmp['pnThreeThirds'] = (
+        (81.0*(chi1L + chi2L) + 81.0*chi1L*delta - 81.0*chi2L*delta - 44.0*(chi1L + chi2L)*eta) / 48.0
+    ) * powers_of_lalpi['itself']
+    pAmp['pnFourThirds'] = (
+        (-27312085.0 - 10287648.0*chi1L2*(1.0 + delta) +
+         24.0*(428652.0*chi2L2*(-1.0 + delta) +
+               (-1975055.0 + 10584.0*(81.0*chi1L2 - 94.0*chi1L*chi2L + 81.0*chi2L2))*eta +
+               1473794.0*eta2)) / 8.128512e6
+    ) * powers_of_lalpi['one_third'] * powers_of_lalpi['itself']
+    pAmp['pnFiveThirds'] = (
+        (-6048.0*chi1L3*(-1.0 - delta + (3.0 + delta)*eta) +
+         chi2L*(-((287213.0 + 6048.0*chi2L2)*(-1.0 + delta)) +
+                4.0*(-93414.0 + 1512.0*chi2L2*(-3.0 + delta) + 2083.0*delta)*eta - 35632.0*eta2) +
+         chi1L*(287213.0*(1.0 + delta) - 4.0*eta*(93414.0 + 2083.0*delta + 8908.0*eta)) +
+         42840.0*(-1.0 + 4.0*eta)*jnp.pi) / 32256.0
+    ) * powers_of_lalpi['five_thirds']
+    pAmp['pnSixThirds'] = (
+        (-1242641879927.0 +
+         12.0*(28.0*(-3248849057.0 + 11088.0*(163199.0*chi1L2 - 266498.0*chi1L*chi2L + 163199.0*chi2L2))*eta2 +
+               27026893936.0*eta3 -
+               116424.0*(147117.0*(-(chi2L2*(-1.0 + delta)) + chi1L2*(1.0 + delta)) +
+                        60928.0*(chi1L + chi2L + chi1L*delta - chi2L*delta)*jnp.pi) +
+               eta*(545384828789.0 - 77616.0*(638642.0*chi1L*chi2L +
+                                               chi1L2*(-158633.0 + 282718.0*delta) -
+                                               chi2L2*(158633.0 + 282718.0*delta) -
+                                               107520.0*(chi1L + chi2L)*jnp.pi +
+                                               275520.0*powers_of_lalpi['two'])))) / 6.0085960704e10
+    ) * powers_of_lalpi['two']
+
+    # These are the same order as the canonical pseudo-PN terms but we can add higher order PN info
+    pAmp['pnSevenThirds'] = 0.0
+    pAmp['pnEightThirds'] = 0.0
+    pAmp['pnNineThirds'] = 0.0
+
+    # ========================================================================
+    # INSPIRAL PSEUDO-PN COEFFICIENTS (Collocation Method)
+    # ========================================================================
+
+    # Generate Pseudo-PN Coefficients for Amplitude
+    if pWF['IMRPhenomXInspiralAmpVersion'] == 103:
+        pAmp['CollocationValuesAmpIns'] = jnp.zeros(4)
+        pAmp['CollocationValuesAmpIns'] = pAmp['CollocationValuesAmpIns'].at[0].set(0.0)  # Not currently used
+        pAmp['CollocationValuesAmpIns'] = pAmp['CollocationValuesAmpIns'].at[1].set(
+            IMRPhenomX_Inspiral_Amp_22_v2(pWF['eta'], pWF['chiPNHat'], pWF['dchi'], pWF['delta'],
+                                          pWF['IMRPhenomXInspiralAmpVersion'])
+        )
+        pAmp['CollocationValuesAmpIns'] = pAmp['CollocationValuesAmpIns'].at[2].set(
+            IMRPhenomX_Inspiral_Amp_22_v3(pWF['eta'], pWF['chiPNHat'], pWF['dchi'], pWF['delta'],
+                                          pWF['IMRPhenomXInspiralAmpVersion'])
+        )
+        pAmp['CollocationValuesAmpIns'] = pAmp['CollocationValuesAmpIns'].at[3].set(
+            IMRPhenomX_Inspiral_Amp_22_v4(pWF['eta'], pWF['chiPNHat'], pWF['dchi'], pWF['delta'],
+                                          pWF['IMRPhenomXInspiralAmpVersion'])
+        )
+
+        pAmp['CollocationPointsAmpIns'] = jnp.array([
+            0.25 * pAmp['fAmpMatchIN'],
+            0.50 * pAmp['fAmpMatchIN'],
+            0.75 * pAmp['fAmpMatchIN'],
+            1.00 * pAmp['fAmpMatchIN']
+        ])
+    else:
+        raise ValueError(f"IMRPhenomXInspiralAmpVersion {pWF['IMRPhenomXInspiralAmpVersion']} is not valid.")
+
+    # Set collocation points and values
+    V1 = pAmp['CollocationValuesAmpIns'][1]
+    V2 = pAmp['CollocationValuesAmpIns'][2]
+    V3 = pAmp['CollocationValuesAmpIns'][3]
+    F1 = pAmp['CollocationPointsAmpIns'][1]
+    F2 = pAmp['CollocationPointsAmpIns'][2]
+    F3 = pAmp['CollocationPointsAmpIns'][3]
+
+    if debug:
+        print("\nAmplitude pseudo PN coefficients")
+        print(f"fAmpMatchIN = {pAmp['fAmpMatchIN']:.6f}")
+        print(f"V1   = {V1:.6f}")
+        print(f"V2   = {V2:.6f}")
+        print(f"V3   = {V3:.6f}")
+        print(f"F1   = {F1:e}")
+        print(f"F2   = {F2:e}")
+        print(f"F3   = {F3:e}")
+
+    # Using the collocation points and their values, solve linear system for pseudo-PN coefficients
+    pAmp['rho1'] = IMRPhenomX_Inspiral_Amp_22_rho1(V1, V2, V3, F1, F2, F3, pWF['IMRPhenomXInspiralAmpVersion'])
+    pAmp['rho2'] = IMRPhenomX_Inspiral_Amp_22_rho2(V1, V2, V3, F1, F2, F3, pWF['IMRPhenomXInspiralAmpVersion'])
+    pAmp['rho3'] = IMRPhenomX_Inspiral_Amp_22_rho3(V1, V2, V3, F1, F2, F3, pWF['IMRPhenomXInspiralAmpVersion'])
+
+    # Set TaylorF2 pseudo-PN coefficients
+    pAmp['pnSevenThirds'] = pAmp['rho1']
+    pAmp['pnEightThirds'] = pAmp['rho2']
+    pAmp['pnNineThirds'] = pAmp['rho3']
+
+    if debug:
+        print("\nTaylorF2 PN Amplitude Coefficients")
+        print(f"pnTwoThirds   = {pAmp['pnTwoThirds']:.6f}")
+        print(f"pnThreeThirds = {pAmp['pnThreeThirds']:.6f}")
+        print(f"pnFourThirds  = {pAmp['pnFourThirds']:.6f}")
+        print(f"pnFiveThirds  = {pAmp['pnFiveThirds']:.6f}")
+        print(f"pnSixThirds   = {pAmp['pnSixThirds']:.6f}")
+        print("\nPseudo-PN Amplitude Coefficients")
+        print(f"alpha1 = {pAmp['pnSevenThirds']:.6f}")
+        print(f"alpha2 = {pAmp['pnEightThirds']:.6f}")
+        print(f"alpha3 = {pAmp['pnNineThirds']:.6f}")
+
+    # ========================================================================
+    # INTERMEDIATE REGION RECONSTRUCTION
+    # ========================================================================
+
+    # Now reconstruct the intermediate region, which depends on derivatives at boundaries
+    F1 = pAmp['fAmpMatchIN']
+    F4 = pAmp['fAmpRDMin']
+
+    # Initialize useful powers for the boundary points
+    powers_of_F1 = IMRPhenomX_UsefulPowers()
+    IMRPhenomX_Initialize_Powers(powers_of_F1, F1)
+
+    powers_of_F4 = IMRPhenomX_UsefulPowers()
+    IMRPhenomX_Initialize_Powers(powers_of_F4, F4)
+
+    # Calculate derivative of amplitude on boundary points
+    d1 = IMRPhenomX_Inspiral_Amp_22_DAnsatz(F1, pWF, pAmp)
+    d4 = IMRPhenomX_Ringdown_Amp_22_DAnsatz(F4, pWF, pAmp)
+
+    # Amplitude values at boundaries
+    inspF1 = IMRPhenomX_Inspiral_Amp_22_Ansatz(F1, vars(powers_of_F1), pWF, pAmp)
+    rdF4 = IMRPhenomX_Ringdown_Amp_22_Ansatz(F4, pWF, pAmp)
+
+    # Transform derivatives: D[f^{7/6} Ah^{-1}[f], f]
+    # = (7/6) * f^{1/6} / Ah[f] - (f^{7/6} Ah'[f]) / (Ah[f]^2)
+    d1 = ((7.0/6.0) * powers_of_F1.one_sixth / inspF1) - (powers_of_F1.seven_sixths * d1 / (inspF1*inspF1))
+    d4 = ((7.0/6.0) * powers_of_F4.one_sixth / rdF4) - (powers_of_F4.seven_sixths * d4 / (rdF4*rdF4))
+
+    if debug:
+        print(f"d1 = {d1:.6f}")
+        print(f"d4 = {d4:.6f}")
+
+    # Set up intermediate region based on version
+    if pWF['IMRPhenomXIntermediateAmpVersion'] == 1043:
+        # Use a 5th order polynomial in intermediate - great agreement but poor extrapolation
+        F2 = F1 + (1.0/3.0) * (F4 - F1)
+        F3 = F1 + (2.0/3.0) * (F4 - F1)
+
+        V1 = powers_of_F1.m_seven_sixths * inspF1
+        V2 = IMRPhenomX_Intermediate_Amp_22_v2(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'],
+                                               pWF['IMRPhenomXIntermediateAmpVersion'])
+        V3 = IMRPhenomX_Intermediate_Amp_22_v3(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'],
+                                               pWF['IMRPhenomXIntermediateAmpVersion'])
+        V4 = powers_of_F4.m_seven_sixths * rdF4
+
+        V1 = 1.0 / V1
+        V2 = 1.0 / V2
+        V3 = 1.0 / V3
+        V4 = 1.0 / V4
+
+    elif pWF['IMRPhenomXIntermediateAmpVersion'] == 104:
+        # Use a 4th order polynomial in intermediate - good extrapolation, recommended default
+        F2 = F1 + (1.0/2.0) * (F4 - F1)
+        F3 = 0.0
+
+        V1 = powers_of_F1.m_seven_sixths * inspF1
+        V2 = IMRPhenomX_Intermediate_Amp_22_vA(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'],
+                                               pWF['IMRPhenomXIntermediateAmpVersion'])
+        V4 = powers_of_F4.m_seven_sixths * rdF4
+
+        V1 = 1.0 / V1
+        V2 = 1.0 / V2
+        V3 = 0.0
+        V4 = 1.0 / V4
+
+    elif pWF['IMRPhenomXIntermediateAmpVersion'] == 105:
+        # Use a 5th order polynomial in intermediate - great agreement but poor extrapolation
+        F2 = F1 + (1.0/3.0) * (F4 - F1)
+        F3 = F1 + (2.0/3.0) * (F4 - F1)
+
+        V1 = powers_of_F1.m_seven_sixths * inspF1
+        V2 = IMRPhenomX_Intermediate_Amp_22_v2(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'],
+                                               pWF['IMRPhenomXIntermediateAmpVersion'])
+        V3 = IMRPhenomX_Intermediate_Amp_22_v3(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'],
+                                               pWF['IMRPhenomXIntermediateAmpVersion'])
+        V4 = powers_of_F4.m_seven_sixths * rdF4
+
+        V1 = 1.0 / V1
+        V2 = 1.0 / V2
+        V3 = 1.0 / V3
+        V4 = 1.0 / V4
+    else:
+        raise ValueError(f"IMRPhenomXIntermediateAmpVersion {pWF['IMRPhenomXIntermediateAmpVersion']} is not valid.")
+
+    # Let's try directly modifying the (inverse) amplitude values used in collocation (Eq. 500)
+    # See Table I of https://arxiv.org/pdf/2001.11412.pdf
+    V2 = V2 + (pWF['PNR_DEV_PARAMETER'] * pWF['MU3'])
+    # V3 is not used by default in PhenomX (only for version 1043/105)
+
+    if debug:
+        print("\nIntermediate Region:")
+        print(f"F1 = {F1:.6f}")
+        print(f"F2 = {F2:.6f}")
+        print(f"F3 = {F3:.6f}")
+        print(f"F4 = {F4:.6f}")
+        print(f"V1 = {V1:.6f}")
+        print(f"V2 = {V2:.6f}")
+        print(f"V3 = {V3:.6f}")
+        print(f"V4 = {V4:.6f}")
+
+    # Reconstruct the phenomenological coefficients for the intermediate ansatz
+    pAmp['delta0'] = IMRPhenomX_Intermediate_Amp_22_delta0(d1, d4, V1, V2, V3, V4, F1, F2, F3, F4,
+                                                            pWF['IMRPhenomXIntermediateAmpVersion'])
+    pAmp['delta1'] = IMRPhenomX_Intermediate_Amp_22_delta1(d1, d4, V1, V2, V3, V4, F1, F2, F3, F4,
+                                                            pWF['IMRPhenomXIntermediateAmpVersion'])
+    pAmp['delta2'] = IMRPhenomX_Intermediate_Amp_22_delta2(d1, d4, V1, V2, V3, V4, F1, F2, F3, F4,
+                                                            pWF['IMRPhenomXIntermediateAmpVersion'])
+    pAmp['delta3'] = IMRPhenomX_Intermediate_Amp_22_delta3(d1, d4, V1, V2, V3, V4, F1, F2, F3, F4,
+                                                            pWF['IMRPhenomXIntermediateAmpVersion'])
+    pAmp['delta4'] = IMRPhenomX_Intermediate_Amp_22_delta4(d1, d4, V1, V2, V3, V4, F1, F2, F3, F4,
+                                                            pWF['IMRPhenomXIntermediateAmpVersion'])
+    pAmp['delta5'] = IMRPhenomX_Intermediate_Amp_22_delta5(d1, d4, V1, V2, V3, V4, F1, F2, F3, F4,
+                                                            pWF['IMRPhenomXIntermediateAmpVersion'])
+
+    if debug:
+        print(f"delta0 = {pAmp['delta0']:.6f}")
+        print(f"delta1 = {pAmp['delta1']:.6f}")
+        print(f"delta2 = {pAmp['delta2']:.6f}")
+        print(f"delta3 = {pAmp['delta3']:.6f}")
+        print(f"delta4 = {pAmp['delta4']:.6f}")
+        print(f"delta5 = {pAmp['delta5']:.6f}")
+
+    return pAmp
+
+

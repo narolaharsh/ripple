@@ -2,6 +2,7 @@
 from .LALSimIMRPhenomX_internals import IMRPhenomXSetWaveformVariables
 import jax.numpy as jnp
 from .LALSimIMRPhenomX_precession import (IMRPhenomX_Return_phi_zeta_costhetaL_MSA, IMRPhenomXGetAndSetPrecessionVariables, XLALSimIMRPhenomXUtilsHztoMf)
+from .LALSimIMRPhenomX_internals import (IMRPhenomXGetPhaseCoefficients, IMRPhenomXGetAmplitudeCoefficients)
 import jax
 
 
