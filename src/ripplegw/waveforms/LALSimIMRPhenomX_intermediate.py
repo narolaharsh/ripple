@@ -931,3 +931,106 @@ def IMRPhenomX_Intermediate_Amp_22_delta5(d1: float, d4: float, V1: float, V2: f
 
     return retVal
 
+
+def IMRPhenomX_Intermediate_Phase_22_AnsatzInt(
+    f: float,
+    powers_of_f: 'IMRPhenomX_UsefulPowers',
+    pWF: dict,
+    pPhase: dict
+) -> float:
+    """
+    Compute the intermediate phase using the ansatz with Lorentzian term.
+
+    This function evaluates the intermediate regime phase ansatz for the 22 mode.
+    The ansatz includes polynomial terms and a Lorentzian (arctangent) term that
+    smoothly connects to the ringdown regime.
+
+    Translated from LALSimIMRPhenomX_intermediate.c
+
+    Parameters
+    ----------
+    f : float
+        Frequency in geometric units
+    powers_of_f : IMRPhenomX_UsefulPowers
+        Pre-computed powers of frequency for efficiency. Should have attributes:
+            - m_one: f^(-1) = 1/f
+            - m_two: f^(-2) = 1/f^2
+            - m_three: f^(-3) = 1/f^3
+            - log: log(f)
+    pWF : dict
+        Waveform parameter structure containing:
+            - IMRPhenomXIntermediatePhaseVersion: Version flag (104 or 105)
+            - fRING: Ring-down frequency
+            - fDAMP: Damping frequency
+    pPhase : dict
+        Phase coefficient structure containing:
+            - b0: Coefficient for f term
+            - b1: Coefficient for log(f) term
+            - b2: Coefficient for 1/f term
+            - b3: Coefficient for 1/f^2 term (only for version 105)
+            - b4: Coefficient for 1/f^3 term
+            - cLGR: GR Lorentzian coefficient
+
+    Returns
+    -------
+    float
+        Intermediate phase value at frequency f
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXIntermediatePhaseVersion is not valid (104 or 105)
+
+    Notes
+    -----
+    Version 104 uses 4 coefficients: b0, b1, b2, b4 (canonical)
+    Version 105 uses 5 coefficients: b0, b1, b2, b3, b4 (canonical)
+
+    The GR Lorentzian term ensures that variations to GR coefficients in the
+    ringdown regime decouple from the intermediate regime.
+    """
+    invff1 = powers_of_f.m_one
+    invff2 = powers_of_f.m_two
+    invff3 = powers_of_f.m_three
+    logfv = powers_of_f.log
+
+    frd = pWF['fRING']
+    fda = pWF['fDAMP']
+
+    b0 = pPhase['b0']
+    b1 = pPhase['b1']
+    b2 = pPhase['b2']
+    b3 = pPhase['b3']
+    b4 = pPhase['b4']
+    # We pass the GR Lorentzian term to make sure that variations to the GR
+    # coefficients in the ringdown decouple from the intermediate regime
+    cL = pPhase['cLGR']
+
+    IntPhaseVersion = pWF['IMRPhenomXIntermediatePhaseVersion']
+
+    if IntPhaseVersion == 104:  # Canonical, 4 coefficients
+        phaseOut = (
+            b0 * f
+            + b1 * logfv
+            - b2 * invff1
+            - (b4 * invff3 / 3.0)
+            + (2.0 * cL * jnp.arctan((f - frd) / (2.0 * fda))) / fda
+        )
+    elif IntPhaseVersion == 105:  # Canonical, 5 coefficients
+        phaseOut = (
+            b0 * f
+            + b1 * logfv
+            - b2 * invff1
+            - b3 * invff2 / 2.0
+            - (b4 * invff3 / 3.0)
+            + (2.0 * cL * jnp.arctan((f - frd) / (2.0 * fda))) / fda
+        )
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomX_Intermediate_Phase_22_AnsatzInt: "
+            f"IMRPhenomXIntermediatePhaseVersion={IntPhaseVersion} is not valid. "
+            f"Recommended flag is 104."
+        )
+
+    return phaseOut
+

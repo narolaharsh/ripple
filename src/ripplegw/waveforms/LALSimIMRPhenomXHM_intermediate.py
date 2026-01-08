@@ -8,6 +8,13 @@ IMRPhenomXHM waveform model, converted from the LALSimulation C code to JAX.
 import jax.numpy as jnp
 
 
+def IMRPhenomXHM_Inter_Phase_AnsatzInt():
+    return #TODO
+
+
+def IMRPhenomXHM_Inter_Phase_Ansatz():
+    return TODO
+
 def IMRPhenomXHM_Inter_Amp_21_int1(pWF: dict, InterAmpFlag: int) -> float:
     """
     Compute the int1 coefficient for the 21 mode intermediate amplitude.

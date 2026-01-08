@@ -47,3 +47,27 @@ def IMRPhenomXPsi4ToStrain(eta: float, S: float, dchi: float) -> float:
     uneqSpin = 105.37711654943146 * dchi * jnp.sqrt(1.0 - 4.0*eta) * eta2
 
     return noSpin + eqSpin + uneqSpin
+
+
+def IMRPhenomX_StepFuncBool(t: float, t1: float) -> bool:
+    """
+    Step function returning boolean value.
+
+    This is a Heaviside step function that returns True when t >= t1,
+    and False otherwise. Used for conditional logic in waveform generation.
+
+    Translated from LALSimIMRPhenomXUtilities.c
+
+    Args:
+        t: Input value (typically time or frequency)
+        t1: Threshold value
+
+    Returns:
+        bool: True if t >= t1, False otherwise
+
+    Notes:
+        In JAX, for differentiable step functions, consider using
+        jax.numpy.heaviside or smooth approximations. This boolean
+        version is for direct conditional evaluation.
+    """
+    return t >= t1

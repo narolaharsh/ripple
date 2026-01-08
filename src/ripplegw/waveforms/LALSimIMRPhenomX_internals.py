@@ -15,11 +15,15 @@ from .LALSimIMRPhenomX_PNR_internals import (
     XLALSimIMRPhenomXFinalSpin2017,
 )
 
-from .LALSimIMRPhenomX_internals import (IMRPhenomX_Inspiral_Phase_22_d13, IMRPhenomX_Inspiral_Phase_22_d23, IMRPhenomX_Inspiral_Phase_22_v3, IMRPhenomX_Inspiral_Phase_22_d43, IMRPhenomX_Inspiral_Phase_22_d53)
+from .LALSimIMRPhenomX_inspiral import (IMRPhenomX_Inspiral_Phase_22_d13, IMRPhenomX_Inspiral_Phase_22_d23, IMRPhenomX_Inspiral_Phase_22_v3, IMRPhenomX_Inspiral_Phase_22_d43, IMRPhenomX_Inspiral_Phase_22_d53)
 
 from .LALSimIMRPhenomX_qnm import evaluate_QNMfit_fring22, evaluate_QNMfit_fdamp22
 from .LALSimIMRPhenomX_precession import XLALSimIMRPhenomXUtilsHztoMf
 
+from .LALSimIMRPhenomX_inspiral import IMRPhenomX_Inspiral_Phase_22_AnsatzInt
+from .LALSimIMRPhenomX_intermediate import IMRPhenomX_Intermediate_Phase_22_AnsatzInt
+from .LALSimIMRPhenomX_ringdown import IMRPhenomX_Ringdown_Phase_22_AnsatzInt
+from .LALSimIMRPhenomXUtilities import IMRPhenomX_StepFuncBool
 
 # Helper functions
 def XLALSimIMRPhenomXchiPNHat(eta: float, chi1L: float, chi2L: float) -> float:
@@ -1379,3 +1383,229 @@ def IMRPhenomXGetAmplitudeCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
     return pAmp
 
 
+def IMRPhenomX_Phase_22(ff: float, powers_of_f: dict, pPhase: dict, pWF: dict) -> float:
+    """
+    Compute the IMRPhenomX phase for the (2,2) mode.
+
+    This function computes the full phase across all three regions (inspiral,
+    intermediate, ringdown) given a phase coefficients struct pPhase.
+
+    Args:
+        ff: Frequency value (geometric units)
+        powers_of_f: Dictionary containing useful powers of frequency
+        pPhase: Phase coefficient dictionary
+        pWF: Waveform structure dictionary
+
+    Returns:
+        float: Phase value at frequency ff
+    """
+    
+
+    # Inspiral region, f < fPhaseMatchIN
+    inspiral_condition = jnp.logical_not(IMRPhenomX_StepFuncBool(ff, pPhase['fPhaseMatchIN']))
+
+    # Ringdown region, f > fPhaseMatchIM
+    ringdown_condition = IMRPhenomX_StepFuncBool(ff, pPhase['fPhaseMatchIM'])
+
+    # Compute all three regions
+    PhiIns = IMRPhenomX_Inspiral_Phase_22_AnsatzInt(ff, powers_of_f, pPhase)
+
+    PhiMRD = (IMRPhenomX_Ringdown_Phase_22_AnsatzInt(ff, powers_of_f, pWF, pPhase) +
+              pPhase['C1MRD'] + (pPhase['C2MRD'] * ff))
+
+    PhiInt = (IMRPhenomX_Intermediate_Phase_22_AnsatzInt(ff, powers_of_f, pWF, pPhase) +
+              pPhase['C1Int'] + (pPhase['C2Int'] * ff))
+
+    # Use JAX where to select the appropriate region
+    # Priority: inspiral > ringdown > intermediate
+    phase = jnp.where(
+        inspiral_condition,
+        PhiIns,
+        jnp.where(ringdown_condition, PhiMRD, PhiInt)
+    )
+
+    return phase
+
+
+def IMRPhenomX_dPhase_22(ff: float, powers_of_f: dict, pPhase: dict, pWF: dict) -> float:
+    """
+    Compute the IMRPhenomX phase derivative for the (2,2) mode.
+
+    This function computes the phase derivative (df/dt) across all three regions
+    (inspiral, intermediate, ringdown) given a phase coefficients struct pPhase.
+
+    Args:
+        ff: Frequency value (geometric units)
+        powers_of_f: Dictionary containing useful powers of frequency
+        pPhase: Phase coefficient dictionary
+        pWF: Waveform structure dictionary
+
+    Returns:
+        float: Phase derivative at frequency ff
+    """
+    from .LALSimIMRPhenomX_inspiral import IMRPhenomX_Inspiral_Phase_22_Ansatz
+    from .LALSimIMRPhenomX_intermediate import IMRPhenomX_Intermediate_Phase_22_Ansatz
+    from .LALSimIMRPhenomX_ringdown import (
+        IMRPhenomX_Ringdown_Phase_22_Ansatz,
+        IMRPhenomX_StepFuncBool
+    )
+
+    # Inspiral region, f < fPhaseMatchIN
+    inspiral_condition = jnp.logical_not(IMRPhenomX_StepFuncBool(ff, pPhase['fPhaseMatchIN']))
+
+    # Ringdown region, f > fPhaseMatchIM
+    ringdown_condition = IMRPhenomX_StepFuncBool(ff, pPhase['fPhaseMatchIM'])
+
+    # Compute all three regions
+    dPhiIns = IMRPhenomX_Inspiral_Phase_22_Ansatz(ff, powers_of_f, pPhase)
+
+    dPhiMRD = (IMRPhenomX_Ringdown_Phase_22_Ansatz(ff, powers_of_f, pWF, pPhase) +
+               pPhase['C2MRD'])
+
+    dPhiInt = (IMRPhenomX_Intermediate_Phase_22_Ansatz(ff, powers_of_f, pWF, pPhase) +
+               pPhase['C2Int'])
+
+    # Use JAX where to select the appropriate region
+    # Priority: inspiral > ringdown > intermediate
+    dphase = jnp.where(
+        inspiral_condition,
+        dPhiIns,
+        jnp.where(ringdown_condition, dPhiMRD, dPhiInt)
+    )
+
+    return dphase
+
+
+def IMRPhenomXLinb(eta: float, S: float, dchi: float, delta: float) -> float:
+    """
+    Compute the linb parameter for time alignment.
+
+    This is a parameter-space fit of dphi22(fring22-fdamp22), evaluated on
+    the calibration dataset. Used for aligning the model to the hybrids.
+
+    Args:
+        eta: Symmetric mass ratio
+        S: Total dimensionless spin (STotR)
+        dchi: Spin difference parameter
+        delta: Mass difference parameter
+
+    Returns:
+        float: linb parameter value
+    """
+    eta2 = eta * eta
+    eta3 = eta2 * eta
+    eta4 = eta3 * eta
+    eta5 = eta3 * eta2
+    eta6 = eta4 * eta2
+
+    S2 = S * S
+    S3 = S2 * S
+    S4 = S3 * S
+
+    noSpin = (3155.1635543201924 + 1257.9949740608242 * eta -
+              32243.28428870599 * eta2 + 347213.65466875216 * eta3 -
+              1.9223851649491738e6 * eta4 + 5.3035911346921865e6 * eta5 -
+              5.789128656876938e6 * eta6)
+
+    eqSpin = ((-24.181508118588667 + 115.49264174560281 * eta -
+               380.19778216022763 * eta2) * S +
+              (24.72585609641552 - 328.3762360751952 * eta +
+               725.6024119989094 * eta2) * S2 +
+              (23.404604124552 - 646.3410199799737 * eta +
+               1941.8836639529036 * eta2) * S3 +
+              (-12.814828278938885 - 325.92980012408367 * eta +
+               1320.102640190539 * eta2) * S4)
+
+    uneqSpin = -148.17317525117338 * dchi * delta * eta2
+
+    return noSpin + eqSpin + uneqSpin
+
+
+def compute_powers_of_f(f: float) -> dict:
+    """
+    Compute useful powers of frequency for phase/amplitude calculations.
+
+    Args:
+        f: Frequency value
+
+    Returns:
+        dict: Dictionary containing various powers of f
+    """
+    return {
+        'itself': f,
+        'one_sixth': f ** (1.0 / 6.0),
+        'one_third': f ** (1.0 / 3.0),
+        'two_thirds': f ** (2.0 / 3.0),
+        'four_thirds': f ** (4.0 / 3.0),
+        'five_thirds': f ** (5.0 / 3.0),
+        'seven_sixths': f ** (7.0 / 6.0),
+        'seven_thirds': f ** (7.0 / 3.0),
+        'eight_thirds': f ** (8.0 / 3.0),
+        'sqrt': jnp.sqrt(f),
+        'two': f ** 2.0,
+        'three': f ** 3.0,
+        'four': f ** 4.0,
+        'five': f ** 5.0,
+        'm_one_sixth': f ** (-1.0 / 6.0),
+        'm_one_third': f ** (-1.0 / 3.0),
+        'm_two_thirds': f ** (-2.0 / 3.0),
+        'm_four_thirds': f ** (-4.0 / 3.0),
+        'm_five_thirds': f ** (-5.0 / 3.0),
+        'm_seven_sixths': f ** (-7.0 / 6.0),
+        'm_sqrt': f ** (-0.5),
+        'm_one': 1.0 / f,
+        'm_two': f ** (-2.0),
+        'm_three': f ** (-3.0),
+        'm_four': f ** (-4.0),
+        'm_five': f ** (-5.0),
+        'log': jnp.log(f),
+    }
+
+
+def IMRPhenomX_TimeShift_22(pPhase: dict, pWF: dict) -> float:
+    """
+    Compute the time shift for the (2,2) mode to align with NR hybrids.
+
+    This function aligns the model to the hybrids, for which psi4 peaks 500M
+    before the end of the waveform. It computes a parameter-space fit and
+    corrects the time-alignment by first aligning the peak of psi4, then
+    adding a correction to align the peak of strain instead.
+
+    Args:
+        pPhase: Phase coefficient dictionary
+        pWF: Waveform structure dictionary
+
+    Returns:
+        float: Time shift value
+    """
+    from .LALSimIMRPhenomXUtilities import IMRPhenomXPsi4ToStrain
+
+    # linb is a parameter-space fit of dphi22(fring22-fdamp22), evaluated on the calibration dataset
+    linb = IMRPhenomXLinb(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'])
+
+    # Reference frequency for the fit
+    frefFit = pWF['fRING'] - pWF['fDAMP']
+
+    # Compute powers of reference frequency
+    powers_of_frefFit = compute_powers_of_f(frefFit)
+
+    # Compute phase derivative at reference frequency
+    dphi22Ref = (1.0 / pWF['eta']) * IMRPhenomX_dPhase_22(frefFit, powers_of_frefFit, pPhase, pWF)
+
+    # Correction to align the peak of strain instead of psi4
+    psi4tostrain = IMRPhenomXPsi4ToStrain(pWF['eta'], pWF['STotR'], pWF['dchi'])
+
+    # Compute time shift
+    # Here we correct the time-alignment of the waveform by first aligning the peak of psi4,
+    # and then adding a correction to align the peak of strain instead
+    tshift = linb - dphi22Ref - 2.0 * jnp.pi * (500.0 + psi4tostrain)
+
+    # Apply PNR deviation (500)
+    tshift = tshift + (pWF['PNR_DEV_PARAMETER'] * pWF['NU0'])
+
+    # phX phase will read phi22 = 1/eta * IMRPhenomX_Phase_22 + tshift * f, modulo a residual phase-shift
+    return tshift
+
+
+def IMRPhenomX_Phase_22_ConnectionCoefficients():
+    return #TODO

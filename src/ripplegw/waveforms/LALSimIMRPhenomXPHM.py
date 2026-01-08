@@ -4,7 +4,13 @@ import jax.numpy as jnp
 from .LALSimIMRPhenomX_precession import (IMRPhenomX_Return_phi_zeta_costhetaL_MSA, IMRPhenomXGetAndSetPrecessionVariables, XLALSimIMRPhenomXUtilsHztoMf)
 from .LALSimIMRPhenomX_internals import (IMRPhenomXGetPhaseCoefficients, IMRPhenomXGetAmplitudeCoefficients)
 from .LALSimIMRPhenomXHM_multiband import (deltaF_mergerBin, deltaF_ringdownBin)
-from .LALSimIMRPhenomXHM_internals import (IMRPhenomXHM_Initialize_QNMs, IMRPhenomXHM_SetHMWaveformVariables, IMRPhenomXHM_FillAmpFitsArray, IMRPhenomXHM_FillPhaseFitsArray)
+from .LALSimIMRPhenomXHM_internals import (IMRPhenomXHM_Initialize_QNMs, 
+                                           IMRPhenomXHM_SetHMWaveformVariables, 
+                                           IMRPhenomXHM_FillAmpFitsArray, 
+                                           IMRPhenomXHM_FillPhaseFitsArray,
+                                           GetSpheroidalCoefficients, 
+                                           IMRPhenomXHM_GetAmplitudeCoefficients,
+                                           IMRPhenomXHM_GetPhaseCoefficients)
 import jax
 
 
@@ -202,7 +208,7 @@ def XLALSimIMRPhenomXPHMMultibandingGrid(
         MfLorentzianEnd = pWF['fRING'] + 2 * pWF['fDAMP']
 
         # Get phase and amplitude coefficients for 22 mode
-        pPhase22 = IMRPhenomXGetPhaseCoefficients(pWF)
+        #pPhase22 = IMRPhenomXGetPhaseCoefficients(pWF)
         pAmp22 = IMRPhenomXGetAmplitudeCoefficients(pWF)
 
         dfmerger = deltaF_mergerBin(pWF.fDAMP, pPhase22.cLovfda / pWF.eta, thresholdMB)
@@ -214,14 +220,16 @@ def XLALSimIMRPhenomXPHMMultibandingGrid(
         pWFHM = IMRPhenomXHM_SetHMWaveformVariables(ell, emmprime, pWF, qnms, lalParams)
 
         # Get phase and amplitude coefficients
+        #FIXME These two statements need to be double checked
         pPhase22 = IMRPhenomXGetPhaseCoefficients(pWF)
-        pAmp22 = IMRPhenomXGetAmplitudeCoefficients(pWF)
 
         pAmp = IMRPhenomXHM_FillAmpFitsArray()
         pPhase = IMRPhenomXHM_FillPhaseFitsArray()
 
         if pWFHM.MixingOn == 1:
-            GetSpheroidalCoefficients(pPhase, pPhase22, pWFHM, pWF)
+            pPhase = GetSpheroidalCoefficients(pPhase, pPhase22, pWFHM, pWF) #What does this function return?
+            pAmp22 = IMRPhenomXGetAmplitudeCoefficients(pWF)
+
 
         IMRPhenomXHM_GetAmplitudeCoefficients(pAmp, pPhase, pAmp22, pPhase22, pWFHM, pWF)
         IMRPhenomXHM_GetPhaseCoefficients(pAmp, pPhase, pAmp22, pPhase22, pWFHM, pWF, lalParams)

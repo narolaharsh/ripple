@@ -1203,3 +1203,121 @@ def IMRPhenomX_Inspiral_Amp_22_DAnsatz(Mf: float, pWF: dict, pAmp: dict) -> floa
             f"Error in IMRPhenomX_Inspiral_Amp_22_DAnsatz: InsAmpFlag={InsAmpFlag} is not valid. "
             f"Valid values are 103."
         )
+
+
+def IMRPhenomX_Inspiral_Phase_22_AnsatzInt(Mf: float, powers_of_Mf: 'IMRPhenomX_UsefulPowers', pPhase: dict) -> float:
+    """
+    Compute the inspiral phase using TaylorF2 PN expansion with pseudo-PN coefficients.
+
+    This function assembles the Post-Newtonian (PN) phasing series for the 22 mode inspiral phase.
+    The series includes both standard PN terms up to 4.5PN order and pseudo-PN terms (sigma1-sigma5)
+    that are calibrated to numerical relativity simulations.
+
+    The PN phasing series is normalized by: 3 / (128 * eta * pi^{5/3})
+
+    Args:
+        Mf: Dimensionless frequency (geometric units M*f)
+        powers_of_Mf: Pre-computed powers of Mf for efficiency. Should have attributes:
+            - two_thirds: Mf^(2/3)
+            - one_third: Mf^(1/3)
+            - one_third: Mf^(1/3)
+            - two_thirds: Mf^(2/3)
+            - four_thirds: Mf^(4/3)
+            - five_thirds: Mf^(5/3)
+            - log: log(Mf)
+            - two: Mf^2
+            - seven_thirds: Mf^(7/3)
+            - eight_thirds: Mf^(8/3)
+            - three: Mf^3
+            - m_five_thirds: Mf^(-5/3)
+        pPhase: Phase coefficient structure containing:
+            - phi_minus2: f^{-7/3} coefficient (-1PN)
+            - phi_minus1: f^{-6/3} coefficient (-0.5PN)
+            - phi0: f^{-5/3} coefficient (Newtonian)
+            - phi1: f^{-4/3} coefficient (0.5PN)
+            - phi2: f^{-3/3} coefficient (1.0PN)
+            - phi3: f^{-2/3} coefficient (1.5PN)
+            - phi4: f^{-1/3} coefficient (2.0PN)
+            - phi5: f^{0} coefficient (2.5PN)
+            - phi5L: f^{0} log coefficient (2.5PN)
+            - phi6: f^{+1/3} coefficient (3.0PN)
+            - phi6L: f^{+1/3} log coefficient (3.0PN)
+            - phi7: f^{+2/3} coefficient (3.5PN)
+            - phi8: f^{+3/3} coefficient (4.0PN)
+            - phi8L: f^{+3/3} log coefficient (4.0PN)
+            - phi9: f^{+4/3} coefficient (4.5PN)
+            - phi9L: f^{+4/3} log coefficient (4.5PN)
+            - sigma1 through sigma5: Pseudo-PN coefficients
+            - phiNorm: Overall normalization factor
+
+    Returns:
+        The inspiral phase value at the given frequency
+    """
+    # Assemble PN phasing series
+    phasing = 0.0
+
+    # The PN Phasing series is normalised by: 3 / (128 * eta * pi^{5/3})
+    # -2: f^{-7/3}, v = -2; -1PN
+    phasing += pPhase['phi_minus2'] / powers_of_Mf.two_thirds
+
+    # -1: f^{-6/3}, v = -1; -0.5PN
+    phasing += pPhase['phi_minus1'] / powers_of_Mf.one_third
+
+    # 0: f^{-5/3}, v = 0; Newtonian
+    phasing += pPhase['phi0']
+
+    # 1: f^{-4/3}, v = 1; 0.5PN
+    phasing += pPhase['phi1'] * powers_of_Mf.one_third
+
+    # 2: f^{-3/3}, v = 2; 1.0PN
+    phasing += pPhase['phi2'] * powers_of_Mf.two_thirds
+
+    # 3: f^{-2/3}, v = 3; 1.5PN
+    phasing += pPhase['phi3'] * Mf
+
+    # 4: f^{-1/3}, v = 4; 2.0PN
+    phasing += pPhase['phi4'] * powers_of_Mf.four_thirds
+
+    # 5: f^{0}, v = 5; 2.5PN; phi_initial = -LAL_PI_4
+    phasing += pPhase['phi5'] * powers_of_Mf.five_thirds
+
+    # 5L: f^{0}, v = 5; 2.5PN Log terms
+    phasing += pPhase['phi5L'] * powers_of_Mf.five_thirds * powers_of_Mf.log
+
+    # 6: f^{+1/3}; v = 6; 3.0PN
+    phasing += pPhase['phi6'] * powers_of_Mf.two
+
+    # 6L: f^{+1/3}; v = 6; 3.0PN Log terms
+    phasing += pPhase['phi6L'] * powers_of_Mf.two * powers_of_Mf.log
+
+    # 7: f^{+2/3}: v = 7; 3.5PN
+    phasing += pPhase['phi7'] * powers_of_Mf.seven_thirds
+
+    # 8: f^{+3/3}; v = 8; 4.0PN
+    phasing += pPhase['phi8'] * powers_of_Mf.eight_thirds
+
+    # 8L: f^{+3/3}; v = 8; 4.0PN Log terms
+    phasing += pPhase['phi8L'] * powers_of_Mf.eight_thirds * powers_of_Mf.log
+
+    # 9: f^{+4/3}; v = 9; 4.5PN
+    phasing += pPhase['phi9'] * powers_of_Mf.three
+
+    # 9L: f^{+4/3}; v = 9; 4.5PN Log terms
+    phasing += pPhase['phi9L'] * powers_of_Mf.three * powers_of_Mf.log
+
+    # Now add in the pseudo-PN Coefficients
+    phasing += (
+        pPhase['sigma1'] * powers_of_Mf.eight_thirds
+        + pPhase['sigma2'] * powers_of_Mf.three
+        + pPhase['sigma3'] * powers_of_Mf.one_third * powers_of_Mf.three
+        + pPhase['sigma4'] * powers_of_Mf.two_thirds * powers_of_Mf.three
+        + pPhase['sigma5'] * powers_of_Mf.itself * powers_of_Mf.three
+    )
+
+    # This completes the TaylorF2 PN phasing series
+    phasing = phasing * pPhase['phiNorm'] * powers_of_Mf.m_five_thirds
+
+    # Add initial phasing: -pi/4
+    # phasing += pPhase['phi_initial']
+
+    return phasing

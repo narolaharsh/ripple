@@ -1817,3 +1817,420 @@ def IMRPhenomXHM_RD_Phase_32_p5(pWF: dict, RDPhaseFlag: int) -> float:
         raise ValueError(f"Error in IMRPhenomXHM_RD_Phase_32_p5: version {RDPhaseFlag} is not valid.")
 
     return total
+
+
+# ==================== Ringdown Phase Ansatz Functions ====================
+
+def IMRPhenomX_StepFuncBool(f: float, f_threshold: float) -> bool:
+    """
+    Step function that returns True if f >= f_threshold.
+
+    Args:
+        f: Frequency value
+        f_threshold: Threshold frequency
+
+    Returns:
+        True if f >= f_threshold, False otherwise
+    """
+    return f >= f_threshold
+
+
+def IMRPhenomXHM_RD_Phase_Ansatz(ff: float, powers_of_f: dict, pWFHM: dict, pPhase: dict) -> float:
+    """
+    Ringdown phase derivative ansatz for IMRPhenomXHM.
+
+    This function computes the phase derivative in the ringdown region using
+    different ansatzes depending on whether mode mixing is on (for 3,2 mode)
+    or off (for 2,1, 3,3, 4,4 modes).
+
+    Args:
+        ff: Frequency value
+        powers_of_f: Dictionary of pre-computed powers of frequency
+        pWFHM: Waveform structure dictionary for the higher mode
+        pPhase: Phase coefficient dictionary
+
+    Returns:
+        Phase derivative at frequency ff
+
+    Raises:
+        ValueError: If MixingOn has an invalid value
+    """
+    frd = pWFHM['fRING']
+    fda = pWFHM['fDAMP']
+
+    if pWFHM['MixingOn'] == 0:
+        # Rescaling of the 22 ansatz -- used for (21), (33), (44)
+        # ansatz: alpha0 + ((fRDlm^2) alpha2)/(f^2) + alphaL*(fdamplm)/((fdamplm)^2 + (f - fRDlm)^2)
+        dphaseRD = (pPhase['alpha0'] +
+                    frd * frd * pPhase['alpha2'] * powers_of_f['m_two'] +
+                    pPhase['alphaL'] * fda / (fda * fda + (ff - frd) * (ff - frd)))
+
+    elif pWFHM['MixingOn'] == 1:
+        # Calibration of spheroidal ringdown waveform for (32)
+        if pWFHM['IMRPhenomXHMRingdownPhaseVersion'] == 122019:
+            # ansatz: alpha0 + (alpha2)/(f^2) + (alpha4)/(f^4) + alphaL*(fdamplm)/((fdamplm)^2 + (f - fRDlm)^2)
+            dphaseRD = (pPhase['alpha0_S'] +
+                        pPhase['alpha2_S'] * powers_of_f['m_two'] +
+                        pPhase['alpha4_S'] * powers_of_f['m_four'] +
+                        pPhase['alphaL_S'] * fda / (fda * fda + (ff - frd) * (ff - frd)))
+        else:
+            if pWFHM['fPhaseRDflat'] > 0 and IMRPhenomX_StepFuncBool(ff, pWFHM['fPhaseRDflat']):
+                dphaseRD = pPhase['RDCoefficient'][5] + pPhase['RDCoefficient'][6] * powers_of_f['m_five']
+            else:
+                # ansatz: a0 + a1/f + a2/f^2 + a3/f^4 + a4*fdamplm/(fdamplm^2 + (f - fRDlm)^2)
+                dphaseRD = (pPhase['RDCoefficient'][0] +
+                            pPhase['RDCoefficient'][1] * powers_of_f['m_one'] +
+                            pPhase['RDCoefficient'][2] * powers_of_f['m_two'] +
+                            pPhase['RDCoefficient'][3] * powers_of_f['m_four'] +
+                            pPhase['RDCoefficient'][4] * fda / (fda * fda + (ff - frd) * (ff - frd)))
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_RD_Phase_Ansatz: MixingOn={pWFHM['MixingOn']} is not valid. "
+            "Use 0 for modes (2,1),(3,3),(4,4) and 1 for (3,2)."
+        )
+
+    return dphaseRD
+
+
+def IMRPhenomXHM_RD_Phase_AnsatzInt(ff: float, powers_of_f: dict, pWFHM: dict, pPhase: dict) -> float:
+    """
+    Integrated ringdown phase ansatz for IMRPhenomXHM.
+
+    This function computes the integrated phase in the ringdown region using
+    different ansatzes depending on whether mode mixing is on (for 3,2 mode)
+    or off (for 2,1, 3,3, 4,4 modes).
+
+    Args:
+        ff: Frequency value
+        powers_of_f: Dictionary of pre-computed powers of frequency
+        pWFHM: Waveform structure dictionary for the higher mode
+        pPhase: Phase coefficient dictionary
+
+    Returns:
+        Integrated phase at frequency ff
+
+    Raises:
+        ValueError: If MixingOn has an invalid value
+    """
+    invf = powers_of_f['m_one']
+    frd = pWFHM['fRING']
+    fda = pWFHM['fDAMP']
+
+    if pWFHM['MixingOn'] == 0:
+        # Rescaling of the 22 ansatz -- used for (21), (33), (44)
+        # ansatz: alpha0 f - fRDlm^2*alpha2/f + alphaL*ArcTan[(f - fRDlm)/fdamplm]
+        phaseRD = (pPhase['alpha0'] * ff -
+                   frd * frd * pPhase['alpha2'] * invf +
+                   pPhase['alphaL'] * jnp.arctan((ff - frd) / fda))
+
+    elif pWFHM['MixingOn'] == 1:
+        # Calibration of spheroidal ringdown waveform for (32)
+        invf3 = powers_of_f['m_three']
+
+        if pWFHM['IMRPhenomXHMRingdownPhaseVersion'] == 122019:
+            # ansatz: f alpha0 - (alpha4)/(3 f^3) - (alpha2)/f + alphaL ArcTan[(f - fRDlm)/fdamplm]
+            phaseRD = (pPhase['phi0_S'] +
+                       pPhase['alpha0_S'] * ff -
+                       pPhase['alpha2_S'] * invf -
+                       (1.0 / 3.0) * pPhase['alpha4_S'] * invf3 +
+                       pPhase['alphaL_S'] * jnp.arctan((ff - frd) / fda))
+        else:
+            if pWFHM['fPhaseRDflat'] > 0 and IMRPhenomX_StepFuncBool(ff, pWFHM['fPhaseRDflat']):
+                # a + b / f^5
+                phaseRD = (pPhase['phi0_S'] +
+                           pPhase['RDCoefficient'][7] +
+                           pPhase['RDCoefficient'][5] * ff -
+                           0.25 * pPhase['RDCoefficient'][6] * powers_of_f['m_four'])
+            else:
+                # ansatz: f a0 + a1 Log(f) - a2/f - a3/(3f^3) + a4*ArcTan[(f - fRDlm)/fdamplm]
+                phaseRD = (pPhase['phi0_S'] +
+                           pPhase['RDCoefficient'][0] * ff +
+                           pPhase['RDCoefficient'][1] * powers_of_f['log'] -
+                           pPhase['RDCoefficient'][2] * invf -
+                           (1.0 / 3.0) * pPhase['RDCoefficient'][3] * invf3 +
+                           pPhase['RDCoefficient'][4] * jnp.arctan((ff - frd) / fda))
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_RD_Phase_AnsatzInt: MixingOn={pWFHM['MixingOn']} is not valid. "
+            "Use 0 for modes (2,1),(3,3),(4,4) and 1 for (3,2)."
+        )
+
+    return phaseRD
+
+
+def IMRPhenomXHM_RD_Phase_DerAnsatz(ff: float, powers_of_f: dict, pWFHM: dict, pPhase: dict) -> float:
+    """
+    Derivative of ringdown phase ansatz for IMRPhenomXHM.
+
+    This function computes the derivative of the phase derivative (i.e., second
+    derivative of phase) in the ringdown region. Used for computing coefficients
+    for high-frequency flattening.
+
+    Args:
+        ff: Frequency value
+        powers_of_f: Dictionary of pre-computed powers of frequency
+        pWFHM: Waveform structure dictionary for the higher mode
+        pPhase: Phase coefficient dictionary
+
+    Returns:
+        Derivative of phase derivative at frequency ff
+
+    Raises:
+        ValueError: If MixingOn has an invalid value
+    """
+    frd = pWFHM['fRING']
+    fda = pWFHM['fDAMP']
+
+    if pWFHM['MixingOn'] == 0:
+        # Rescaling of the 22 ansatz -- used for (21), (33), (44)
+        # d/df of: alpha0 + ((fRDlm^2) alpha2)/(f^2) + alphaL*(fdamplm)/((fdamplm)^2 + (f - fRDlm)^2)
+        ddphaseRD = (-2 * frd * frd * pPhase['alpha2'] * powers_of_f['m_three'] -
+                     2 * pPhase['alphaL'] * fda * (ff - frd) / jnp.power(fda * fda + (ff - frd) * (ff - frd), 2))
+
+    elif pWFHM['MixingOn'] == 1:
+        # Calibration of spheroidal ringdown waveform for (32)
+        if pWFHM['IMRPhenomXHMRingdownPhaseVersion'] == 122019:
+            # d/df of: alpha0 + (alpha2)/(f^2) + (alpha4)/(f^4) + alphaL*(fdamplm)/((fdamplm)^2 + (f - fRDlm)^2)
+            ddphaseRD = (-2 * pPhase['alpha2_S'] * powers_of_f['m_three'] -
+                         4 * pPhase['alpha4_S'] * powers_of_f['m_five'] -
+                         2 * pPhase['alphaL_S'] * fda * (ff - frd) / jnp.power(fda * fda + (ff - frd) * (ff - frd), 2))
+        else:
+            # d/df of: a0 + a1/f + a2/f^2 + a3/f^4 + a4*fdamplm/(fdamplm^2 + (f - fRDlm)^2)
+            ddphaseRD = (-pPhase['RDCoefficient'][1] * powers_of_f['m_two'] -
+                         2 * pPhase['RDCoefficient'][2] * powers_of_f['m_three'] -
+                         4 * pPhase['RDCoefficient'][3] * powers_of_f['m_five'] -
+                         2 * pPhase['RDCoefficient'][4] * fda * (ff - frd) / jnp.power(fda * fda + (ff - frd) * (ff - frd), 2))
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_RD_Phase_DerAnsatz: MixingOn={pWFHM['MixingOn']} is not valid. "
+            "Use 0 for modes (2,1),(3,3),(4,4) and 1 for (3,2)."
+        )
+
+    return ddphaseRD
+
+
+def IMRPhenomXHM_RD_Phase_32_SpheroidalTimeShift(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute the time shift for the (3,2) mode spheroidal ringdown phase.
+
+    This function calculates the time shift parameter for the spheroidal (3,2) mode
+    ringdown phase using version-specific polynomial fits. The fits include
+    contributions from no-spin, equal-spin, and unequal-spin components.
+
+    Parameters
+    ----------
+    pWF : dict
+        Dictionary containing waveform parameters including:
+        - eta: Symmetric mass ratio
+        - STotR: Total dimensionless spin magnitude (aligned)
+        - chiPNHat: Effective aligned spin parameter
+        - dchi: Dimensionless spin difference chi1 - chi2
+        - dchi_half: Half the spin difference (chi1 - chi2)/2
+        - delta: Mass difference parameter (m1 - m2)/(m1 + m2)
+        - chi1L: Aligned spin of body 1
+        - chi2L: Aligned spin of body 2
+    RDPhaseFlag : int
+        Version flag for the ringdown phase model (122019 or 122022)
+
+    Returns
+    -------
+    float
+        The time shift parameter for the (3,2) mode spheroidal ringdown
+
+    Raises
+    ------
+    ValueError
+        If RDPhaseFlag is not a valid version (122019 or 122022)
+    """
+    if RDPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta ** 3
+        eta4 = eta ** 4
+        eta5 = eta ** 5
+        S2 = S ** 2
+        S3 = S ** 3
+        S4 = S ** 4
+
+        noSpin = (11.851438981981772 + 167.95086712701223 * eta -
+                  4565.033758777737 * eta2 + 61559.132976189896 * eta3 -
+                  364129.24735853914 * eta4 + 739270.8814129328 * eta5)
+
+        eqSpin = ((9.506768471271634 + 434.31707030999445 * eta -
+                   8046.364492927503 * eta2 + 26929.677144312944 * eta3) * S +
+                  (-5.949655484033632 - 307.67253970367034 * eta +
+                   1334.1062451631644 * eta2 + 3575.347142399199 * eta3) * S2 +
+                  (3.4881615575084797 - 2244.4613237912527 * eta +
+                   24145.932943269272 * eta2 - 60929.87465551446 * eta3) * S3 +
+                  (15.585154698977842 - 2292.778112523392 * eta +
+                   24793.809334683185 * eta2 - 65993.84497923202 * eta3) * S4)
+
+        uneqSpin = 465.7904934097202 * pWF['dchi'] * jnp.sqrt(1. - 4. * eta) * eta2
+
+        total = noSpin + eqSpin + uneqSpin
+
+    elif RDPhaseFlag == 122022:
+        eta = pWF['eta']
+        delta = pWF['delta']
+        S = pWF['STotR']
+        chidiff = pWF['dchi_half']
+        eta1 = eta
+        eta2 = eta1 * eta1
+        eta3 = eta1 * eta2
+        eta4 = eta1 * eta3
+        S1 = S
+        chidiff1 = chidiff
+
+        total = (chidiff1 * delta * (-3437.4083682807154 * eta2 +
+                                      29349.322789666763 * eta3 -
+                                      46822.26853496922 * eta4) +
+                 S1 * (18.280316689743625 * (46.16185108285708 * eta1 -
+                                              515.3588338752849 * eta2 +
+                                              1475.462268010926 * eta3) +
+                       2.1970246269696427 * (370.70040479593024 * eta1 -
+                                              4329.153306191607 * eta2 +
+                                              12065.631680744644 * eta3) * S1) +
+                 (12.080898026205173 - 79.10914761468462 * eta1 -
+                  89.82426456495799 * eta2 + 915.6864093792078 * eta3) *
+                 jnp.power(1 - 9.443713298364061 * eta1 + 22.353898754970686 * eta2, -1))
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_RD_Phase_32_SpheroidalTimeShift: "
+            f"version {RDPhaseFlag} is not valid."
+        )
+
+    return total
+
+
+def IMRPhenomXHM_RD_Phase_32_SpheroidalPhaseShift(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute the phase shift for the (3,2) mode spheroidal ringdown phase.
+
+    This function calculates the phase shift parameter for the spheroidal (3,2) mode
+    ringdown phase using version-specific polynomial fits. The fits include
+    contributions from no-spin, equal-spin, and unequal-spin components.
+
+    Parameters
+    ----------
+    pWF : dict
+        Dictionary containing waveform parameters including:
+        - eta: Symmetric mass ratio
+        - STotR: Total dimensionless spin magnitude (aligned)
+        - chiPNHat: Effective aligned spin parameter
+        - dchi: Dimensionless spin difference chi1 - chi2
+        - dchi_half: Half the spin difference (chi1 - chi2)/2
+        - delta: Mass difference parameter (m1 - m2)/(m1 + m2)
+        - chi1L: Aligned spin of body 1
+        - chi2L: Aligned spin of body 2
+    RDPhaseFlag : int
+        Version flag for the ringdown phase model (122019 or 122022)
+
+    Returns
+    -------
+    float
+        The phase shift parameter for the (3,2) mode spheroidal ringdown
+
+    Raises
+    ------
+    ValueError
+        If RDPhaseFlag is not a valid version (122019 or 122022)
+    """
+    if RDPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        eta2 = eta ** 2
+        eta3 = eta ** 3
+        eta4 = eta ** 4
+        eta5 = eta ** 5
+        eta6 = eta ** 6
+        eta7 = eta ** 7
+        S2 = S ** 2
+        S3 = S ** 3
+        S4 = S ** 4
+
+        noSpin = (-1.3328895897490733 - 22.209549522908667 * eta +
+                  1056.2426481245027 * eta2 - 21256.376324666326 * eta3 +
+                  246313.12887984765 * eta4 - 1.6312968467540336e6 * eta5 +
+                  5.614617173188322e6 * eta6 - 7.612233821752137e6 * eta7)
+
+        eqSpin = ((S * (-1.622727240110213 + 0.9960210841611344 * S -
+                        1.1239505323267036 * S2 - 1.9586085340429995 * S3 +
+                        eta2 * (196.7055281997748 + 135.25216875394943 * S +
+                                1086.7504825459278 * S2 + 546.6246807461155 * S3 -
+                                312.1010566468068 * S4) +
+                        0.7638287749489343 * S4 +
+                        eta * (-47.475568056234245 - 35.074072557604445 * S -
+                               97.16014978329918 * S2 - 34.498125910065156 * S3 +
+                               24.02858084544326 * S4) +
+                        eta3 * (62.632493533037625 - 22.59781899512552 * S -
+                                2683.947280170815 * S2 - 1493.177074873678 * S3 +
+                                805.0266029288334 * S4))) /
+                  (-2.950271397057221 + 1. * S))
+
+        uneqSpin = ((jnp.sqrt(1. - 4. * eta) *
+                     (pWF['chi2L'] * jnp.power(eta, 2.5) * (88.56162028006072 - 30.01812659282717 * S) +
+                      pWF['chi2L'] * eta2 * (43.126266433486435 - 14.617728550838805 * S) +
+                      pWF['chi1L'] * eta2 * (-43.126266433486435 + 14.617728550838805 * S) +
+                      pWF['chi1L'] * jnp.power(eta, 2.5) * (-88.56162028006072 + 30.01812659282717 * S))) /
+                    (-2.950271397057221 + 1. * S))
+
+        total = noSpin + eqSpin + uneqSpin
+
+    elif RDPhaseFlag == 122022:
+        eta = pWF['eta']
+        delta = pWF['delta']
+        S = pWF['chiPNHat']
+        chidiff = pWF['dchi_half']
+        eta1 = eta
+        eta2 = eta1 * eta1
+        eta3 = eta1 * eta2
+        eta4 = eta1 * eta3
+        eta5 = eta1 * eta4
+        S1 = S
+        S2 = S1 * S1
+        chidiff1 = chidiff
+        chidiff2 = chidiff1 * chidiff1
+
+        total = (chidiff1 * delta * (-4055.661463620154 * eta3 +
+                                      48053.79215999518 * eta4 -
+                                      126644.96534635697 * eta5) +
+                 chidiff2 * (1489.2939046368886 * eta3 -
+                             11333.726790227513 * eta4 +
+                             21470.681301598026 * eta5) +
+                 S1 * (-0.09759112086805133 * (-3.6379140102351064 +
+                                                510.0158912180661 * eta1 -
+                                                12528.715040030444 * eta2 +
+                                                82416.24893999398 * eta3 -
+                                                161740.0041427807 * eta4) -
+                       0.20117612026208484 * (-5.676646590653427 +
+                                               183.78422258983136 * eta1 -
+                                               3807.617101722895 * eta2 +
+                                               24219.360141326677 * eta3 -
+                                               45892.369216999985 * eta4) * S1 +
+                       0.06537048555519695 * (21.388069487574892 +
+                                               408.2245599781871 * eta1 -
+                                               9652.666650065075 * eta2 +
+                                               57782.086859487965 * eta3 -
+                                               110112.73697613904 * eta4) * S2) +
+                 (-1.3903824533899325 + 13.761709564309667 * eta1 -
+                  10.633427224975128 * eta2 - 263.01839936998965 * eta3 +
+                  736.1912896690361 * eta4) *
+                 jnp.power(1 - 9.458921853648649 * eta1 + 22.932673653997934 * eta2, -1))
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_RD_Phase_32_SpheroidalPhaseShift: "
+            f"version {RDPhaseFlag} is not valid."
+        )
+
+    return total
+
+
+
+def IMRPhenomXHM_RD_Phase_22_alpha2():
+    return #TODO
+
+def IMRPhenomXHM_RD_Phase_22_alphaL():
+    return #TODO

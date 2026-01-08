@@ -1242,3 +1242,585 @@ def IMRPhenomXHM_Insp_Phase_44_lambda(pWF: dict, InspPhaseFlag: int) -> float:
         )
 
     return total
+
+
+def IMRPhenomXHM_Inspiral_Phase_AnsatzInt():
+    #TODO
+    return 
+
+
+def IMRPhenomXHM_Inspiral_Phase_Ansatz():
+    #TODO
+    return 
+
+
+def IMRPhenomXHM_Insp_Phase_LambdaPN():
+    return #TODO
+
+
+# ==================== Pseudo-PN Amplitude Coefficients ====================
+
+def IMRPhenomXHM_Inspiral_Amp_rho1(
+    v1: float, v2: float, v3: float,
+    powers_of_fcutInsp: dict,
+    powers_of_f1: dict,
+    powers_of_f2: dict,
+    powers_of_f3: dict,
+    pWFHM: dict
+) -> float:
+    """
+    Get Pseudo PN Amp coefficient rho1 at f^(7/3).
+
+    This function computes the rho1 coefficient for the inspiral amplitude reconstruction
+    using collocation points. The coefficient is computed differently depending on the
+    number of collocation points used (0, 1, 2, or 3).
+
+    Parameters
+    ----------
+    v1, v2, v3 : float
+        Values at the three collocation points
+    powers_of_fcutInsp : dict
+        Dictionary of powers of the inspiral cutoff frequency
+    powers_of_f1, powers_of_f2, powers_of_f3 : dict
+        Dictionaries of powers of the collocation point frequencies
+    pWFHM : dict
+        Waveform structure containing IMRPhenomXHMInspiralAmpVersion
+
+    Returns
+    -------
+    float
+        The rho1 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXHMInspiralAmpVersion is not 0, 1, 2, or 3
+    """
+    IMRPhenomXHMInspiralAmpVersion = pWFHM['IMRPhenomXHMInspiralAmpVersion']
+
+    if IMRPhenomXHMInspiralAmpVersion == 3:  # 3 inspiral collocation points (default)
+        retVal = (
+            powers_of_fcutInsp['seven_thirds'] *
+            (-(powers_of_f1['three'] * powers_of_f3['eight_thirds'] * v2) +
+             powers_of_f1['eight_thirds'] * powers_of_f3['three'] * v2 +
+             powers_of_f2['three'] * (powers_of_f3['eight_thirds'] * v1 -
+                                      powers_of_f1['eight_thirds'] * v3) +
+             powers_of_f2['eight_thirds'] * (-(powers_of_f3['three'] * v1) +
+                                             powers_of_f1['three'] * v3))
+        ) / (powers_of_f1['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f2['one_third']) *
+             powers_of_f2['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f3['one_third']) *
+             (powers_of_f2['one_third'] - powers_of_f3['one_third']) * powers_of_f3['seven_thirds'])
+
+    elif IMRPhenomXHMInspiralAmpVersion == 2:  # 2 inspiral collocation points
+        retVal = (
+            powers_of_fcutInsp['seven_thirds'] *
+            (-(powers_of_f2['eight_thirds'] * v1) + powers_of_f1['eight_thirds'] * v2)
+        ) / (powers_of_f1['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f2['one_third']) *
+             powers_of_f2['seven_thirds'])
+
+    elif IMRPhenomXHMInspiralAmpVersion == 1:  # 1 inspiral collocation point
+        retVal = (powers_of_fcutInsp['seven_thirds'] * v1) / powers_of_f1['seven_thirds']
+
+    elif IMRPhenomXHMInspiralAmpVersion == 0:  # No collocation points, reconstruct with PN only
+        retVal = 0.0
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Inspiral_Amp_rho1: version {IMRPhenomXHMInspiralAmpVersion} "
+            f"is not valid. Versions available are 0, 1, 2, 3."
+        )
+
+    return retVal
+
+
+def IMRPhenomXHM_Inspiral_Amp_rho2(
+    v1: float, v2: float, v3: float,
+    powers_of_fcutInsp: dict,
+    powers_of_f1: dict,
+    powers_of_f2: dict,
+    powers_of_f3: dict,
+    pWFHM: dict
+) -> float:
+    """
+    Get Pseudo PN Amp coefficient rho2 at f^(8/3).
+
+    This function computes the rho2 coefficient for the inspiral amplitude reconstruction
+    using collocation points. The coefficient is computed differently depending on the
+    number of collocation points used (0, 1, 2, or 3).
+
+    Parameters
+    ----------
+    v1, v2, v3 : float
+        Values at the three collocation points
+    powers_of_fcutInsp : dict
+        Dictionary of powers of the inspiral cutoff frequency
+    powers_of_f1, powers_of_f2, powers_of_f3 : dict
+        Dictionaries of powers of the collocation point frequencies
+    pWFHM : dict
+        Waveform structure containing IMRPhenomXHMInspiralAmpVersion
+
+    Returns
+    -------
+    float
+        The rho2 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXHMInspiralAmpVersion is not 0, 1, 2, or 3
+    """
+    IMRPhenomXHMInspiralAmpVersion = pWFHM['IMRPhenomXHMInspiralAmpVersion']
+
+    if IMRPhenomXHMInspiralAmpVersion == 3:  # 3 inspiral collocation points (default)
+        retVal = (
+            -(powers_of_fcutInsp['eight_thirds'] *
+              (-(powers_of_f1['three'] * powers_of_f3['seven_thirds'] * v2) +
+               powers_of_f1['seven_thirds'] * powers_of_f3['three'] * v2 +
+               powers_of_f2['three'] * (powers_of_f3['seven_thirds'] * v1 -
+                                        powers_of_f1['seven_thirds'] * v3) +
+               powers_of_f2['seven_thirds'] * (-(powers_of_f3['three'] * v1) +
+                                               powers_of_f1['three'] * v3)))
+        ) / (powers_of_f1['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f2['one_third']) *
+             powers_of_f2['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f3['one_third']) *
+             (powers_of_f2['one_third'] - powers_of_f3['one_third']) * powers_of_f3['seven_thirds'])
+
+    elif IMRPhenomXHMInspiralAmpVersion == 2:  # 2 inspiral collocation points
+        retVal = (
+            -(powers_of_fcutInsp['eight_thirds'] *
+              (-(powers_of_f2['seven_thirds'] * v1) + powers_of_f1['seven_thirds'] * v2))
+        ) / (powers_of_f1['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f2['one_third']) *
+             powers_of_f2['seven_thirds'])
+
+    elif IMRPhenomXHMInspiralAmpVersion == 1:  # 1 inspiral collocation point
+        retVal = 0.0
+
+    elif IMRPhenomXHMInspiralAmpVersion == 0:  # No collocation points, reconstruct with PN only
+        retVal = 0.0
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Inspiral_Amp_rho2: version {IMRPhenomXHMInspiralAmpVersion} "
+            f"is not valid. Versions available are 0, 1, 2, 3."
+        )
+
+    return retVal
+
+
+def IMRPhenomXHM_Inspiral_Amp_rho3(
+    v1: float, v2: float, v3: float,
+    powers_of_fcutInsp: dict,
+    powers_of_f1: dict,
+    powers_of_f2: dict,
+    powers_of_f3: dict,
+    pWFHM: dict
+) -> float:
+    """
+    Get Pseudo PN Amp coefficient rho3 at f^(9/3).
+
+    This function computes the rho3 coefficient for the inspiral amplitude reconstruction
+    using collocation points. The coefficient is computed differently depending on the
+    number of collocation points used (0, 1, 2, or 3).
+
+    Parameters
+    ----------
+    v1, v2, v3 : float
+        Values at the three collocation points
+    powers_of_fcutInsp : dict
+        Dictionary of powers of the inspiral cutoff frequency
+    powers_of_f1, powers_of_f2, powers_of_f3 : dict
+        Dictionaries of powers of the collocation point frequencies
+    pWFHM : dict
+        Waveform structure containing IMRPhenomXHMInspiralAmpVersion
+
+    Returns
+    -------
+    float
+        The rho3 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXHMInspiralAmpVersion is not 0, 1, 2, or 3
+    """
+    IMRPhenomXHMInspiralAmpVersion = pWFHM['IMRPhenomXHMInspiralAmpVersion']
+
+    if IMRPhenomXHMInspiralAmpVersion == 3:  # 3 inspiral collocation points (default)
+        retVal = (
+            powers_of_fcutInsp['three'] *
+            (powers_of_f1['seven_thirds'] * (-powers_of_f1['one_third'] + powers_of_f3['one_third']) *
+             powers_of_f3['seven_thirds'] * v2 +
+             powers_of_f2['seven_thirds'] * (-(powers_of_f3['eight_thirds'] * v1) +
+                                             powers_of_f1['eight_thirds'] * v3) +
+             powers_of_f2['eight_thirds'] * (powers_of_f3['seven_thirds'] * v1 -
+                                             powers_of_f1['seven_thirds'] * v3))
+        ) / (powers_of_f1['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f2['one_third']) *
+             powers_of_f2['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f3['one_third']) *
+             (powers_of_f2['one_third'] - powers_of_f3['one_third']) * powers_of_f3['seven_thirds'])
+
+    elif IMRPhenomXHMInspiralAmpVersion == 2:  # 2 inspiral collocation points
+        retVal = 0.0
+
+    elif IMRPhenomXHMInspiralAmpVersion == 1:  # 1 inspiral collocation point
+        retVal = 0.0
+
+    elif IMRPhenomXHMInspiralAmpVersion == 0:  # No collocation points, reconstruct with PN only
+        retVal = 0.0
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Inspiral_Amp_rho3: version {IMRPhenomXHMInspiralAmpVersion} "
+            f"is not valid. Versions available are 0, 1, 2, 3."
+        )
+
+    return retVal
+
+
+# ==================== Inspiral Amplitude Ansatz Functions ====================
+
+def IMRPhenomXHM_Inspiral_PNAmp_Ansatz(
+    powers_of_Mf: dict,
+    pWFHM: dict,
+    pAmp: dict
+) -> float:
+    """
+    Return the Fourier Domain Post-Newtonian ansatz up to 3PN without the pseudoPN terms
+    for a particular frequency.
+
+    The ansatz is built by performing the Stationary Phase Approximation of the
+    Time-Domain Amplitude up to 3PN. The result is re-expanded in power series up to 3PN,
+    except for the 21 mode, which is better behaved without the re-expansion.
+
+    Parameters
+    ----------
+    powers_of_Mf : dict
+        Dictionary of powers of the frequency (Mf)
+    pWFHM : dict
+        Waveform structure containing useFAmpPN flag
+    pAmp : dict
+        Amplitude coefficients structure containing PN coefficients
+
+    Returns
+    -------
+    float
+        The PN amplitude ansatz (rescaled with 22 mode prefactor)
+    """
+    # The 21 mode is special, is not a power series
+    if pWFHM['useFAmpPN'] == 1:
+        return IMRPhenomXHM_Inspiral_PNAmp_21Ansatz(powers_of_Mf, pWFHM, pAmp)
+
+    # This returns the amplitude strain rescaled with the prefactor of the 22 mode:
+    # divided by sqrt(2*eta/3.)/pi^(1/6)*Mf^(-7/6)
+    pnAmp = jnp.abs(
+        pAmp['pnInitial'] +
+        powers_of_Mf['one_third'] * pAmp['pnOneThird'] +
+        powers_of_Mf['two_thirds'] * pAmp['pnTwoThirds'] +
+        powers_of_Mf['itself'] * pAmp['pnThreeThirds'] +
+        powers_of_Mf['four_thirds'] * pAmp['pnFourThirds'] +
+        powers_of_Mf['five_thirds'] * pAmp['pnFiveThirds'] +
+        powers_of_Mf['two'] * pAmp['pnSixThirds']
+    )
+
+    if pAmp['InspRescaleFactor'] == 0:
+        pnAmp *= pAmp['PNglobalfactor'] * powers_of_Mf['m_seven_sixths'] * pWFHM['ampNorm']
+    elif pAmp['InspRescaleFactor'] == 1:
+        pnAmp *= pAmp['PNglobalfactor']
+
+    return pnAmp
+
+
+def IMRPhenomXHM_Inspiral_PNAmp_21Ansatz(
+    powers_of_Mf: dict,
+    pWFHM: dict,
+    pAmp: dict
+) -> float:
+    """
+    Return the 21 mode Fourier Domain Post-Newtonian ansatz up to 3PN without the
+    pseudoPN terms for a particular frequency.
+
+    Parameters
+    ----------
+    powers_of_Mf : dict
+        Dictionary of powers of the frequency (Mf)
+    pWFHM : dict
+        Waveform structure containing IMRPhenomXHMInspiralAmpFreqsVersion
+    pAmp : dict
+        Amplitude coefficients structure
+
+    Returns
+    -------
+    float
+        The 21 mode PN amplitude ansatz
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXHMInspiralAmpFreqsVersion is not valid
+    """
+    InsAmpFlag = pWFHM['IMRPhenomXHMInspiralAmpFreqsVersion']
+
+    if InsAmpFlag == 122018:
+        two_to_m_one_sixths = 0.8908987181403393
+        three_to_m_one_second = 0.5773502691896257
+        lalpi = jnp.pi  # Assuming lalpiHM is just pi
+
+        x_to_m_one_four = two_to_m_one_sixths * (lalpi ** (-1.0/6.0)) * powers_of_Mf['m_one_sixth']
+
+        # Complex time-domain Post-Newtonian amplitude, power series
+        CpnAmpTD = (
+            powers_of_Mf['one_third'] * pAmp['x05'] +
+            powers_of_Mf['two_thirds'] * pAmp['x1'] +
+            powers_of_Mf['itself'] * pAmp['x15'] +
+            powers_of_Mf['four_thirds'] * pAmp['x2'] +
+            powers_of_Mf['five_thirds'] * pAmp['x25'] +
+            powers_of_Mf['two'] * pAmp['x3']
+        )
+        CpnAmpTD = CpnAmpTD * powers_of_Mf['two_thirds'] * pAmp['PNTDfactor']
+
+        # Value of the derivative of the PN expansion parameter X given by TaylorT4
+        XdotT4 = (
+            powers_of_Mf['five_thirds'] * powers_of_Mf['five_thirds'] * pAmp['xdot5'] +
+            powers_of_Mf['four'] * pAmp['xdot6'] +
+            powers_of_Mf['eight_thirds'] * powers_of_Mf['five_thirds'] * pAmp['xdot65'] +
+            powers_of_Mf['seven_thirds'] * powers_of_Mf['seven_thirds'] * pAmp['xdot7'] +
+            powers_of_Mf['eight_thirds'] * powers_of_Mf['seven_thirds'] * pAmp['xdot75'] +
+            powers_of_Mf['eight_thirds'] * powers_of_Mf['eight_thirds'] * pAmp['xdot8'] +
+            (powers_of_Mf['log'] * 2.0/3.0 + pAmp['log2pi_two_thirds']) *
+            powers_of_Mf['eight_thirds'] * powers_of_Mf['eight_thirds'] * pAmp['xdot8Log'] +
+            powers_of_Mf['eight_thirds'] * powers_of_Mf['eight_thirds'] * powers_of_Mf['one_third'] * pAmp['xdot85']
+        )
+
+        # Perform the SPA, multiply time-domain by the phasing factor
+        pnAmp = (2.0 * jnp.sqrt(lalpi) * three_to_m_one_second * jnp.abs(CpnAmpTD) *
+                 x_to_m_one_four / jnp.sqrt(XdotT4))
+
+        if pAmp['InspRescaleFactor'] != 0:
+            pnAmp /= RescaleFactor(powers_of_Mf, pAmp, pAmp['InspRescaleFactor'])
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Inspiral_PNAmp_Ansatz: "
+            f"IMRPhenomXInspiralAmpVersion {InsAmpFlag} is not valid. "
+            f"Recommended version is 122018."
+        )
+
+    return pnAmp
+
+
+def IMRPhenomXHM_Inspiral_Amp_Ansatz(
+    powers_of_Mf: dict,
+    pWFHM: dict,
+    pAmp: dict
+) -> float:
+    """
+    This is the complete Inspiral Amplitude Ansatz: PN ansatz + pseudoPN terms.
+
+    Parameters
+    ----------
+    powers_of_Mf : dict
+        Dictionary of powers of the frequency (Mf)
+    pWFHM : dict
+        Waveform structure containing IMRPhenomXHMInspiralAmpFreqsVersion
+    pAmp : dict
+        Amplitude coefficients structure
+
+    Returns
+    -------
+    float
+        The complete inspiral amplitude ansatz
+    """
+    if pWFHM['IMRPhenomXHMInspiralAmpFreqsVersion'] == 122018:
+        tmp = pAmp['InspRescaleFactor']
+        pAmp['InspRescaleFactor'] = 1
+
+        InspAmp = (
+            IMRPhenomXHM_Inspiral_PNAmp_Ansatz(powers_of_Mf, pWFHM, pAmp) +
+            powers_of_Mf['seven_thirds'] / pAmp['fcutInsp_seven_thirds'] * pAmp['rho1'] +
+            powers_of_Mf['eight_thirds'] / pAmp['fcutInsp_eight_thirds'] * pAmp['rho2'] +
+            powers_of_Mf['three'] / pAmp['fcutInsp_three'] * pAmp['rho3']
+        )
+
+        pAmp['InspRescaleFactor'] = tmp
+
+        if pAmp['InspRescaleFactor'] == 0:
+            InspAmp *= powers_of_Mf['m_seven_sixths'] * pWFHM['ampNorm']
+
+    else:
+        # New release. FIXME: improve how the ansatz is built
+        InspAmp = IMRPhenomXHM_Inspiral_PNAmp_Ansatz(powers_of_Mf, pWFHM, pAmp)
+
+        pseudoterms = (
+            powers_of_Mf['seven_thirds'] / pAmp['fcutInsp_seven_thirds'] * pAmp['InspiralCoefficient'][0] +
+            powers_of_Mf['eight_thirds'] / pAmp['fcutInsp_eight_thirds'] * pAmp['InspiralCoefficient'][1] +
+            powers_of_Mf['three'] / pAmp['fcutInsp_three'] * pAmp['InspiralCoefficient'][2]
+        )
+        pseudoterms *= powers_of_Mf['m_seven_sixths'] * pAmp['PNdominant']
+
+        InspAmp += pseudoterms
+
+        if pAmp['InspRescaleFactor'] != 0:
+            InspAmp /= RescaleFactor(powers_of_Mf, pAmp, pAmp['InspRescaleFactor'])
+
+    return InspAmp
+
+
+def IMRPhenomXHM_Inspiral_Amp_NDAnsatz(
+    powers_of_Mf: dict,
+    pWFHM: dict,
+    pAmp: dict
+) -> float:
+    """
+    Numerical derivative of the inspiral amplitude (4th order finite differences).
+    It is used for reconstructing the intermediate region.
+
+    Parameters
+    ----------
+    powers_of_Mf : dict
+        Dictionary of powers of the frequency (Mf)
+    pWFHM : dict
+        Waveform structure
+    pAmp : dict
+        Amplitude coefficients structure
+
+    Returns
+    -------
+    float
+        Numerical derivative of the inspiral amplitude
+    """
+    df = 10e-10
+    centralfreq = powers_of_Mf['itself']
+
+    # Initialize powers for finite difference points
+    # Note: This assumes you have a compute_powers_of_f function
+    powers_of_Mf2R = compute_powers_of_f(centralfreq + 2*df)
+    powers_of_MfR = compute_powers_of_f(centralfreq + df)
+    powers_of_MfL = compute_powers_of_f(centralfreq - df)
+    powers_of_Mf2L = compute_powers_of_f(centralfreq - 2*df)
+
+    fun2R = IMRPhenomXHM_Inspiral_Amp_Ansatz(powers_of_Mf2R, pWFHM, pAmp)
+    funR = IMRPhenomXHM_Inspiral_Amp_Ansatz(powers_of_MfR, pWFHM, pAmp)
+    funL = IMRPhenomXHM_Inspiral_Amp_Ansatz(powers_of_MfL, pWFHM, pAmp)
+    fun2L = IMRPhenomXHM_Inspiral_Amp_Ansatz(powers_of_Mf2L, pWFHM, pAmp)
+
+    Nder = (-fun2R + 8*funR - 8*funL + fun2L) / (12*df)
+
+    return Nder
+
+
+# ==================== Veto and Helper Functions ====================
+
+def IMRPhenomXHM_Inspiral_Amplitude_Veto(
+    iv1: float,
+    iv2: float,
+    iv3: float,
+    powers_of_f1: dict,
+    powers_of_f2: dict,
+    powers_of_f3: dict,
+    pAmp: dict,
+    pWFHM: dict
+) -> tuple:
+    """
+    VETO function: when extrapolating the model outside the calibration region,
+    the collocation points can be bad behaved. With this function we select those
+    that will be used in the reconstruction.
+
+    Parameters
+    ----------
+    iv1, iv2, iv3 : float
+        Initial values at collocation points
+    powers_of_f1, powers_of_f2, powers_of_f3 : dict
+        Dictionaries of powers of the collocation point frequencies
+    pAmp : dict
+        Amplitude coefficients structure
+    pWFHM : dict
+        Waveform structure (will be modified)
+
+    Returns
+    -------
+    tuple
+        (modified_iv1, modified_iv2, modified_iv3, modified_pWFHM)
+    """
+    threshold = 0.2 / pWFHM['ampNorm']
+
+    # Make copies to avoid modifying inputs directly
+    new_iv1, new_iv2, new_iv3 = iv1, iv2, iv3
+    new_version = pWFHM['IMRPhenomXHMInspiralAmpVersion']
+
+    # Remove too low collocation points (heuristic)
+    if pAmp['CollocationPointsValuesAmplitudeInsp'][0] < threshold * powers_of_f1['seven_sixths']:
+        new_iv1 = 0.0
+        new_version = 2
+
+    if pAmp['CollocationPointsValuesAmplitudeInsp'][1] < threshold * powers_of_f2['seven_sixths']:
+        new_iv2 = 0.0
+        new_version = new_version - 1
+
+    if pAmp['CollocationPointsValuesAmplitudeInsp'][2] < threshold * powers_of_f3['seven_sixths']:
+        new_iv3 = 0.0
+        new_version = new_version - 1
+
+    # Update the waveform structure
+    pWFHM_updated = pWFHM.copy()
+    pWFHM_updated['IMRPhenomXHMInspiralAmpVersion'] = new_version
+
+    return new_iv1, new_iv2, new_iv3, pWFHM_updated
+
+
+def WavyPoints(p1: float, p2: float, p3: float) -> int:
+    """
+    Check if the three collocation points are wavy (non-monotonic).
+
+    Parameters
+    ----------
+    p1, p2, p3 : float
+        Three point values to check
+
+    Returns
+    -------
+    int
+        1 if points are wavy, 0 otherwise
+    """
+    if (p1 > p2 and p2 < p3) or (p1 < p2 and p2 > p3):
+        return 1
+    else:
+        return 0
+
+
+# Note: Helper function that may be referenced by the functions above
+def compute_powers_of_f(f: float) -> dict:
+    """
+    Compute various powers of frequency f.
+
+    Parameters
+    ----------
+    f : float
+        Frequency value
+
+    Returns
+    -------
+    dict
+        Dictionary containing various powers of f
+    """
+    return {
+        'itself': f,
+        'one_third': f ** (1.0/3.0),
+        'two_thirds': f ** (2.0/3.0),
+        'four_thirds': f ** (4.0/3.0),
+        'five_thirds': f ** (5.0/3.0),
+        'seven_thirds': f ** (7.0/3.0),
+        'eight_thirds': f ** (8.0/3.0),
+        'three': f ** 3.0,
+        'two': f ** 2.0,
+        'four': f ** 4.0,
+        'seven_sixths': f ** (7.0/6.0),
+        'm_one_sixth': f ** (-1.0/6.0),
+        'm_seven_sixths': f ** (-7.0/6.0),
+        'log': jnp.log(f)
+    }
+
+
+# Note: The following functions would require additional implementation:
+# - RescaleFactor: Used in PNAmp_21Ansatz and Inspiral_Amp_Ansatz
+# - IMRPhenomXHM_Get_Inspiral_Amp_Coefficients
+# - IMRPhenomXHM_Inspiral_Amp_CollocationPoints
+# - IMRPhenomXHM_Inspiral_Amp_Coefficients
+# These depend on broader waveform infrastructure and fits data structures.
