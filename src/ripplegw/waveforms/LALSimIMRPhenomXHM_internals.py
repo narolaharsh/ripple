@@ -73,7 +73,7 @@ from .LALSimIMRPhenomXHM_intermediate import (IMRPhenomXHM_Inter_Phase_AnsatzInt
                                               IMRPhenomXHM_Inter_Phase_Ansatz)
 
 
-
+'''
 from .LALSimIMRPhenomXHM_intermediate import (
         IMRPhenomXHM_Intermediate_Amp_Coefficients,
         IMRPhenomXHM_Intermediate_Amp_delta0,
@@ -84,7 +84,7 @@ from .LALSimIMRPhenomXHM_intermediate import (
         IMRPhenomXHM_Intermediate_Amp_delta5,
         WavyPoints
     )
-
+'''
 
 from .LALSimIMRPhenomXUtilities import IMRPhenomXPsi4ToStrain
 

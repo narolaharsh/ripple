@@ -1,9 +1,17 @@
 
 from .LALSimIMRPhenomX_internals import IMRPhenomXSetWaveformVariables
+
 import jax.numpy as jnp
+
 from .LALSimIMRPhenomX_precession import (IMRPhenomX_Return_phi_zeta_costhetaL_MSA, IMRPhenomXGetAndSetPrecessionVariables, XLALSimIMRPhenomXUtilsHztoMf)
+
 from .LALSimIMRPhenomX_internals import (IMRPhenomXGetPhaseCoefficients, IMRPhenomXGetAmplitudeCoefficients)
-from .LALSimIMRPhenomXHM_multiband import (deltaF_mergerBin, deltaF_ringdownBin)
+
+from .LALSimIMRPhenomXHM_multiband import (deltaF_mergerBin, 
+                                           deltaF_ringdownBin, 
+                                           deltaF_MergerRingdown,
+                                           XLALSimIMRPhenomXMultibandingGrid)
+
 from .LALSimIMRPhenomXHM_internals import (IMRPhenomXHM_Initialize_QNMs, 
                                            IMRPhenomXHM_SetHMWaveformVariables, 
                                            IMRPhenomXHM_FillAmpFitsArray, 
@@ -11,6 +19,7 @@ from .LALSimIMRPhenomXHM_internals import (IMRPhenomXHM_Initialize_QNMs,
                                            GetSpheroidalCoefficients, 
                                            IMRPhenomXHM_GetAmplitudeCoefficients,
                                            IMRPhenomXHM_GetPhaseCoefficients)
+
 import jax
 
 
@@ -81,28 +90,35 @@ def IMRPhenomXPHM_hplushcross(frequency_array, pWF, pPrec, lalParams):
             ########             TWISTING UP         #############
             #Transform modes from the precessing L-frame to inertial J-frame.
 
-            ########        USING MBAND FOR ANGLES     #############
+            MBandPrecVersion = 0
 
-            coarseFreqs = XLALSimIMRPhenomXPHMMultibandingGrid(ell, emmprime, pWF, lalParams)
-            v = jnp.cbrt(jnp.pi * coarseFreqs * 2  / emmprime)
-            vangles = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v, pWF, pPrec)
+            if MBandPrecVersion==0:
+                print('Not using multibanding for angles')
+                ########   Not  using MBAND FOR ANGLES     #############
+                
+            elif MBandPrecVersion==1:
+                ########        USING MBAND FOR ANGLES     #############
 
-            alpha_offset_mprime, epsilon_offset_mprime = Get_alpha_epsilon_offset(emmprime, pPrec)
+                coarseFreqs = XLALSimIMRPhenomXPHMMultibandingGrid(ell, emmprime, pWF, lalParams)
+                v = jnp.cbrt(jnp.pi * coarseFreqs * 2  / emmprime)
+                vangles = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v, pWF, pPrec)
 
-            valpha = vangles[0] - alpha_offset_mprime
-            vepsilon = vangles[1] - epsilon_offset_mprime
-            cos_beta = vangles[2]
+                alpha_offset_mprime, epsilon_offset_mprime = Get_alpha_epsilon_offset(emmprime, pPrec)
 
-            cBetah, sBetah = IMRPhenomXWignerdCoefficients_cosbeta(cos_beta)
-            vbeta = jnp.acos(cBetah)
+                valpha = vangles[0] - alpha_offset_mprime
+                vepsilon = vangles[1] - epsilon_offset_mprime
+                cos_beta = vangles[2]
 
-            # j < len(coarseFreqs)-1 and finecount < istop
-            # For loop for interpolatio #TODO
+                cBetah, sBetah = IMRPhenomXWignerdCoefficients_cosbeta(cos_beta)
+                vbeta = jnp.acos(cBetah)
 
-            #Now we have the complex exponentials of the three Euler angles alpha, beta, epsilon evaluated in the fine frequency grid.
-            #Next step is do the twisting up with these.
+                # j < len(coarseFreqs)-1 and finecount < istop
+                # For loop for interpolatio #TODO
 
-            #/************** TWISTING UP in the fine grid *****************/
+                #Now we have the complex exponentials of the three Euler angles alpha, beta, epsilon evaluated in the fine frequency grid.
+                #Next step is do the twisting up with these.
+
+                #/************** TWISTING UP in the fine grid *****************/
 
             IMRPhenomXPHMTwistUp(Mf, hlmcoprec, pWF, pPrec, ell, emmprime)
 

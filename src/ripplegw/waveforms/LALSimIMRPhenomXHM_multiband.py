@@ -1,6 +1,14 @@
 import jax.numpy as jnp
 
 
+def deltaF_MergerRingdown(thresholdMB, pWFHM, pAmp, pPhase):
+    return #TODO
+
+
+def XLALSimIMRPhenomXMultibandingGrid( Mfmin, MfMECO, MfLorentzianEnd, Mfmax, evaldMf,
+        dfpower, dfcoefficient, dfmerger, dfringdown):
+    return #TODO
+
 def deltaF_mergerBin(fdamp: float, alpha4: float, abserror: float) -> float:
     """
     Right hand side of eq. 2.27 in arXiv:2001.10897.
