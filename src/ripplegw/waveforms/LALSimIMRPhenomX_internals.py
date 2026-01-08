@@ -15,14 +15,58 @@ from .LALSimIMRPhenomX_PNR_internals import (
     XLALSimIMRPhenomXFinalSpin2017,
 )
 
-from .LALSimIMRPhenomX_inspiral import (IMRPhenomX_Inspiral_Phase_22_d13, IMRPhenomX_Inspiral_Phase_22_d23, IMRPhenomX_Inspiral_Phase_22_v3, IMRPhenomX_Inspiral_Phase_22_d43, IMRPhenomX_Inspiral_Phase_22_d53)
+
+from .LALSimIMRPhenomX_inspiral import (
+    IMRPhenomX_Inspiral_Phase_22_Ansatz,
+    IMRPhenomX_Inspiral_Phase_22_AnsatzInt,
+    IMRPhenomX_Inspiral_Phase_22_d13,
+    IMRPhenomX_Inspiral_Phase_22_d23,
+    IMRPhenomX_Inspiral_Phase_22_v3,
+    IMRPhenomX_Inspiral_Phase_22_d43,
+    IMRPhenomX_Inspiral_Phase_22_d53,
+    IMRPhenomX_Inspiral_Amp_22_Ansatz,
+    IMRPhenomX_Inspiral_Amp_22_DAnsatz,
+    IMRPhenomX_Inspiral_Amp_22_v2,
+    IMRPhenomX_Inspiral_Amp_22_v3,
+    IMRPhenomX_Inspiral_Amp_22_v4,
+    IMRPhenomX_Inspiral_Amp_22_rho1,
+    IMRPhenomX_Inspiral_Amp_22_rho2,
+    IMRPhenomX_Inspiral_Amp_22_rho3,
+)
+
+from .LALSimIMRPhenomX_intermediate import (
+    IMRPhenomX_Intermediate_Phase_22_Ansatz,
+    IMRPhenomX_Intermediate_Phase_22_AnsatzInt,
+    IMRPhenomX_Intermediate_Amp_22_v2,
+    IMRPhenomX_Intermediate_Amp_22_v3,
+    IMRPhenomX_Intermediate_Amp_22_vA,
+    IMRPhenomX_Intermediate_Amp_22_delta0,
+    IMRPhenomX_Intermediate_Amp_22_delta1,
+    IMRPhenomX_Intermediate_Amp_22_delta2,
+    IMRPhenomX_Intermediate_Amp_22_delta3,
+    IMRPhenomX_Intermediate_Amp_22_delta4,
+    IMRPhenomX_Intermediate_Amp_22_delta5,
+)
+
+from .LALSimIMRPhenomX_ringdown import (
+    IMRPhenomX_Ringdown_Phase_22_Ansatz,
+    IMRPhenomX_Ringdown_Phase_22_AnsatzInt,
+    IMRPhenomX_Ringdown_Phase_22_d12,
+    IMRPhenomX_Ringdown_Phase_22_d24,
+    IMRPhenomX_Ringdown_Phase_22_d34,
+    IMRPhenomX_Ringdown_Phase_22_d54,
+    IMRPhenomX_Ringdown_Phase_22_v4,
+    IMRPhenomX_Ringdown_Amp_22_gamma2,
+    IMRPhenomX_Ringdown_Amp_22_gamma3,
+    IMRPhenomX_Ringdown_Amp_22_PeakFrequency,
+    IMRPhenomX_Ringdown_Amp_22_v1,
+    IMRPhenomX_Ringdown_Amp_22_DAnsatz,
+    IMRPhenomX_Ringdown_Amp_22_Ansatz
+
+)
 
 from .LALSimIMRPhenomX_qnm import evaluate_QNMfit_fring22, evaluate_QNMfit_fdamp22
 
-
-from .LALSimIMRPhenomX_inspiral import IMRPhenomX_Inspiral_Phase_22_AnsatzInt
-from .LALSimIMRPhenomX_intermediate import IMRPhenomX_Intermediate_Phase_22_AnsatzInt
-from .LALSimIMRPhenomX_ringdown import IMRPhenomX_Ringdown_Phase_22_AnsatzInt
 from .LALSimIMRPhenomXUtilities import IMRPhenomX_StepFuncBool
 
 # Helper functions
@@ -645,30 +689,20 @@ def IMRPhenomXGetPhaseCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
     else:
         raise ValueError(f"IMRPhenomXRingdownPhaseVersion {pWF['IMRPhenomXRingdownPhaseVersion']} is not valid")
 
-    # NOTE: The calibrated collocation values would need to be imported from
-    # the appropriate coefficient functions (IMRPhenomX_Ringdown_Phase_22_*).
-    # For now, I'm setting placeholders that should be replaced with actual
-    # function calls to the calibrated fits.
 
-    # These functions need to be implemented separately - they contain the
-    # calibrated fits from NR simulations (see LALSimIMRPhenomX_ringdown.c)
-    # v4 = IMRPhenomX_Ringdown_Phase_22_v4(eta, STotR, dchi, delta, version)
-    # For now, use placeholder values - these MUST be replaced with actual calibration
-
-    # Placeholder for calibrated values (NEEDS ACTUAL IMPLEMENTATION)
-    RDv4 = 0.0  # Should call IMRPhenomX_Ringdown_Phase_22_v4(...)
+    RDv4 = IMRPhenomX_Ringdown_Phase_22_v4(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
     CollocationValuesPhaseRD = jnp.zeros(5)
-    # CollocationValuesPhaseRD[0] = IMRPhenomX_Ringdown_Phase_22_d12(...)
-    # CollocationValuesPhaseRD[1] = IMRPhenomX_Ringdown_Phase_22_d24(...)
-    # CollocationValuesPhaseRD[2] = IMRPhenomX_Ringdown_Phase_22_d34(...)
-    # CollocationValuesPhaseRD[3] = RDv4
-    # CollocationValuesPhaseRD[4] = IMRPhenomX_Ringdown_Phase_22_d54(...)
+    CollocationValuesPhaseRD[0] = IMRPhenomX_Ringdown_Phase_22_d12(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
+    CollocationValuesPhaseRD[1] = IMRPhenomX_Ringdown_Phase_22_d24(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
+    CollocationValuesPhaseRD[2] = IMRPhenomX_Ringdown_Phase_22_d34(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
+    CollocationValuesPhaseRD[3] = RDv4
+    CollocationValuesPhaseRD[4] = IMRPhenomX_Ringdown_Phase_22_d54(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
 
     # Accumulate collocation values: v_j = d_{j4} + v4
-    # CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[4].set(CollocationValuesPhaseRD[4] + CollocationValuesPhaseRD[3])
-    # CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[2].set(CollocationValuesPhaseRD[2] + CollocationValuesPhaseRD[3])
-    # CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[1].set(CollocationValuesPhaseRD[1] + CollocationValuesPhaseRD[3])
-    # CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[0].set(CollocationValuesPhaseRD[0] + CollocationValuesPhaseRD[1])
+    CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[4].set(CollocationValuesPhaseRD[4] + CollocationValuesPhaseRD[3])
+    CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[2].set(CollocationValuesPhaseRD[2] + CollocationValuesPhaseRD[3])
+    CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[1].set(CollocationValuesPhaseRD[1] + CollocationValuesPhaseRD[3])
+    CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[0].set(CollocationValuesPhaseRD[0] + CollocationValuesPhaseRD[1])
 
     pPhase['CollocationValuesPhaseRD'] = CollocationValuesPhaseRD
 
@@ -1049,7 +1083,6 @@ def IMRPhenomXGetAmplitudeCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
 
     WARNING: This implementation currently uses placeholder stub functions for many
     calibrated fits. These need to be replaced with actual implementations from:
-    - LALSimIMRPhenomX_ringdown.c (ringdown amplitude calibration)
     - LALSimIMRPhenomX_inspiral.c (inspiral amplitude calibration)
     - LALSimIMRPhenomX_intermediate.c (intermediate amplitude calibration)
     """
@@ -1607,8 +1640,112 @@ def IMRPhenomX_TimeShift_22(pPhase: dict, pWF: dict) -> float:
     return tshift
 
 
-def IMRPhenomX_Phase_22_ConnectionCoefficients():
-    return #TODO
+def IMRPhenomX_Phase_22_ConnectionCoefficients(pWF: dict, pPhase: dict) -> None:
+    """
+    Compute connection coefficients for phase continuity across regions.
+
+    This function computes the coefficients C1Int, C2Int, C1MRD, and C2MRD that
+    ensure C1 continuity of the phase across the inspiral-intermediate and
+    intermediate-ringdown boundaries.
+
+    The connection is based on matching the phase and its derivative at the
+    transition frequencies:
+        phi_Inspiral(f) = phi_Intermediate(f) + C1Int + C2Int * f
+        phi_Intermediate(f) = phi_Ringdown(f) + C1MRD + C2MRD * f
+
+    Parameters
+    ----------
+    pWF : dict
+        Waveform structure dictionary containing model parameters
+    pPhase : dict
+        Phase coefficients dictionary. Will be modified in-place to include:
+        - C1Int: Constant offset for inspiral-intermediate connection
+        - C2Int: Linear offset for inspiral-intermediate connection
+        - C1MRD: Constant offset for intermediate-ringdown connection
+        - C2MRD: Linear offset for intermediate-ringdown connection
+
+    Returns
+    -------
+    None
+        The function modifies pPhase in-place
+    """
+
+
+    debug = pWF.get('debug', False)
+
+    fIns = pPhase['fPhaseMatchIN']
+    fInt = pPhase['fPhaseMatchIM']
+
+    # ===== Inspiral-Intermediate Connection =====
+    # Assume: phi_Inspiral(f) = phi_Intermediate(f) + C1 + C2 * f
+    # At transition frequency fIns:
+    #   phi_Inspiral(fIns) = phi_Intermediate(fIns) + C1 + C2 * fIns
+    #   phi_Inspiral'(fIns) = phi_Intermediate'(fIns) + C2
+    # Solving for C1 and C2:
+    #   C2 = phi_Inspiral'(fIns) - phi_Intermediate'(fIns)
+    #   C1 = phi_Inspiral(fIns) - phi_Intermediate(fIns) - C2 * fIns
+
+    powers_of_fIns = IMRPhenomX_UsefulPowers()
+    IMRPhenomX_Initialize_Powers(powers_of_fIns, fIns)
+
+    DPhiIns = IMRPhenomX_Inspiral_Phase_22_Ansatz(fIns, powers_of_fIns, pPhase)
+    DPhiInt = IMRPhenomX_Intermediate_Phase_22_Ansatz(fIns, powers_of_fIns, pWF, pPhase)
+
+    pPhase['C2Int'] = DPhiIns - DPhiInt
+
+    phiIN = IMRPhenomX_Inspiral_Phase_22_AnsatzInt(fIns, powers_of_fIns, pPhase)
+    phiIM = IMRPhenomX_Intermediate_Phase_22_AnsatzInt(fIns, powers_of_fIns, pWF, pPhase)
+
+    if debug:
+        print()
+        print(f"dphiIM = {DPhiInt:.6f} and dphiIN = {DPhiIns:.6f}")
+        print(f"phiIN(fIns)  : {phiIN:.7f}")
+        print(f"phiIM(fIns)  : {phiIM:.7f}")
+        print(f"fIns         : {fIns:.7f}")
+        print(f"C2           : {pPhase['C2Int']:.7f}")
+        print()
+
+    pPhase['C1Int'] = phiIN - phiIM - (pPhase['C2Int'] * fIns)
+
+    # ===== Intermediate-Ringdown Connection =====
+    # Assume: phi_Intermediate(f) = phi_Ringdown(f) + C1 + C2 * f
+    # At transition frequency fInt:
+    #   phi_Intermediate(fInt) = phi_Ringdown(fInt) + C1 + C2 * fInt
+    #   phi_Intermediate'(fInt) = phi_Ringdown'(fInt) + C2
+    # Solving for C1 and C2:
+    #   C2 = phi_Intermediate'(fInt) - phi_Ringdown'(fInt)
+    #   C1 = phi_Intermediate(fInt) - phi_Ringdown(fInt) - C2 * fInt
+
+    powers_of_fInt = IMRPhenomX_UsefulPowers()
+    IMRPhenomX_Initialize_Powers(powers_of_fInt, fInt)
+
+    phiIMC = (IMRPhenomX_Intermediate_Phase_22_AnsatzInt(fInt, powers_of_fInt, pWF, pPhase) +
+              pPhase['C1Int'] + pPhase['C2Int'] * fInt)
+    phiRD = IMRPhenomX_Ringdown_Phase_22_AnsatzInt(fInt, powers_of_fInt, pWF, pPhase)
+    DPhiIntC = (IMRPhenomX_Intermediate_Phase_22_Ansatz(fInt, powers_of_fInt, pWF, pPhase) +
+                pPhase['C2Int'])
+    DPhiRD = IMRPhenomX_Ringdown_Phase_22_Ansatz(fInt, powers_of_fInt, pWF, pPhase)
+
+    pPhase['C2MRD'] = DPhiIntC - DPhiRD
+    pPhase['C1MRD'] = phiIMC - phiRD - pPhase['C2MRD'] * fInt
+
+    if debug:
+        print()
+        print(f"phiIMC(fInt) : {phiIMC:.7f}")
+        print(f"phiRD(fInt)  : {phiRD:.7f}")
+        print(f"fInt         : {fInt:.7f}")
+        print(f"C2           : {pPhase['C2Int']:.7f}")
+        print()
+
+    if debug:
+        print(f"dphiIM = {DPhiIntC:.6f} and dphiRD = {DPhiRD:.6f}")
+        print("\nContinuity Coefficients")
+        print(f"C1Int : {pPhase['C1Int']:.6f}")
+        print(f"C2Int : {pPhase['C2Int']:.6f}")
+        print(f"C1MRD : {pPhase['C1MRD']:.6f}")
+        print(f"C2MRD : {pPhase['C2MRD']:.6f}")
+
+    return
 
 
 

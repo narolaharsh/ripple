@@ -2229,11 +2229,124 @@ def IMRPhenomXHM_RD_Phase_32_SpheroidalPhaseShift(pWF: dict, RDPhaseFlag: int) -
 
 
 
-def IMRPhenomXHM_RD_Phase_22_alpha2():
-    return #TODO
+def IMRPhenomXHM_RD_Phase_22_alpha2(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute alpha2 coefficient for 22 mode ringdown phase.
 
-def IMRPhenomXHM_RD_Phase_22_alphaL():
-    return #TODO
+    This coefficient is part of the ringdown phase parameterization for the
+    dominant 22 mode in the IMRPhenomXHM model.
+
+    Parameters
+    ----------
+    pWF : dict
+        Waveform structure dictionary containing:
+        - eta: Symmetric mass ratio
+        - STotR: Total aligned spin parameter
+        - dchi: Spin difference parameter
+    RDPhaseFlag : int
+        Flag to select the fitting formula (currently only 122019 supported)
+
+    Returns
+    -------
+    float
+        The alpha2 coefficient for the 22 mode ringdown phase
+
+    Raises
+    ------
+    ValueError
+        If RDPhaseFlag is not one of the valid values
+    """
+    total = 0.0
+
+    if RDPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        delta = jnp.sqrt(1.0 - 4.0 * eta)
+
+        eta2 = eta ** 2
+        eta3 = eta ** 3
+        eta4 = eta ** 4
+
+        noSpin = (0.2088669311744758 - 0.37138987533788487 * eta +
+                  6.510807976353186 * eta2 - 31.330215053905395 * eta3 +
+                  55.45508989446867 * eta4)
+
+        eqSpin = ((0.2393965714370633 + 1.6966740823756759 * eta -
+                   16.874355161681766 * eta2 + 38.61300158832203 * eta3) * S) / (
+                   1.0 - 0.633218538432246 * S)
+
+        uneqSpin = (pWF['dchi'] * (0.9088578269496244 * eta ** 2.5 +
+                    15.619592332008951 * pWF['dchi'] * eta ** 3.5) * delta)
+
+        total = noSpin + eqSpin + uneqSpin
+    else:
+        raise ValueError(f"Error in IMRPhenomXHM_RD_Phase_22_alpha2: version {RDPhaseFlag} is not valid.")
+
+    return total
+
+def IMRPhenomXHM_RD_Phase_22_alphaL(pWF: dict, RDPhaseFlag: int) -> float:
+    """
+    Compute alphaL coefficient for 22 mode ringdown phase.
+
+    This coefficient is associated with the Lorentzian term in the ringdown
+    phase parameterization for the dominant 22 mode in the IMRPhenomXHM model.
+
+    Parameters
+    ----------
+    pWF : dict
+        Waveform structure dictionary containing:
+        - eta: Symmetric mass ratio
+        - STotR: Total aligned spin parameter
+        - chi1L: Dimensionless spin of body 1 (aligned component)
+        - chi2L: Dimensionless spin of body 2 (aligned component)
+    RDPhaseFlag : int
+        Flag to select the fitting formula (currently only 122019 supported)
+
+    Returns
+    -------
+    float
+        The alphaL coefficient for the 22 mode ringdown phase
+
+    Raises
+    ------
+    ValueError
+        If RDPhaseFlag is not one of the valid values
+    """
+    total = 0.0
+
+    if RDPhaseFlag == 122019:
+        eta = pWF['eta']
+        S = pWF['STotR']
+        delta = jnp.sqrt(1.0 - 4.0 * eta)
+
+        eta2 = eta ** 2
+        eta3 = eta ** 3
+        eta4 = eta ** 4
+        S2 = S ** 2
+
+        noSpin = eta * (-1.1926122248825484 + 2.5400257699690143 * eta -
+                        16.504334734464244 * eta2 + 27.623649807617376 * eta3)
+
+        eqSpin = (eta3 * S * (35.803988443700824 + 9.700178927988006 * S -
+                              77.2346297158916 * S2) +
+                  eta * S * (0.1034526554654983 - 0.21477847929548569 * S -
+                            0.06417449517826644 * S2) +
+                  eta2 * S * (-4.7282481007397825 + 0.8743576195364632 * S +
+                             8.170616575493503 * S2) +
+                  eta4 * S * (-72.50310678862684 - 39.83460092417137 * S +
+                             180.8345521274853 * S2))
+
+        uneqSpin = ((-0.7428134042821221 * pWF['chi1L'] * eta ** 3.5 +
+                     0.7428134042821221 * pWF['chi2L'] * eta ** 3.5 +
+                     17.588573345324154 * pWF['chi1L'] ** 2 * eta ** 4.5 -
+                     35.17714669064831 * pWF['chi1L'] * pWF['chi2L'] * eta ** 4.5 +
+                     17.588573345324154 * pWF['chi2L'] ** 2 * eta ** 4.5) * delta)
+
+        total = noSpin + eqSpin + uneqSpin
+    else:
+        raise ValueError(f"Error in IMRPhenomXHM_RD_Phase_22_alphaL: version {RDPhaseFlag} is not valid.")
+
+    return total
 
 
 # ==================== Additional Ringdown Amplitude Functions ====================
@@ -2684,10 +2797,8 @@ def IMRPhenomXHM_RD_Amp_Coefficients(pWF22: dict, pWFHM: dict, pAmp: dict) -> di
 
         # Compute auxiliary polynomial coefficients if needed
         if pAmp.get('nCoefficientsRDAux', 0) > 0:
-            # Note: IMRPhenomXHM_RDAux_Amp_Coefficients needs to be implemented
-            # For now, we'll add a placeholder
-            # pAmp_out = IMRPhenomXHM_RDAux_Amp_Coefficients(pWF22, pWFHM, pAmp_out)
-            pass
+            pAmp_out = IMRPhenomXHM_RDAux_Amp_Coefficients(pWF22, pWFHM, pAmp_out)
+
 
     else:
         raise ValueError(
@@ -2696,3 +2807,159 @@ def IMRPhenomXHM_RD_Amp_Coefficients(pWF22: dict, pWFHM: dict, pAmp: dict) -> di
         )
 
     return pAmp_out
+
+
+def IMRPhenomXHM_RDAux_Amp_Coefficients(pWF22: dict, pWFHM: dict, pAmp: dict) -> dict:
+    """
+    Compute auxiliary ringdown amplitude polynomial coefficients.
+
+    This function computes polynomial coefficients for an auxiliary region in the
+    ringdown amplitude. It uses collocation points and solves a linear system to
+    determine polynomial coefficients that match amplitude values and derivatives
+    at specified frequencies.
+
+    The polynomial ansatz is: A(f) = c0 + c1*f + c2*f^2 + c3*f^3 + ...
+
+    The system is constructed using:
+    - Collocation point values from fitted functions
+    - Value and derivative from the main ringdown ansatz at fRDAux
+    - Derivative matching at the right boundary
+
+    Parameters
+    ----------
+    pWF22 : dict
+        Waveform structure for the 22 mode
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - IMRPhenomXHMRingdownAmpFitsVersion: Version flag for fit formulas
+        - RingdownAmpVeto: Veto flag (if == 2, applies special logic)
+    pAmp : dict
+        Amplitude coefficients structure containing:
+        - RingdownAmpFits: Array of fit functions
+        - nCollocPtsRDAux: Number of collocation points for RDAux
+        - nCoefficientsRDAux: Number of polynomial coefficients for RDAux
+        - fRDAux: Frequency at the auxiliary ringdown region boundary
+        - fAmpMatchIM: Frequency at the intermediate-ringdown matching point
+
+    Returns
+    -------
+    dict
+        Updated pAmp dictionary with:
+        - RDAuxCoefficient: Array of polynomial coefficients [c0, c1, c2, ...]
+        - CollocationPointsFreqsAmplitudeRDAux: Frequencies for collocation points
+        - CollocationPointsValuesAmplitudeRDAux: Amplitude values at collocation points
+
+    Notes
+    -----
+    The function constructs a Vandermonde-like matrix system where:
+    - Most rows enforce polynomial values at collocation frequencies
+    - The last row enforces derivative matching at fRDAux
+    - The system is solved using JAX's linear solver
+    """
+    # Make a copy to avoid modifying the input
+    pAmp_out = pAmp.copy()
+
+    # Initialize arrays for collocation points
+    nCollocPts = pAmp['nCollocPtsRDAux']
+    nCoeffs = pAmp['nCoefficientsRDAux']
+
+    # Allocate arrays
+    CollocationPointsValuesAmplitudeRDAux = jnp.zeros(nCollocPts + 2)
+    CollocationPointsFreqsAmplitudeRDAux = jnp.zeros(nCoeffs)
+
+    # Compute collocation point values from fitted functions
+    # These are at indices 24, 25, ... in RingdownAmpFits
+    values_list = []
+    for i in range(nCollocPts):
+        val = jnp.abs(pAmp['RingdownAmpFits'][24 + i](pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']))
+        values_list.append(val)
+
+    CollocationPointsValuesAmplitudeRDAux = CollocationPointsValuesAmplitudeRDAux.at[:nCollocPts].set(
+        jnp.array(values_list)
+    )
+
+    # Create powers structure for fRDAux
+    # Note: This should match the IMRPhenomX_UsefulPowers structure
+    # We'll create a minimal version here
+    fRDAux = pAmp['fRDAux']
+    powers_of_fRDAux = {
+        'itself': fRDAux,
+        'two': fRDAux ** 2,
+        'three': fRDAux ** 3,
+        'four': fRDAux ** 4,
+        'five': fRDAux ** 5,
+        'six': fRDAux ** 6,
+        'seven': fRDAux ** 7,
+        'eight': fRDAux ** 8,
+        'nine': fRDAux ** 9,
+        'm_seven_sixths': fRDAux ** (-7.0/6.0),
+        'one_third': fRDAux ** (1.0/3.0),
+        'two_thirds': fRDAux ** (2.0/3.0),
+        'four_thirds': fRDAux ** (4.0/3.0),
+        'five_thirds': fRDAux ** (5.0/3.0),
+        'seven_thirds': fRDAux ** (7.0/3.0),
+        'eight_thirds': fRDAux ** (8.0/3.0),
+    }
+
+    # Get value and derivative from main ringdown ansatz at fRDAux
+    amp_at_fRDAux = IMRPhenomXHM_RD_Amp_Ansatz(powers_of_fRDAux, pWFHM, pAmp_out)
+    damp_at_fRDAux = IMRPhenomXHM_RD_Amp_DAnsatz(powers_of_fRDAux, pWFHM, pAmp_out)
+
+    CollocationPointsValuesAmplitudeRDAux = CollocationPointsValuesAmplitudeRDAux.at[nCollocPts].set(amp_at_fRDAux)
+    CollocationPointsValuesAmplitudeRDAux = CollocationPointsValuesAmplitudeRDAux.at[nCollocPts + 1].set(damp_at_fRDAux)
+
+    # Apply veto 2: If RingdownAmpVeto == 2 and second-to-last point < last point,
+    # set second-to-last point to last point
+    if pWFHM.get('RingdownAmpVeto', 0) == 2:
+        if CollocationPointsValuesAmplitudeRDAux[nCollocPts - 1] < CollocationPointsValuesAmplitudeRDAux[nCollocPts]:
+            CollocationPointsValuesAmplitudeRDAux = CollocationPointsValuesAmplitudeRDAux.at[nCollocPts - 1].set(
+                CollocationPointsValuesAmplitudeRDAux[nCollocPts]
+            )
+
+    # Set collocation point frequencies
+    fAmpMatchIM = pAmp['fAmpMatchIM']
+    CollocationPointsFreqsAmplitudeRDAux = CollocationPointsFreqsAmplitudeRDAux.at[0].set(fAmpMatchIM)
+    CollocationPointsFreqsAmplitudeRDAux = CollocationPointsFreqsAmplitudeRDAux.at[1].set(
+        0.5 * (fAmpMatchIM + fRDAux)  # First Chebyshev node
+    )
+    CollocationPointsFreqsAmplitudeRDAux = CollocationPointsFreqsAmplitudeRDAux.at[2].set(fRDAux)
+    CollocationPointsFreqsAmplitudeRDAux = CollocationPointsFreqsAmplitudeRDAux.at[3].set(fRDAux)
+
+    # Construct the linear system A x = b
+    # A is the Vandermonde-like matrix, b is the values vector, x is the coefficients
+    b = jnp.zeros(nCoeffs)
+    A = jnp.zeros((nCoeffs, nCoeffs))
+
+    # Fill the system
+    for i in range(nCoeffs):
+        # b is the vector with the values of collocation points
+        b = b.at[i].set(CollocationPointsValuesAmplitudeRDAux[i])
+
+        fcollpoint = CollocationPointsFreqsAmplitudeRDAux[i]
+
+        if i < nCoeffs - 1:
+            # Regular rows: polynomial at the collocation point frequencies
+            # A[i] = [1, f, f^2, f^3, f^4, ...]
+            fpower = 1.0
+            for j in range(nCoeffs):
+                A = A.at[i, j].set(fpower)
+                fpower *= fcollpoint
+        else:
+            # Last row: derivative at the right boundary
+            # dA/df = [0, 1, 2*f, 3*f^2, 4*f^3, ...]
+            A = A.at[i, 0].set(0.0)
+            fpower = 1.0
+            for j in range(1, nCoeffs):
+                A = A.at[i, j].set(j * fpower)
+                fpower *= fcollpoint
+
+    # Solve the linear system A x = b
+    x = jnp.linalg.solve(A, b)
+
+    # Store the coefficients
+    pAmp_out['RDAuxCoefficient'] = x.tolist()
+    pAmp_out['CollocationPointsFreqsAmplitudeRDAux'] = CollocationPointsFreqsAmplitudeRDAux.tolist()
+    pAmp_out['CollocationPointsValuesAmplitudeRDAux'] = CollocationPointsValuesAmplitudeRDAux.tolist()
+
+    return pAmp_out
+

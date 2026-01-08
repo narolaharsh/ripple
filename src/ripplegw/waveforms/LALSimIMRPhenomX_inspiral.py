@@ -1321,3 +1321,99 @@ def IMRPhenomX_Inspiral_Phase_22_AnsatzInt(Mf: float, powers_of_Mf: 'IMRPhenomX_
     # phasing += pPhase['phi_initial']
 
     return phasing
+
+
+def IMRPhenomX_Inspiral_Phase_22_Ansatz(Mf: float, powers_of_Mf, pPhase: dict) -> float:
+    """
+    Compute the derivative of the inspiral phase (dPhi/df) for the 22 mode.
+
+    This function computes the frequency derivative of the TaylorF2 PN phase,
+    including pseudo-PN corrections. The returned value is the instantaneous
+    frequency derivative at the given frequency.
+
+    Parameters
+    ----------
+    Mf : float
+        Geometric frequency (frequency * total mass)
+    powers_of_Mf : IMRPhenomX_UsefulPowers
+        Object containing various powers of Mf for efficient computation.
+        Expected attributes: m_eight_thirds, two_thirds, one_third, one_third,
+                           two_thirds, four_thirds, five_thirds, two, seven_thirds,
+                           eight_thirds, three, log, itself
+    pPhase : dict
+        Phase coefficients dictionary containing:
+            - dphi_minus2, dphi_minus1: Negative PN order coefficients
+            - dphi0 through dphi9: PN phase derivative coefficients
+            - dphi6L, dphi8L, dphi9L: Log term coefficients
+            - a0 through a4: Pseudo-PN coefficients
+
+    Returns
+    -------
+    float
+        The phase derivative (dPhi/df) at the given frequency
+    """
+    import jax.numpy as jnp
+
+    phaseIN = 0.0
+
+    # Assemble PN phase derivative series
+    # f^{-2/3}, v = -2; -1PN
+    phaseIN += pPhase['dphi_minus2'] / powers_of_Mf.two_thirds
+
+    # f^{-1/3}, v = -1; -0.5PN
+    phaseIN += pPhase['dphi_minus1'] / powers_of_Mf.one_third
+
+    # f^{0/3}, v = 0; Newtonian
+    phaseIN += pPhase['dphi0']
+
+    # f^{1/3}, v = 1; 0.5PN
+    phaseIN += pPhase['dphi1'] * powers_of_Mf.one_third
+
+    # f^{2/3}, v = 2; 1.0PN
+    phaseIN += pPhase['dphi2'] * powers_of_Mf.two_thirds
+
+    # f^{3/3}, v = 3; 1.5PN
+    phaseIN += pPhase['dphi3'] * Mf
+
+    # f^{4/3}, v = 4; 2.0PN
+    phaseIN += pPhase['dphi4'] * powers_of_Mf.four_thirds
+
+    # f^{5/3}, v = 5; 2.5PN
+    phaseIN += pPhase['dphi5'] * powers_of_Mf.five_thirds
+
+    # f^{6/3}, v = 6; 3.0PN
+    phaseIN += pPhase['dphi6'] * powers_of_Mf.two
+
+    # f^{6/3}, v = 6; 3.0PN Log[f] terms
+    phaseIN += pPhase['dphi6L'] * powers_of_Mf.two * powers_of_Mf.log
+
+    # f^{7/3}, v = 7; 3.5PN
+    phaseIN += pPhase['dphi7'] * powers_of_Mf.seven_thirds
+
+    # f^{8/3}, v = 8; 4.0PN
+    phaseIN += pPhase['dphi8'] * powers_of_Mf.eight_thirds
+
+    # f^{8/3}, v = 8; 4.0PN Log[f] terms
+    phaseIN += pPhase['dphi8L'] * powers_of_Mf.eight_thirds * powers_of_Mf.log
+
+    # f^{9/3}, v = 9; 4.5PN
+    phaseIN += pPhase['dphi9'] * powers_of_Mf.three
+
+    # f^{9/3}, v = 9; 4.5PN Log[f] terms
+    phaseIN += pPhase['dphi9L'] * powers_of_Mf.three * powers_of_Mf.log
+
+    # Add pseudo-PN coefficients
+    phaseIN += (
+        pPhase['a0'] * powers_of_Mf.eight_thirds
+        + pPhase['a1'] * powers_of_Mf.three
+        + pPhase['a2'] * powers_of_Mf.eight_thirds * powers_of_Mf.two_thirds
+        + pPhase['a3'] * powers_of_Mf.eight_thirds * powers_of_Mf.itself
+        + pPhase['a4'] * powers_of_Mf.eight_thirds * powers_of_Mf.four_thirds
+    )
+
+    # Apply overall normalization: (5 / (128 * pi^{5/3})) * f^{-8/3}
+    # pi^{5/3} = (pi^5)^{1/3}
+    pi_five_thirds = jnp.pi ** (5.0 / 3.0)
+    phaseIN = phaseIN * powers_of_Mf.m_eight_thirds * (5.0 / (128.0 * pi_five_thirds))
+
+    return phaseIN

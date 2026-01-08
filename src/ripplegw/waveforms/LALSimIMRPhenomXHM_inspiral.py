@@ -1244,18 +1244,166 @@ def IMRPhenomXHM_Insp_Phase_44_lambda(pWF: dict, InspPhaseFlag: int) -> float:
     return total
 
 
-def IMRPhenomXHM_Inspiral_Phase_AnsatzInt():
-    #TODO
-    return 
+def IMRPhenomXHM_Insp_Phase_LambdaPN(eta: float, modeInt: int) -> float:
+    """
+    Returns linear-in-f term from the complex part of each mode's amplitude.
+
+    This is added to the orbital phase and comes from an expansion of Eq. (4.9)
+    truncated at linear order.
+
+    Parameters
+    ----------
+    eta : float
+        Symmetric mass ratio
+    modeInt : int
+        Mode identifier (21, 33, 32, 44)
+
+    Returns
+    -------
+    float
+        The lambda_PN coefficient for the phase
+    """
+    PI = jnp.pi
+
+    if modeInt == 21:
+        # 2 f π (-(1/2) - Log[16]/2)
+        output = 2.0 * PI * (-0.5 - 2.0 * jnp.log(2.0))
+    elif modeInt == 33:
+        # 2/3 f π (-(21/5) + 6 Log[3/2])
+        output = 2.0 / 3.0 * PI * (-21.0 / 5.0 + 6.0 * jnp.log(1.5))
+    elif modeInt == 32:
+        # -((2376 f π (-5 + 22 η))/(-3960 + 11880 η))
+        output = -((2376.0 * PI * (-5.0 + 22.0 * eta)) / (-3960.0 + 11880.0 * eta))
+    elif modeInt == 44:
+        # (45045 f π (336 - 1193 η + 320 (-1 + 3 η) Log[2]))/(2 (-1801800 + 5405400 η))
+        output = (45045.0 * PI * (336.0 - 1193.0 * eta + 320.0 * (-1.0 + 3.0 * eta) * jnp.log(2.0)) /
+                  (2.0 * (-1801800.0 + 5405400.0 * eta)))
+    else:
+        output = 0.0
+
+    return -1.0 * output
 
 
-def IMRPhenomXHM_Inspiral_Phase_Ansatz():
-    #TODO
-    return 
+def IMRPhenomXHM_Inspiral_Phase_AnsatzInt(Mf: float, powers_of_Mf: dict, pPhase: dict) -> float:
+    """
+    Compute the integral of the inspiral phase ansatz.
+
+    This function loads the rescaled PhenomX coefficients for the phase and corrects
+    the result with a linear-in-f term coming from the complex part of the PN amplitude.
+    The rescaling of the 22-coefficients is explained in App. D.
+
+    Parameters
+    ----------
+    Mf : float
+        Geometric frequency (frequency * total mass)
+    powers_of_Mf : dict
+        Dictionary containing various powers of Mf for efficient computation
+        Expected keys: m_seven_thirds, m_two, m_five_thirds, m_four_thirds, m_one,
+                      m_two_thirds, m_one_third, one_third, two_thirds, four_thirds,
+                      five_thirds, two, seven_thirds, log
+    pPhase : dict
+        Phase coefficients structure containing 'phi' and 'phiL' arrays
+        phi: array of 15 phase coefficients
+        phiL: array of 15 log coefficients
+
+    Returns
+    -------
+    float
+        The inspiral phase value at frequency Mf
+    """
+    # Number of coefficients
+    N_MAX_COEFFICIENTS_PHASE_INS = 15
+
+    # Frequency powers array corresponding to the phase expansion
+    freqs = jnp.array([
+        powers_of_Mf['m_seven_thirds'],
+        powers_of_Mf['m_two'],
+        powers_of_Mf['m_five_thirds'],
+        powers_of_Mf['m_four_thirds'],
+        powers_of_Mf['m_one'],
+        powers_of_Mf['m_two_thirds'],
+        powers_of_Mf['m_one_third'],
+        1.0,
+        powers_of_Mf['one_third'],
+        powers_of_Mf['two_thirds'],
+        Mf,
+        powers_of_Mf['four_thirds'],
+        powers_of_Mf['five_thirds'],
+        powers_of_Mf['two'],
+        powers_of_Mf['seven_thirds']
+    ])
+
+    logMf = powers_of_Mf['log']
+
+    # Compute the orbital phase by loading the rescaled PhenomX coefficients
+    philm = 0.0
+    for i in range(N_MAX_COEFFICIENTS_PHASE_INS):
+        philm += (pPhase['phi'][i] + pPhase['phiL'][i] * logMf) * freqs[i]
+
+    return philm
 
 
-def IMRPhenomXHM_Insp_Phase_LambdaPN():
-    return #TODO
+def IMRPhenomXHM_Inspiral_Phase_Ansatz(Mf: float, powers_of_Mf: dict, pPhase: dict) -> float:
+    """
+    Compute the derivative of the inspiral phase ansatz.
+
+    This function computes the frequency derivative of the inspiral phase by loading
+    the rescaled PhenomX coefficients.
+
+    Parameters
+    ----------
+    Mf : float
+        Geometric frequency (frequency * total mass)
+    powers_of_Mf : dict
+        Dictionary containing various powers of Mf for efficient computation
+        Expected keys: m_ten_thirds, m_three, m_eight_thirds, m_seven_thirds, m_two,
+                      m_five_thirds, m_four_thirds, m_one, m_two_thirds, m_one_third,
+                      one_third, two_thirds, four_thirds, log
+    pPhase : dict
+        Phase coefficients structure containing 'phi' and 'phiL' arrays
+        phi: array of 15 phase coefficients
+        phiL: array of 15 log coefficients
+
+    Returns
+    -------
+    float
+        The derivative of the inspiral phase at frequency Mf
+    """
+    # Number of coefficients
+    N_MAX_COEFFICIENTS_PHASE_INS = 15
+
+    # Power law coefficients for the derivative
+    coeffs = jnp.array([-7.0/3.0, -2.0, -5.0/3.0, -4.0/3.0, -1.0, -2.0/3.0, -1.0/3.0,
+                        0.0, 1.0/3.0, 2.0/3.0, 1.0, 4.0/3.0, 5.0/3.0, 2.0, 7.0/3.0])
+
+    # Frequency powers array for the derivative
+    freqs = jnp.array([
+        powers_of_Mf['m_ten_thirds'],
+        powers_of_Mf['m_three'],
+        powers_of_Mf['m_eight_thirds'],
+        powers_of_Mf['m_seven_thirds'],
+        powers_of_Mf['m_two'],
+        powers_of_Mf['m_five_thirds'],
+        powers_of_Mf['m_four_thirds'],
+        powers_of_Mf['m_one'],
+        powers_of_Mf['m_two_thirds'],
+        powers_of_Mf['m_one_third'],
+        1.0,
+        powers_of_Mf['one_third'],
+        powers_of_Mf['two_thirds'],
+        Mf,
+        powers_of_Mf['four_thirds']
+    ])
+
+    logMf = powers_of_Mf['log']
+
+    # Compute the derivative of the orbital phase
+    dphilm = 0.0
+    for i in range(N_MAX_COEFFICIENTS_PHASE_INS):
+        dphilm += ((pPhase['phi'][i] + pPhase['phiL'][i] * logMf) * coeffs[i] +
+                   pPhase['phiL'][i]) * freqs[i]
+
+    return dphilm
 
 
 # ==================== Pseudo-PN Amplitude Coefficients ====================

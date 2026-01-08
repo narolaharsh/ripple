@@ -8,12 +8,126 @@ IMRPhenomXHM waveform model, converted from the LALSimulation C code to JAX.
 import jax.numpy as jnp
 
 
-def IMRPhenomXHM_Inter_Phase_AnsatzInt():
-    return #TODO
+def IMRPhenomXHM_Inter_Phase_AnsatzInt(
+    ff: float, powers_of_f: dict, pWFHM: dict, pPhase: dict
+) -> float:
+    """
+    Compute the integral of the intermediate phase ansatz.
+
+    This function evaluates the intermediate region phase as a function of frequency,
+    using a polynomial ansatz plus an arctangent term near the ringdown frequency.
+
+    Parameters
+    ----------
+    ff : float
+        Frequency (geometric units)
+    powers_of_f : dict
+        Dictionary containing various powers of frequency for efficient computation
+        Expected keys: m_one, m_two, m_three, log
+    pWFHM : dict
+        HM waveform structure containing:
+        - modeTag: Mode identifier (32 requires special treatment)
+        - fDAMP: Damping frequency
+        - fRING: Ringdown frequency
+    pPhase : dict
+        Phase coefficients dictionary containing:
+        - c0, c1, c2, c3, c4: Polynomial coefficients
+        - cL: Lorentzian coefficient
+
+    Returns
+    -------
+    float
+        The intermediate phase value at frequency ff
+    """
+    modeTag = pWFHM['modeTag']
+    invf = powers_of_f['m_one']
+    invf2 = powers_of_f['m_two']
+    invf3 = powers_of_f['m_three']
+    logfv = powers_of_f['log']
+
+    fda = pWFHM['fDAMP']
+    frd = pWFHM['fRING']
+
+    if modeTag != 32:
+        # 5 coefficients version
+        # c0*f + c1*log(f) - c2/f - (1/3)*c4/f^3 + cL*atan((f - frd)/fda)
+        phaseIR = (pPhase['c0'] * ff +
+                   pPhase['c1'] * logfv -
+                   pPhase['c2'] * invf -
+                   (1.0 / 3.0) * pPhase['c4'] * invf3 +
+                   pPhase['cL'] * jnp.arctan((ff - frd) / fda))
+    else:
+        # 6 coefficients version (mode 32)
+        # c0*f + c1*log(f) - c2/f - (1/3)*c4/f^3 - 0.5*c3/f^2 + cL*atan((f - frd)/fda)
+        phaseIR = (pPhase['c0'] * ff +
+                   pPhase['c1'] * logfv -
+                   pPhase['c2'] * invf -
+                   (1.0 / 3.0) * pPhase['c4'] * invf3 -
+                   0.5 * pPhase['c3'] * invf2 +
+                   pPhase['cL'] * jnp.arctan((ff - frd) / fda))
+
+    return phaseIR
 
 
-def IMRPhenomXHM_Inter_Phase_Ansatz():
-    return TODO
+def IMRPhenomXHM_Inter_Phase_Ansatz(
+    ff: float, powers_of_f: dict, pWFHM: dict, pPhase: dict
+) -> float:
+    """
+    Compute the derivative of the intermediate phase ansatz (dPhi/df).
+
+    This function evaluates the frequency derivative of the intermediate region phase,
+    using a rational polynomial plus a Lorentzian term near the ringdown frequency.
+
+    Parameters
+    ----------
+    ff : float
+        Frequency (geometric units)
+    powers_of_f : dict
+        Dictionary containing various powers of frequency for efficient computation
+        Expected keys: m_one, m_two, m_three, m_four
+    pWFHM : dict
+        HM waveform structure containing:
+        - modeTag: Mode identifier (32 requires special treatment)
+        - fDAMP: Damping frequency
+        - fRING: Ringdown frequency
+    pPhase : dict
+        Phase coefficients dictionary containing:
+        - c0, c1, c2, c3, c4: Polynomial coefficients
+        - cL: Lorentzian coefficient
+
+    Returns
+    -------
+    float
+        The phase derivative (dPhi/df) at frequency ff
+    """
+    modeTag = pWFHM['modeTag']
+    invf = powers_of_f['m_one']
+    invf2 = powers_of_f['m_two']
+    invf4 = powers_of_f['m_four']
+
+    fda = pWFHM['fDAMP']
+    frd = pWFHM['fRING']
+
+    if modeTag != 32:
+        # 5 coefficients version
+        # c0 + c1/f + c2/f^2 + c4/f^4 + cL*fda/(fda^2 + (f - frd)^2)
+        dphaseIR = (pPhase['c0'] +
+                    pPhase['c1'] * invf +
+                    pPhase['c2'] * invf2 +
+                    pPhase['c4'] * invf4 +
+                    pPhase['cL'] * fda / (fda * fda + (ff - frd) * (ff - frd)))
+    else:
+        # 6 coefficients version (mode 32)
+        # c0 + c1/f + c2/f^2 + c3/f^3 + c4/f^4 + cL*fda/(fda^2 + (f - frd)^2)
+        invf3 = powers_of_f['m_three']
+        dphaseIR = (pPhase['c0'] +
+                    pPhase['c1'] * invf +
+                    pPhase['c2'] * invf2 +
+                    pPhase['c3'] * invf3 +
+                    pPhase['c4'] * invf4 +
+                    pPhase['cL'] * fda / (fda * fda + (ff - frd) * (ff - frd)))
+
+    return dphaseIR
 
 def IMRPhenomXHM_Inter_Amp_21_int1(pWF: dict, InterAmpFlag: int) -> float:
     """
@@ -3200,6 +3314,1184 @@ def IMRPhenomXHM_Intermediate_Amp_delta0(
     else:
         raise ValueError(
             f"Error in IMRPhenomXHM_Intermediate_Amp_delta0: "
+            f"IMRPhenomXIntermediateAmpVersion {IntAmpFlag} is not valid."
+        )
+
+    return retVal
+
+
+def IMRPhenomXHM_Intermediate_Amp_delta1(
+    d1: float, d4: float, v1: float, v2: float, v3: float, v4: float,
+    f1: float, f2: float, f3: float, f4: float, IntAmpFlag: int
+) -> float:
+    """
+    Compute delta1 coefficient for intermediate amplitude reconstruction.
+
+    This function computes the linear coefficient (delta1) for polynomial
+    ansatzes of various orders used in the intermediate amplitude region.
+
+    Parameters
+    ----------
+    d1, d4 : float
+        Derivative values at boundary frequencies f1 and f4
+    v1, v2, v3, v4 : float
+        Function values at frequencies f1, f2, f3, f4
+    f1, f2, f3, f4 : float
+        Collocation point frequencies
+    IntAmpFlag : int
+        Version flag determining the ansatz order:
+        - 101: Linear (2 points)
+        - 102: Quadratic (2 points + 1 derivative)
+        - 1032: Cubic (2 points + 2 derivatives)
+        - 103: Cubic (4 points)
+        - 1043: Quartic (4 points + 1 derivative, no left)
+        - 1042: Quartic (2 points + 2 derivatives + 1 point)
+        - 104: Quartic (Geraint's version)
+        - 105: Quintic (4 points + 2 derivatives)
+
+    Returns
+    -------
+    float
+        The delta1 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IntAmpFlag is not valid
+    """
+    import jax.numpy as jnp
+
+    if IntAmpFlag == 101:  # Linear, only v1, v2
+        f1mf4 = f1 - f4
+        retVal = (v1 - v4) / f1mf4
+
+    elif IntAmpFlag == 102:  # Quadratic: v1, v2, d2
+        f12 = f1 * f1
+        f42 = f4 * f4
+        f1mf42 = (f1 - f4) * (f1 - f4)
+        retVal = (d4 * (f12 - f42) + 2 * f4 * (-v1 + v4)) / f1mf42
+
+    elif IntAmpFlag == 1032:  # 2 freqs, points and derivatives: v1, v4, d1, d4
+        f12 = f1 * f1
+        f42 = f4 * f4
+        f1mf4 = f1 - f4
+        f1mf42 = f1mf4 * f1mf4
+        f1mf43 = f1mf42 * f1mf4
+        retVal = (d4 * f1 * f1mf4 * (f1 + 2 * f4) - f4 * (d1 * (-2 * f12 + f1 * f4 + f42) +
+                  6 * f1 * (v1 - v4))) / f1mf43
+
+    elif IntAmpFlag == 103:  # 4 freqs, no boundaries derivatives
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        retVal = (f12 * f1mf4 * f42 * (v2 - v3) + f33 * (f42 * (v1 - v2) + f12 * (v2 - v4)) +
+                  f22 * (f43 * (v1 - v3) + f13 * (v3 - v4) + f33 * (-v1 + v4)) +
+                  f32 * (f43 * (-v1 + v2) + f13 * (-v2 + v4)) +
+                  f23 * (f42 * (-v1 + v3) + f32 * (v1 - v4) + f12 * (-v3 + v4))) / (
+                      f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf4 * f3mf4)
+
+    elif IntAmpFlag == 1043:  # No left derivative
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf42 = f1mf4 * f1mf4
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+
+        v1mv2 = v1 - v2
+        v2mv3 = v2 - v3
+        v2mv4 = v2 - v4
+        v1mv3 = v1 - v3
+        v1mv4 = v1 - v4
+        v3mv4 = v3 - v4
+
+        retVal = (d4 * f1mf4 * f2mf4 * f3mf4 * (f1 * f2 * f3 + f2 * f3 * f4 + f1 * (f2 + f3) * f4) +
+                  (f4 * (f12 * f1mf42 * f43 * v2mv3 + f34 * (f43 * v1mv2 +
+                  3 * f12 * f4 * v2mv4 + 2 * f13 * (-v2 + v4)) +
+                  f32 * f4 * (f44 * v1mv2 + 4 * f13 * f4 * v2mv4 + 3 * f14 * (-v2 + v4)) +
+                  2 * f33 * (f44 * (-v1 + v2) + f14 * v2mv4 + 2 * f12 * f42 * (-v2 + v4)) +
+                  2 * f23 * (f44 * v1mv3 + f34 * v1mv4 + 2 * f12 * f42 * v3mv4 +
+                  2 * f32 * f42 * (-v1 + v4) + f14 * (-v3 + v4)) +
+                  f24 * (3 * f32 * f4 * v1mv4 + f43 * (-v1 + v3) + 2 * f13 * v3mv4 +
+                  2 * f33 * (-v1 + v4) + 3 * f12 * f4 * (-v3 + v4)) +
+                  f22 * f4 * (4 * f33 * f4 * v1mv4 + f44 * (-v1 + v3) + 3 * f14 * v3mv4 +
+                  3 * f34 * (-v1 + v4) + 4 * f13 * f4 * (-v3 + v4)))) / (
+                      f1mf2 * f1mf3 * f2mf3)) / (f1mf42 * f2mf42 * f3mf42)
+
+    elif IntAmpFlag == 1042:  # 4th order poly: v1,d1, v4,d4, v3
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+
+        f1mf4 = f1 - f4
+        f1mf3 = f1 - f3
+        f3mf4 = f3 - f4
+
+        f1mf42 = f1mf4 * f1mf4
+        f1mf32 = f1mf3 * f1mf3
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf42 * f1mf4
+
+        retVal = (d4 * f15 * f32 - 2 * d4 * f14 * f33 + d4 * f13 * f34 + d4 * f14 * f32 * f4 -
+                  2 * d1 * f13 * f33 * f4 - 2 * d4 * f13 * f33 * f4 + 2 * d1 * f12 * f34 * f4 +
+                  d4 * f12 * f34 * f4 - d4 * f15 * f42 + 3 * d1 * f13 * f32 * f42 +
+                  d4 * f13 * f32 * f42 - 2 * d1 * f12 * f33 * f42 +
+                  2 * d4 * f12 * f33 * f42 - d1 * f1 * f34 * f42 - 2 * d4 * f1 * f34 * f42 +
+                  d4 * f14 * f43 - d1 * f12 * f32 * f43 - 3 * d4 * f12 * f32 * f43 +
+                  2 * d1 * f1 * f33 * f43 + 2 * d4 * f1 * f33 * f43 - d1 * f34 * f43 -
+                  d1 * f13 * f44 - d1 * f1 * f32 * f44 + 2 * d1 * f33 * f44 +
+                  d1 * f12 * f45 - d1 * f32 * f45 + 8 * f12 * f33 * f4 * v1 - 6 * f1 * f34 * f4 * v1 -
+                  12 * f12 * f32 * f42 * v1 + 8 * f1 * f33 * f42 * v1 + 4 * f12 * f44 * v1 -
+                  2 * f1 * f45 * v1 - 2 * f15 * f4 * v3 + 4 * f14 * f42 * v3 - 4 * f12 * f44 * v3 +
+                  2 * f1 * f45 * v3 +
+                  2 * f15 * f4 * v4 - 8 * f12 * f33 * f4 * v4 + 6 * f1 * f34 * f4 * v4 -
+                  4 * f14 * f42 * v4 + 12 * f12 * f32 * f42 * v4 - 8 * f1 * f33 * f42 * v4) / (
+                      f1mf32 * f1mf43 * f3mf42)
+
+    elif IntAmpFlag == 104:  # Geraint's Version, 4th order poly: v1,d1, v2,d2, v3
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+
+        f1mf2 = f1 - f2
+        f1mf4 = f1 - f4
+        f2mf4 = f2 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f2mf42 = f2mf4 * f2mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = ((d4 * f1 * f1mf22 * f1mf4 * f2mf4 * (2 * f2 * f4 + f1 * (f2 + f4)) +
+                   f4 * (-(d1 * f1mf2 * f1mf4 * f2mf42 * (2 * f1 * f2 + (f1 + f2) * f4)) -
+                   2 * f1 * (f44 * (v1 - v2) + 3 * f24 * (v1 - v4) + f14 * (v2 - v4) +
+                   4 * f23 * f4 * (-v1 + v4) + 2 * f13 * f4 * (-v2 + v4) +
+                   f1 * (2 * f43 * (-v1 + v2) + 6 * f22 * f4 * (v1 - v4) +
+                   4 * f23 * (-v1 + v4))))) / (f1mf22 * f1mf43 * f2mf42))
+
+    elif IntAmpFlag == 105:  # Geraint, standard way: v1, v2, v3, v4, d1, d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f16 = f15 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f25 = f24 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f35 = f34 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f1mf32 = f1mf3 * f1mf3
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = (
+            (d4 * f1 * f1mf22 * f1mf32 * f1mf4 * f2mf3 * f2mf4 * f3mf4 * (f1 * f2 * f3 +
+             2 * f2 * f3 * f4 + f1 * (f2 + f3) * f4) +
+            f4 * (d1 * f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf42 * f3mf42 * (2 * f1 * f2 * f3 +
+             f2 * f3 * f4 + f1 * (f2 + f3) * f4) +
+            f1 * (f16 * (f43 * (v2 - v3) + 2 * f33 * (v2 - v4) + 3 * f22 * f4 * (v3 - v4) +
+             3 * f32 * f4 * (-v2 + v4) + 2 * f23 * (-v3 + v4)) +
+            f13 * f4 * (f45 * (-v2 + v3) + 5 * f34 * f4 * (v2 - v4) + 4 * f25 * (v3 - v4) +
+             4 * f35 * (-v2 + v4) + 5 * f24 * f4 * (-v3 + v4)) +
+            f14 * (3 * f45 * (v2 - v3) + 2 * f35 * (v2 - v4) + 5 * f34 * f4 * (v2 - v4) +
+             10 * f23 * f42 * (v3 - v4) + 10 * f33 * f42 * (-v2 + v4) + 2 * f25 * (-v3 + v4) +
+             5 * f24 * f4 * (-v3 + v4)) +
+            f15 * (3 * f44 * (-v2 + v3) + 2 * f33 * f4 * (v2 - v4) + 5 * f32 * f42 * (v2 - v4) +
+             4 * f24 * (v3 - v4) + 4 * f34 * (-v2 + v4) + 2 * f23 * f4 * (-v3 + v4) +
+             5 * f22 * f42 * (-v3 + v4)) -
+            5 * f12 * (-(f32 * f3mf42 * f43 * (v1 - v2)) + 2 * f23 * (f44 * (-v1 + v3) +
+             2 * f32 * f42 * (v1 - v4) + f34 * (-v1 + v4)) +
+             f24 * (f43 * (v1 - v3) + 2 * f33 * (v1 - v4) + 3 * f32 * f4 * (-v1 + v4)) +
+             f22 * f4 * (f44 * (v1 - v3) + 3 * f34 * (v1 - v4) + 4 * f33 * f4 * (-v1 + v4))) +
+            f1 * (-(f32 * f3mf42 * (4 * f3 + 3 * f4) * f43 * (v1 - v2)) +
+             2 * f23 * (f45 * (-v1 + v3) + 5 * f34 * f4 * (v1 - v4) + 4 * f35 * (-v1 + v4)) +
+             4 * f25 * (f43 * (v1 - v3) + 2 * f33 * (v1 - v4) + 3 * f32 * f4 * (-v1 + v4)) -
+             5 * f24 * f4 * (f43 * (v1 - v3) + 2 * f33 * (v1 - v4) + 3 * f32 * f4 * (-v1 + v4)) +
+             3 * f22 * f4 * (f45 * (v1 - v3) + 4 * f35 * (v1 - v4) + 5 * f34 * f4 * (-v1 + v4))) -
+            2 * (-(f33 * f3mf42 * f44 * (v1 - v2)) + f24 * (2 * f45 * (-v1 + v3) +
+             5 * f33 * f42 * (v1 - v4) + 3 * f35 * (-v1 + v4)) +
+             f25 * (f44 * (v1 - v3) + 3 * f34 * (v1 - v4) + 4 * f33 * f4 * (-v1 + v4)) +
+             f23 * f4 * (f45 * (v1 - v3) + 4 * f35 * (v1 - v4) +
+             5 * f34 * f4 * (-v1 + v4)))))) / (f1mf22 * f1mf32 * f1mf43 * f2mf3 * f2mf42 * f3mf42)
+        )
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_Amp_delta1: "
+            f"IMRPhenomXIntermediateAmpVersion {IntAmpFlag} is not valid."
+        )
+
+    return retVal
+
+
+def IMRPhenomXHM_Intermediate_Amp_delta2(
+    d1: float, d4: float, v1: float, v2: float, v3: float, v4: float,
+    f1: float, f2: float, f3: float, f4: float, IntAmpFlag: int
+) -> float:
+    """
+    Compute delta2 coefficient for intermediate amplitude reconstruction.
+
+    This function computes the quadratic coefficient (delta2) for polynomial
+    ansatzes of various orders used in the intermediate amplitude region.
+
+    Parameters
+    ----------
+    d1, d4 : float
+        Derivative values at boundary frequencies f1 and f4
+    v1, v2, v3, v4 : float
+        Function values at frequencies f1, f2, f3, f4
+    f1, f2, f3, f4 : float
+        Collocation point frequencies
+    IntAmpFlag : int
+        Version flag determining the ansatz order:
+        - 101: Linear (2 points)
+        - 102: Quadratic (2 points + 1 derivative)
+        - 1032: Cubic (2 points + 2 derivatives)
+        - 103: Cubic (4 points)
+        - 1043: Quartic (4 points + 1 derivative, no left)
+        - 1042: Quartic (2 points + 2 derivatives + 1 point)
+        - 104: Quartic (Geraint's version)
+        - 105: Quintic (4 points + 2 derivatives)
+
+    Returns
+    -------
+    float
+        The delta2 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IntAmpFlag is not valid
+    """
+    import jax.numpy as jnp
+
+    if IntAmpFlag == 101:  # Linear, only v1, v2
+        retVal = 0.0
+
+    elif IntAmpFlag == 102:  # Quadratic: v1, v2, d2
+        f1mf4 = f1 - f4
+        f1mf42 = f1mf4 * f1mf4
+        retVal = (-(d4 * f1mf4) + v1 - v4) / f1mf42
+
+    elif IntAmpFlag == 1032:  # 2 freqs, points and derivatives: v1, v4, d1, d4
+        f12 = f1 * f1
+        f42 = f4 * f4
+        f1mf4 = f1 - f4
+        f1mf42 = f1mf4 * f1mf4
+        f1mf43 = f1mf42 * f1mf4
+        retVal = (-(d1 * (f12 + f1 * f4 - 2 * f42)) + d4 * (-2 * f12 + f1 * f4 + f42) +
+                  3 * (f1 + f4) * (v1 - v4)) / f1mf43
+
+    elif IntAmpFlag == 103:  # 4 freqs, no boundaries derivatives
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        retVal = (-(f1 * f4 * (f12 - f42) * (v2 - v3)) + f3 * (f43 * (v1 - v2) + f13 * (v2 - v4)) +
+                  f23 * (f4 * (v1 - v3) + f1 * (v3 - v4) + f3 * (-v1 + v4)) +
+                  f33 * (f4 * (-v1 + v2) + f1 * (-v2 + v4)) +
+                  f2 * (f43 * (-v1 + v3) + f33 * (v1 - v4) + f13 * (-v3 + v4))) / (
+                      f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf4 * f3mf4)
+
+    elif IntAmpFlag == 1043:  # No left derivative: v1, v2, v3, v4, d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f46 = f44 * f42
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf42 = f1mf4 * f1mf4
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+
+        v1mv3 = v1 - v3
+        v1mv4 = v1 - v4
+        v3mv4 = v3 - v4
+
+        retVal = (-(d4 * f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf4 * f3mf4 * (f3 * f4 + f2 * (f3 + f4) +
+                  f1 * (f2 + f3 + f4))) - 2 * f34 * f43 * v1 + 3 * f33 * f44 * v1 - f3 * f46 * v1 -
+                  f14 * f33 * v2 + f13 * f34 * v2 + 3 * f14 * f3 * f42 * v2 - 3 * f1 * f34 * f42 * v2 -
+                  2 * f14 * f43 * v2 - 4 * f13 * f3 * f43 * v2 + 4 * f1 * f33 * f43 * v2 +
+                  2 * f34 * f43 * v2 + 3 * f13 * f44 * v2 - 3 * f33 * f44 * v2 - f1 * f46 * v2 +
+                  f3 * f46 * v2 + 2 * f14 * f43 * v3 - 3 * f13 * f44 * v3 + f1 * f46 * v3 +
+                  f2 * f42 * (f44 * v1mv3 + 3 * f34 * v1mv4 - 4 * f33 * f4 * v1mv4 -
+                  3 * f14 * v3mv4 + 4 * f13 * f4 * v3mv4) +
+                  f24 * (2 * f43 * v1mv3 + f33 * v1mv4 - 3 * f3 * f42 * v1mv4 - f13 * v3mv4 +
+                  3 * f1 * f42 * v3mv4) +
+                  f23 * (-3 * f44 * v1mv3 - f34 * v1mv4 + 4 * f3 * f43 * v1mv4 + f14 * v3mv4 -
+                  4 * f1 * f43 * v3mv4) + f14 * f33 * v4 - f13 * f34 * v4 - 3 * f14 * f3 * f42 * v4 +
+                  3 * f1 * f34 * f42 * v4 + 4 * f13 * f3 * f43 * v4 - 4 * f1 * f33 * f43 * v4) / (
+                      f1mf2 * f1mf3 * f1mf42 * f2mf3 * f2mf42 * f3mf42)
+
+    elif IntAmpFlag == 1042:  # 4th order poly: v1,d1, v2,d2, v3
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+
+        f1mf4 = f1 - f4
+        f1mf3 = f1 - f3
+        f3mf4 = f3 - f4
+
+        f1mf42 = f1mf4 * f1mf4
+        f1mf32 = f1mf3 * f1mf3
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf42 * f1mf4
+
+        retVal = (-(d4 * f1mf32 * f1mf4 * f3mf4 * (f12 + f3 * f4 + 2 * f1 * (f3 + f4))) +
+                  d1 * f1mf3 * f1mf4 * f3mf42 * (f1 * f3 + 2 * (f1 + f3) * f4 + f42) -
+                  4 * f12 * f33 * v1 + 3 * f1 * f34 * v1 - 4 * f1 * f33 * f4 * v1 + 3 * f34 * f4 * v1 +
+                  12 * f12 * f3 * f42 * v1 - 4 * f33 * f42 * v1 - 8 * f12 * f43 * v1 + f1 * f44 * v1 +
+                  f45 * v1 + f15 * v3 + f14 * f4 * v3 - 8 * f13 * f42 * v3 + 8 * f12 * f43 * v3 -
+                  f1 * f44 * v3 - f45 * v3 -
+                  f1mf32 * (f13 + f3 * (3 * f3 - 4 * f4) * f4 + f12 * (2 * f3 + f4) +
+                  f1 * (3 * f3 - 4 * f4) * (f3 + 2 * f4)) * v4) / (f1mf32 * f1mf43 * f3mf42)
+
+    elif IntAmpFlag == 104:  # Geraint's Version, 4th order poly: v1,d1, v2,d2, v3
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+
+        f1mf2 = f1 - f2
+        f1mf4 = f1 - f4
+        f2mf4 = f2 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f2mf42 = f2mf4 * f2mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = ((-(d4 * f1mf22 * f1mf4 * f2mf4 * (f12 + f2 * f4 + 2 * f1 * (f2 + f4))) +
+                   d1 * f1mf2 * f1mf4 * f2mf42 * (f1 * f2 + 2 * (f1 + f2) * f4 + f42) -
+                   4 * f12 * f23 * v1 + 3 * f1 * f24 * v1 - 4 * f1 * f23 * f4 * v1 + 3 * f24 * f4 * v1 +
+                   12 * f12 * f2 * f42 * v1 - 4 * f23 * f42 * v1 - 8 * f12 * f43 * v1 + f1 * f44 * v1 +
+                   f45 * v1 + f15 * v2 + f14 * f4 * v2 - 8 * f13 * f42 * v2 + 8 * f12 * f43 * v2 -
+                   f1 * f44 * v2 - f45 * v2 -
+                   f1mf22 * (f13 + f2 * (3 * f2 - 4 * f4) * f4 + f12 * (2 * f2 + f4) +
+                   f1 * (3 * f2 - 4 * f4) * (f2 + 2 * f4)) * v4) / (f1mf22 * f1mf43 * f2mf42))
+
+    elif IntAmpFlag == 105:  # Geraint, standard way: v1, v2, v3, v4, d1, d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f16 = f15 * f1
+        f17 = f16 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f25 = f24 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f35 = f34 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+        f46 = f45 * f4
+        f47 = f46 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f1mf32 = f1mf3 * f1mf3
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = (
+            (-(d4 * f1mf22 * f1mf32 * f1mf4 * f2mf3 * f2mf4 * f3mf4 * (f2 * f3 * f4 +
+             f12 * (f2 + f3 + f4) + 2 * f1 * (f2 * f3 + (f2 + f3) * f4))) -
+            d1 * f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf42 * f3mf42 * (f1 * f2 * f3 +
+             2 * (f2 * f3 + f1 * (f2 + f3)) * f4 + (f1 + f2 + f3) * f42) +
+             5 * f13 * f24 * f33 * v1 - 4 * f12 * f25 * f33 * v1 - 5 * f13 * f23 * f34 * v1 +
+             3 * f1 * f25 * f34 * v1 +
+            4 * f12 * f23 * f35 * v1 - 3 * f1 * f24 * f35 * v1 + 5 * f12 * f24 * f33 * f4 * v1 -
+            4 * f1 * f25 * f33 * f4 * v1 - 5 * f12 * f23 * f34 * f4 * v1 + 3 * f25 * f34 * f4 * v1 +
+            4 * f1 * f23 * f35 * f4 * v1 - 3 * f24 * f35 * f4 * v1 - 15 * f13 * f24 * f3 * f42 * v1 +
+            12 * f12 * f25 * f3 * f42 * v1 + 5 * f1 * f24 * f33 * f42 * v1 -
+            4 * f25 * f33 * f42 * v1 + 15 * f13 * f2 * f34 * f42 * v1 - 5 * f1 * f23 * f34 * f42 * v1 -
+            12 * f12 * f2 * f35 * f42 * v1 + 4 * f23 * f35 * f42 * v1 + 10 * f13 * f24 * f43 * v1 -
+            8 * f12 * f25 * f43 * v1 +
+            20 * f13 * f23 * f3 * f43 * v1 - 15 * f12 * f24 * f3 * f43 * v1 -
+            20 * f13 * f2 * f33 * f43 * v1 + 5 * f24 * f33 * f43 * v1 - 10 * f13 * f34 * f43 * v1 +
+            15 * f12 * f2 * f34 * f43 * v1 - 5 * f23 * f34 * f43 * v1 + 8 * f12 * f35 * f43 * v1 -
+            15 * f13 * f23 * f44 * v1 +
+            10 * f12 * f24 * f44 * v1 + f1 * f25 * f44 * v1 + 15 * f13 * f33 * f44 * v1 -
+            10 * f12 * f34 * f44 * v1 - f1 * f35 * f44 * v1 + f12 * f23 * f45 * v1 -
+            2 * f1 * f24 * f45 * v1 + f25 * f45 * v1 - f12 * f33 * f45 * v1 + 2 * f1 * f34 * f45 * v1 -
+            f35 * f45 * v1 +
+            5 * f13 * f2 * f46 * v1 + f1 * f23 * f46 * v1 - 2 * f24 * f46 * v1 - 5 * f13 * f3 * f46 * v1 -
+            f1 * f33 * f46 * v1 + 2 * f34 * f46 * v1 - 3 * f12 * f2 * f47 * v1 + f23 * f47 * v1 +
+            3 * f12 * f3 * f47 * v1 - f33 * f47 * v1 - f17 * f33 * v2 + 2 * f16 * f34 * v2 -
+            f15 * f35 * v2 - f16 * f33 * f4 * v2 + 2 * f15 * f34 * f4 * v2 - f14 * f35 * f4 * v2 +
+            3 * f17 * f3 * f42 * v2 - f15 * f33 * f42 * v2 - 10 * f14 * f34 * f42 * v2 +
+            8 * f13 * f35 * f42 * v2 - 2 * f17 * f43 * v2 - 5 * f16 * f3 * f43 * v2 +
+            15 * f14 * f33 * f43 * v2 -
+            8 * f12 * f35 * f43 * v2 + 4 * f16 * f44 * v2 - 15 * f13 * f33 * f44 * v2 +
+            10 * f12 * f34 * f44 * v2 + f1 * f35 * f44 * v2 + f12 * f33 * f45 * v2 -
+            2 * f1 * f34 * f45 * v2 + f35 * f45 * v2 - 4 * f14 * f46 * v2 + 5 * f13 * f3 * f46 * v2 +
+            f1 * f33 * f46 * v2 -
+            2 * f34 * f46 * v2 + 2 * f13 * f47 * v2 - 3 * f12 * f3 * f47 * v2 + f33 * f47 * v2 +
+            f17 * f23 * v3 - 2 * f16 * f24 * v3 + f15 * f25 * v3 + f16 * f23 * f4 * v3 -
+            2 * f15 * f24 * f4 * v3 + f14 * f25 * f4 * v3 - 3 * f17 * f2 * f42 * v3 +
+            f15 * f23 * f42 * v3 +
+            10 * f14 * f24 * f42 * v3 - 8 * f13 * f25 * f42 * v3 + 2 * f17 * f43 * v3 +
+            5 * f16 * f2 * f43 * v3 - 15 * f14 * f23 * f43 * v3 + 8 * f12 * f25 * f43 * v3 -
+            4 * f16 * f44 * v3 + 15 * f13 * f23 * f44 * v3 - 10 * f12 * f24 * f44 * v3 -
+            f1 * f25 * f44 * v3 -
+            f12 * f23 * f45 * v3 + 2 * f1 * f24 * f45 * v3 - f25 * f45 * v3 + 4 * f14 * f46 * v3 -
+            5 * f13 * f2 * f46 * v3 - f1 * f23 * f46 * v3 + 2 * f24 * f46 * v3 - 2 * f13 * f47 * v3 +
+            3 * f12 * f2 * f47 * v3 - f23 * f47 * v3 -
+            f1mf22 * f1mf32 * f2mf3 * (f13 * (f22 + f2 * f3 + f32 - 3 * f42) +
+            f2 * f3 * f4 * (3 * f2 * f3 - 4 * (f2 + f3) * f4 + 5 * f42) +
+            f1 * (f2 * f3 + 2 * (f2 + f3) * f4) * (3 * f2 * f3 - 4 * (f2 + f3) * f4 + 5 * f42) +
+            f12 * (2 * f2 * f3 * (f2 + f3) + (f22 + f2 * f3 + f32) * f4 - 6 * (f2 + f3) * f42 +
+            5 * f43)) * v4) / (f1mf22 * f1mf32 * f1mf43 * f2mf3 * f2mf42 * f3mf42)
+        )
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_Amp_delta2: "
+            f"IMRPhenomXIntermediateAmpVersion {IntAmpFlag} is not valid."
+        )
+
+    return retVal
+
+
+def IMRPhenomXHM_Intermediate_Amp_delta3(
+    d1: float, d4: float, v1: float, v2: float, v3: float, v4: float,
+    f1: float, f2: float, f3: float, f4: float, IntAmpFlag: int
+) -> float:
+    """
+    Compute delta3 coefficient for intermediate amplitude reconstruction.
+
+    This function computes the cubic coefficient (delta3) for polynomial
+    ansatzes of various orders used in the intermediate amplitude region.
+
+    Parameters
+    ----------
+    d1, d4 : float
+        Derivative values at boundary frequencies f1 and f4
+    v1, v2, v3, v4 : float
+        Function values at frequencies f1, f2, f3, f4
+    f1, f2, f3, f4 : float
+        Collocation point frequencies
+    IntAmpFlag : int
+        Version flag determining the ansatz order:
+        - 101: Linear (2 points)
+        - 102: Quadratic (2 points + 1 derivative)
+        - 1032: Cubic (2 points + 2 derivatives)
+        - 103: Cubic (4 points)
+        - 1043: Quartic (4 points + 1 derivative, no left)
+        - 1042: Quartic (2 points + 2 derivatives + 1 point)
+        - 104: Quartic (Geraint's version)
+        - 105: Quintic (4 points + 2 derivatives)
+
+    Returns
+    -------
+    float
+        The delta3 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IntAmpFlag is not valid
+    """
+    import jax.numpy as jnp
+
+    if IntAmpFlag == 101:  # Linear, only v1, v2
+        retVal = 0.0
+
+    elif IntAmpFlag == 102:  # Quadratic: v1, v2, d2
+        retVal = 0.0
+
+    elif IntAmpFlag == 1032:  # 2 freqs, points and derivatives: v1, v4, d1, d4
+        f1mf4 = f1 - f4
+        f1mf42 = f1mf4 * f1mf4
+        f1mf43 = f1mf42 * f1mf4
+        retVal = (d1 * f1mf4 + d4 * f1mf4 - 2 * v1 + 2 * v4) / f1mf43
+
+    elif IntAmpFlag == 103:  # 4 freqs, no boundaries derivatives
+        f12 = f1 * f1
+        f22 = f2 * f2
+        f32 = f3 * f3
+        f42 = f4 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        retVal = (f1 * f1mf4 * f4 * (v2 - v3) + f32 * (f4 * (v1 - v2) + f1 * (v2 - v4)) +
+                  f2 * (f42 * (v1 - v3) + f12 * (v3 - v4) + f32 * (-v1 + v4)) +
+                  f3 * (f42 * (-v1 + v2) + f12 * (-v2 + v4)) +
+                  f22 * (f4 * (-v1 + v3) + f3 * (v1 - v4) + f1 * (-v3 + v4))) / (
+                      f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf4 * f3mf4)
+
+    elif IntAmpFlag == 1043:  # No left derivative: v1, v2, v3, v4, d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f32 = f3 * f3
+        f34 = f32 * f32
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf42 = f1mf4 * f1mf4
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+
+        v1mv3 = v1 - v3
+        v1mv4 = v1 - v4
+        v3mv4 = v3 - v4
+
+        retVal = (d4 * f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf4 * f3mf4 * (f1 + f2 + f3 + f4) +
+                  f34 * f42 * v1 - 3 * f32 * f44 * v1 + 2 * f3 * f45 * v1 + f14 * f32 * v2 -
+                  f12 * f34 * v2 - 2 * f14 * f3 * f4 * v2 + 2 * f1 * f34 * f4 * v2 + f14 * f42 * v2 -
+                  f34 * f42 * v2 + 4 * f12 * f3 * f43 * v2 - 4 * f1 * f32 * f43 * v2 -
+                  3 * f12 * f44 * v2 + 3 * f32 * f44 * v2 + 2 * f1 * f45 * v2 - 2 * f3 * f45 * v2 -
+                  f14 * f42 * v3 + 3 * f12 * f44 * v3 - 2 * f1 * f45 * v3 +
+                  f24 * (-(f42 * v1mv3) - f32 * v1mv4 + 2 * f3 * f4 * v1mv4 + f12 * v3mv4 -
+                  2 * f1 * f4 * v3mv4) -
+                  2 * f2 * f4 * (f44 * v1mv3 + f34 * v1mv4 - 2 * f32 * f42 * v1mv4 - f14 * v3mv4 +
+                  2 * f12 * f42 * v3mv4) +
+                  f22 * (3 * f44 * v1mv3 + f34 * v1mv4 - 4 * f3 * f43 * v1mv4 - f14 * v3mv4 +
+                  4 * f1 * f43 * v3mv4) - f14 * f32 * v4 + f12 * f34 * v4 + 2 * f14 * f3 * f4 * v4 -
+                  2 * f1 * f34 * f4 * v4 - 4 * f12 * f3 * f43 * v4 + 4 * f1 * f32 * f43 * v4) / (
+                      f1mf2 * f1mf3 * f1mf42 * f2mf3 * f2mf42 * f3mf42)
+
+    elif IntAmpFlag == 1042:  # 4th order poly: v1,d1, v2,d2, v3
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+
+        f1mf4 = f1 - f4
+        f1mf3 = f1 - f3
+        f3mf4 = f3 - f4
+
+        f1mf42 = f1mf4 * f1mf4
+        f1mf32 = f1mf3 * f1mf3
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf42 * f1mf4
+
+        retVal = (2 * d4 * f14 * f3 - d1 * f13 * f32 - 3 * d4 * f13 * f32 + d1 * f1 * f34 +
+                  d4 * f1 * f34 - 2 * d4 * f14 * f4 + 2 * d1 * f13 * f3 * f4 + 2 * d4 * f13 * f3 * f4 -
+                  d1 * f12 * f32 * f4 + d4 * f12 * f32 * f4 - d1 * f34 * f4 - d4 * f34 * f4 -
+                  d1 * f13 * f42 + d4 * f13 * f42 +
+                  2 * d1 * f12 * f3 * f42 - 2 * d4 * f12 * f3 * f42 - d1 * f1 * f32 * f42 +
+                  d4 * f1 * f32 * f42 - d1 * f12 * f43 + d4 * f12 * f43 - 2 * d1 * f1 * f3 * f43 -
+                  2 * d4 * f1 * f3 * f43 + 3 * d1 * f32 * f43 + d4 * f32 * f43 + 2 * d1 * f1 * f44 -
+                  2 * d1 * f3 * f44 +
+                  4 * f12 * f32 * v1 - 2 * f34 * v1 - 8 * f12 * f3 * f4 * v1 + 4 * f1 * f32 * f4 * v1 +
+                  4 * f12 * f42 * v1 - 8 * f1 * f3 * f42 * v1 + 4 * f32 * f42 * v1 + 4 * f1 * f43 * v1 -
+                  2 * f44 * v1 - 2 * f14 * v3 + 4 * f13 * f4 * v3 - 4 * f1 * f43 * v3 + 2 * f44 * v3 +
+                  2 * f14 * v4 -
+                  4 * f12 * f32 * v4 + 2 * f34 * v4 - 4 * f13 * f4 * v4 + 8 * f12 * f3 * f4 * v4 -
+                  4 * f1 * f32 * f4 * v4 - 4 * f12 * f42 * v4 + 8 * f1 * f3 * f42 * v4 -
+                  4 * f32 * f42 * v4) / (f1mf32 * f1mf43 * f3mf42)
+
+    elif IntAmpFlag == 104:  # Geraint's Version, 4th order poly: v1,d1, v2,d2, v3
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+
+        f1mf2 = f1 - f2
+        f1mf4 = f1 - f4
+        f2mf4 = f2 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f2mf42 = f2mf4 * f2mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = ((d4 * f1mf22 * f1mf4 * f2mf4 * (2 * f1 + f2 + f4) -
+                   d1 * f1mf2 * f1mf4 * f2mf42 * (f1 + f2 + 2 * f4) +
+                   2 * (f44 * (-v1 + v2) + 2 * f12 * f2mf42 * (v1 - v4) + 2 * f22 * f42 * (v1 - v4) +
+                   2 * f13 * f4 * (v2 - v4) + f24 * (-v1 + v4) + f14 * (-v2 + v4) +
+                   2 * f1 * f4 * (f42 * (v1 - v2) + f22 * (v1 - v4) +
+                   2 * f2 * f4 * (-v1 + v4)))) / (f1mf22 * f1mf43 * f2mf42))
+
+    elif IntAmpFlag == 105:  # Geraint, standard way: v1, v2, v3, v4, d1, d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f16 = f15 * f1
+        f17 = f16 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f25 = f24 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f35 = f34 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+        f46 = f45 * f4
+        f47 = f46 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f1mf32 = f1mf3 * f1mf3
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = (
+            (d4 * f1mf22 * f1mf32 * f1mf4 * f2mf3 * f2mf4 * f3mf4 * (f12 + f2 * f3 +
+             (f2 + f3) * f4 + 2 * f1 * (f2 + f3 + f4)) +
+             d1 * f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf42 * f3mf42 * (f1 * f2 + f1 * f3 + f2 * f3 +
+             2 * (f1 + f2 + f3) * f4 + f42) -
+            5 * f13 * f24 * f32 * v1 + 4 * f12 * f25 * f32 * v1 + 5 * f13 * f22 * f34 * v1 -
+            2 * f25 * f34 * v1 - 4 * f12 * f22 * f35 * v1 + 2 * f24 * f35 * v1 +
+            10 * f13 * f24 * f3 * f4 * v1 - 8 * f12 * f25 * f3 * f4 * v1 -
+            5 * f12 * f24 * f32 * f4 * v1 + 4 * f1 * f25 * f32 * f4 * v1 -
+            10 * f13 * f2 * f34 * f4 * v1 + 5 * f12 * f22 * f34 * f4 * v1 +
+            8 * f12 * f2 * f35 * f4 * v1 - 4 * f1 * f22 * f35 * f4 * v1 - 5 * f13 * f24 * f42 * v1 +
+            4 * f12 * f25 * f42 * v1 + 10 * f12 * f24 * f3 * f42 * v1 - 8 * f1 * f25 * f3 * f42 * v1 -
+            5 * f1 * f24 * f32 * f42 * v1 +
+            4 * f25 * f32 * f42 * v1 + 5 * f13 * f34 * f42 * v1 - 10 * f12 * f2 * f34 * f42 * v1 +
+            5 * f1 * f22 * f34 * f42 * v1 - 4 * f12 * f35 * f42 * v1 + 8 * f1 * f2 * f35 * f42 * v1 -
+            4 * f22 * f35 * f42 * v1 - 5 * f12 * f24 * f43 * v1 + 4 * f1 * f25 * f43 * v1 -
+            20 * f13 * f22 * f3 * f43 * v1 + 10 * f1 * f24 * f3 * f43 * v1 +
+            20 * f13 * f2 * f32 * f43 * v1 - 5 * f24 * f32 * f43 * v1 + 5 * f12 * f34 * f43 * v1 -
+            10 * f1 * f2 * f34 * f43 * v1 + 5 * f22 * f34 * f43 * v1 - 4 * f1 * f35 * f43 * v1 +
+            15 * f13 * f22 * f44 * v1 -
+            5 * f1 * f24 * f44 * v1 - 2 * f25 * f44 * v1 - 15 * f13 * f32 * f44 * v1 +
+            5 * f1 * f34 * f44 * v1 + 2 * f35 * f44 * v1 - 10 * f13 * f2 * f45 * v1 -
+            f12 * f22 * f45 * v1 + 3 * f24 * f45 * v1 + 10 * f13 * f3 * f45 * v1 +
+            f12 * f32 * f45 * v1 - 3 * f34 * f45 * v1 +
+            2 * f12 * f2 * f46 * v1 - f1 * f22 * f46 * v1 - 2 * f12 * f3 * f46 * v1 +
+            f1 * f32 * f46 * v1 + 2 * f1 * f2 * f47 * v1 - f22 * f47 * v1 - 2 * f1 * f3 * f47 * v1 +
+            f32 * f47 * v1 + f17 * f32 * v2 - 3 * f15 * f34 * v2 + 2 * f14 * f35 * v2 -
+            2 * f17 * f3 * f4 * v2 +
+            f16 * f32 * f4 * v2 + 5 * f14 * f34 * f4 * v2 - 4 * f13 * f35 * f4 * v2 +
+            f17 * f42 * v2 - 2 * f16 * f3 * f42 * v2 + f15 * f32 * f42 * v2 + f16 * f43 * v2 +
+            10 * f15 * f3 * f43 * v2 - 15 * f14 * f32 * f43 * v2 + 4 * f1 * f35 * f43 * v2 -
+            8 * f15 * f44 * v2 +
+            15 * f13 * f32 * f44 * v2 - 5 * f1 * f34 * f44 * v2 - 2 * f35 * f44 * v2 +
+            8 * f14 * f45 * v2 - 10 * f13 * f3 * f45 * v2 - f12 * f32 * f45 * v2 + 3 * f34 * f45 * v2 -
+            f13 * f46 * v2 + 2 * f12 * f3 * f46 * v2 - f1 * f32 * f46 * v2 - f12 * f47 * v2 +
+            2 * f1 * f3 * f47 * v2 - f32 * f47 * v2 - f17 * f22 * v3 + 3 * f15 * f24 * v3 -
+            2 * f14 * f25 * v3 + 2 * f17 * f2 * f4 * v3 - f16 * f22 * f4 * v3 -
+            5 * f14 * f24 * f4 * v3 + 4 * f13 * f25 * f4 * v3 - f17 * f42 * v3 +
+            2 * f16 * f2 * f42 * v3 - f15 * f22 * f42 * v3 -
+            f16 * f43 * v3 - 10 * f15 * f2 * f43 * v3 + 15 * f14 * f22 * f43 * v3 -
+            4 * f1 * f25 * f43 * v3 + 8 * f15 * f44 * v3 - 15 * f13 * f22 * f44 * v3 +
+            5 * f1 * f24 * f44 * v3 + 2 * f25 * f44 * v3 - 8 * f14 * f45 * v3 +
+            10 * f13 * f2 * f45 * v3 + f12 * f22 * f45 * v3 -
+            3 * f24 * f45 * v3 + f13 * f46 * v3 - 2 * f12 * f2 * f46 * v3 + f1 * f22 * f46 * v3 +
+            f12 * f47 * v3 - 2 * f1 * f2 * f47 * v3 + f22 * f47 * v3 +
+            f1mf22 * f1mf32 * f2mf3 * (2 * f22 * f32 + f13 * (f2 + f3 - 2 * f4) +
+            f12 * (f2 + f3 - 2 * f4) * (2 * (f2 + f3) + f4) - 4 * (f22 + f2 * f3 + f32) * f42 +
+            5 * (f2 + f3) * f43 +
+            f1 * (4 * f2 * f3 * (f2 + f3) - 4 * (f22 + f2 * f3 + f32) * f4 -
+            3 * (f2 + f3) * f42 + 10 * f43)) * v4) / (f1mf22 * f1mf32 * f1mf43 * f2mf3 * f2mf42 * f3mf42)
+        )
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_Amp_delta3: "
+            f"IMRPhenomXIntermediateAmpVersion {IntAmpFlag} is not valid."
+        )
+
+    return retVal
+
+
+def IMRPhenomXHM_Intermediate_Amp_delta4(
+    d1: float, d4: float, v1: float, v2: float, v3: float, v4: float,
+    f1: float, f2: float, f3: float, f4: float, IntAmpFlag: int
+) -> float:
+    """
+    Compute delta4 coefficient for intermediate amplitude reconstruction.
+
+    This function computes the quartic coefficient (delta4) for polynomial
+    ansatzes of various orders used in the intermediate amplitude region.
+
+    Parameters
+    ----------
+    d1, d4 : float
+        Derivative values at boundary frequencies f1 and f4
+    v1, v2, v3, v4 : float
+        Function values at frequencies f1, f2, f3, f4
+    f1, f2, f3, f4 : float
+        Collocation point frequencies
+    IntAmpFlag : int
+        Version flag determining the ansatz order:
+        - 101: Linear (2 points)
+        - 102: Quadratic (2 points + 1 derivative)
+        - 1032: Cubic (2 points + 2 derivatives)
+        - 103: Cubic (4 points)
+        - 1043: Quartic (4 points + 1 derivative, no left)
+        - 1042: Quartic (2 points + 2 derivatives + 1 point)
+        - 104: Quartic (Geraint's version)
+        - 105: Quintic (4 points + 2 derivatives)
+
+    Returns
+    -------
+    float
+        The delta4 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IntAmpFlag is not valid
+    """
+    import jax.numpy as jnp
+
+    if IntAmpFlag == 101:  # Linear, only v1, v2
+        retVal = 0.0
+
+    elif IntAmpFlag == 102:  # Quadratic: v1, v2, d2
+        retVal = 0.0
+
+    elif IntAmpFlag == 1032:  # 2 freqs, points and derivatives: v1, v4, d1, d4
+        retVal = 0.0
+
+    elif IntAmpFlag == 103:  # 4 freqs, no boundaries derivatives
+        retVal = 0.0
+
+    elif IntAmpFlag == 1043:  # No left derivative: v1, v2, v3, v4, d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf42 = f1mf4 * f1mf4
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+
+        v1mv3 = v1 - v3
+        v1mv4 = v1 - v4
+        v3mv4 = v3 - v4
+
+        retVal = (-(d4 * f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf4 * f3mf4) - f33 * f42 * v1 +
+                  2 * f32 * f43 * v1 - f3 * f44 * v1 - f13 * f32 * v2 + f12 * f33 * v2 +
+                  2 * f13 * f3 * f4 * v2 - 2 * f1 * f33 * f4 * v2 - f13 * f42 * v2 -
+                  3 * f12 * f3 * f42 * v2 + 3 * f1 * f32 * f42 * v2 +
+                  f33 * f42 * v2 + 2 * f12 * f43 * v2 - 2 * f32 * f43 * v2 - f1 * f44 * v2 +
+                  f3 * f44 * v2 + f13 * f42 * v3 - 2 * f12 * f43 * v3 + f1 * f44 * v3 +
+                  f23 * (f42 * v1mv3 + f32 * v1mv4 - 2 * f3 * f4 * v1mv4 - f12 * v3mv4 +
+                  2 * f1 * f4 * v3mv4) +
+                  f2 * f4 * (f43 * v1mv3 + 2 * f33 * v1mv4 - 3 * f32 * f4 * v1mv4 - 2 * f13 * v3mv4 +
+                  3 * f12 * f4 * v3mv4) +
+                  f22 * (-2 * f43 * v1mv3 - f33 * v1mv4 + 3 * f3 * f42 * v1mv4 + f13 * v3mv4 -
+                  3 * f1 * f42 * v3mv4) + f13 * f32 * v4 - f12 * f33 * v4 -
+                  2 * f13 * f3 * f4 * v4 + 2 * f1 * f33 * f4 * v4 + 3 * f12 * f3 * f42 * v4 -
+                  3 * f1 * f32 * f42 * v4) / (f1mf2 * f1mf3 * f1mf42 * f2mf3 * f2mf42 * f3mf42)
+
+    elif IntAmpFlag == 1042:  # 4th order poly: v1,d1, v2,d2, v3
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f32 = f3 * f3
+        f33 = f32 * f3
+
+        f1mf4 = f1 - f4
+        f1mf3 = f1 - f3
+        f3mf4 = f3 - f4
+
+        f1mf42 = f1mf4 * f1mf4
+        f1mf32 = f1mf3 * f1mf3
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf42 * f1mf4
+
+        retVal = (-(d4 * f1mf32 * f1mf4 * f3mf4) + d1 * f1mf3 * f1mf4 * f3mf42 -
+                  3 * f1 * f32 * v1 + 2 * f33 * v1 + 6 * f1 * f3 * f4 * v1 - 3 * f32 * f4 * v1 -
+                  3 * f1 * f42 * v1 + f43 * v1 + f13 * v3 - 3 * f12 * f4 * v3 + 3 * f1 * f42 * v3 -
+                  f43 * v3 -
+                  f1mf32 * (f1 + 2 * f3 - 3 * f4) * v4) / (f1mf32 * f1mf43 * f3mf42)
+
+    elif IntAmpFlag == 104:  # Geraint's Version, 4th order poly: v1,d1, v2, v4,d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f42 = f4 * f4
+        f43 = f42 * f4
+
+        f1mf2 = f1 - f2
+        f1mf4 = f1 - f4
+        f2mf4 = f2 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f2mf42 = f2mf4 * f2mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = ((-(d4 * f1mf22 * f1mf4 * f2mf4) + d1 * f1mf2 * f1mf4 * f2mf42 -
+                   3 * f1 * f22 * v1 + 2 * f23 * v1 + 6 * f1 * f2 * f4 * v1 - 3 * f22 * f4 * v1 -
+                   3 * f1 * f42 * v1 + f43 * v1 + f13 * v2 - 3 * f12 * f4 * v2 + 3 * f1 * f42 * v2 -
+                   f43 * v2 - f1mf22 * (f1 + 2 * f2 - 3 * f4) * v4) / (f1mf22 * f1mf43 * f2mf42))
+
+    elif IntAmpFlag == 105:  # Geraint, standard way: v1, v2, v3, v4, d1, d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f16 = f15 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f25 = f24 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f35 = f34 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+        f46 = f45 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f1mf32 = f1mf3 * f1mf3
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = (
+            (-(d4 * f1mf22 * f1mf32 * f1mf4 * f2mf3 * f2mf4 * f3mf4 * (2 * f1 + f2 + f3 + f4)) -
+             d1 * f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf42 * f3mf42 * (f1 + f2 + f3 + 2 * f4) +
+             5 * f13 * f23 * f32 * v1 - 3 * f1 * f25 * f32 * v1 - 5 * f13 * f22 * f33 * v1 +
+            2 * f25 * f33 * v1 + 3 * f1 * f22 * f35 * v1 - 2 * f23 * f35 * v1 -
+            10 * f13 * f23 * f3 * f4 * v1 + 6 * f1 * f25 * f3 * f4 * v1 + 5 * f12 * f23 * f32 * f4 * v1 -
+            3 * f25 * f32 * f4 * v1 + 10 * f13 * f2 * f33 * f4 * v1 - 5 * f12 * f22 * f33 * f4 * v1 -
+            6 * f1 * f2 * f35 * f4 * v1 + 3 * f22 * f35 * f4 * v1 + 5 * f13 * f23 * f42 * v1 -
+            3 * f1 * f25 * f42 * v1 + 15 * f13 * f22 * f3 * f42 * v1 - 10 * f12 * f23 * f3 * f42 * v1 -
+            15 * f13 * f2 * f32 * f42 * v1 + 5 * f1 * f23 * f32 * f42 * v1 - 5 * f13 * f33 * f42 * v1 +
+            10 * f12 * f2 * f33 * f42 * v1 - 5 * f1 * f22 * f33 * f42 * v1 + 3 * f1 * f35 * f42 * v1 -
+            10 * f13 * f22 * f43 * v1 + 5 * f12 * f23 * f43 * v1 + f25 * f43 * v1 +
+            15 * f12 * f22 * f3 * f43 * v1 - 10 * f1 * f23 * f3 * f43 * v1 + 10 * f13 * f32 * f43 * v1 -
+            15 * f12 * f2 * f32 * f43 * v1 + 5 * f23 * f32 * f43 * v1 - 5 * f12 * f33 * f43 * v1 +
+            10 * f1 * f2 * f33 * f43 * v1 - 5 * f22 * f33 * f43 * v1 - f35 * f43 * v1 +
+            5 * f13 * f2 * f44 * v1 - 10 * f12 * f22 * f44 * v1 + 5 * f1 * f23 * f44 * v1 -
+            5 * f13 * f3 * f44 * v1 +
+            10 * f12 * f32 * f44 * v1 - 5 * f1 * f33 * f44 * v1 + 5 * f12 * f2 * f45 * v1 +
+            2 * f1 * f22 * f45 * v1 - 3 * f23 * f45 * v1 - 5 * f12 * f3 * f45 * v1 -
+            2 * f1 * f32 * f45 * v1 + 3 * f33 * f45 * v1 - 4 * f1 * f2 * f46 * v1 + 2 * f22 * f46 * v1 +
+            4 * f1 * f3 * f46 * v1 -
+            2 * f32 * f46 * v1 - 2 * f16 * f32 * v2 + 3 * f15 * f33 * v2 - f13 * f35 * v2 +
+            4 * f16 * f3 * f4 * v2 - 2 * f15 * f32 * f4 * v2 - 5 * f14 * f33 * f4 * v2 +
+            3 * f12 * f35 * f4 * v2 - 2 * f16 * f42 * v2 - 5 * f15 * f3 * f42 * v2 +
+            10 * f14 * f32 * f42 * v2 -
+            3 * f1 * f35 * f42 * v2 + 4 * f15 * f43 * v2 - 5 * f14 * f3 * f43 * v2 + f35 * f43 * v2 +
+            5 * f13 * f3 * f44 * v2 - 10 * f12 * f32 * f44 * v2 + 5 * f1 * f33 * f44 * v2 -
+            4 * f13 * f45 * v2 + 5 * f12 * f3 * f45 * v2 + 2 * f1 * f32 * f45 * v2 - 3 * f33 * f45 * v2 +
+            2 * f12 * f46 * v2 - 4 * f1 * f3 * f46 * v2 + 2 * f32 * f46 * v2 + 2 * f16 * f22 * v3 -
+            3 * f15 * f23 * v3 + f13 * f25 * v3 - 4 * f16 * f2 * f4 * v3 + 2 * f15 * f22 * f4 * v3 +
+            5 * f14 * f23 * f4 * v3 - 3 * f12 * f25 * f4 * v3 + 2 * f16 * f42 * v3 +
+            5 * f15 * f2 * f42 * v3 - 10 * f14 * f22 * f42 * v3 + 3 * f1 * f25 * f42 * v3 -
+            4 * f15 * f43 * v3 + 5 * f14 * f2 * f43 * v3 - f25 * f43 * v3 - 5 * f13 * f2 * f44 * v3 +
+            10 * f12 * f22 * f44 * v3 - 5 * f1 * f23 * f44 * v3 + 4 * f13 * f45 * v3 -
+            5 * f12 * f2 * f45 * v3 -
+            2 * f1 * f22 * f45 * v3 + 3 * f23 * f45 * v3 - 2 * f12 * f46 * v3 + 4 * f1 * f2 * f46 * v3 -
+            2 * f22 * f46 * v3 -
+            f1mf22 * f1mf32 * f2mf3 * (2 * f2 * f3 * (f2 + f3) + 2 * f12 * (f2 + f3 - 2 * f4) -
+            3 * (f22 + f2 * f3 + f32) * f4 +
+            f1 * (f22 + 5 * f2 * f3 + f32 - 6 * (f2 + f3) * f4 + 5 * f42) + 5 * f43) * v4) /
+            (f1mf22 * f1mf32 * f1mf43 * f2mf3 * f2mf42 * f3mf42)
+        )
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_Amp_delta4: "
+            f"IMRPhenomXIntermediateAmpVersion {IntAmpFlag} is not valid."
+        )
+
+    return retVal
+
+
+def IMRPhenomXHM_Intermediate_Amp_delta5(
+    d1: float, d4: float, v1: float, v2: float, v3: float, v4: float,
+    f1: float, f2: float, f3: float, f4: float, IntAmpFlag: int
+) -> float:
+    """
+    Compute delta5 coefficient for intermediate amplitude reconstruction.
+
+    This function computes the quintic coefficient (delta5) for polynomial
+    ansatzes of various orders used in the intermediate amplitude region.
+
+    Parameters
+    ----------
+    d1, d4 : float
+        Derivative values at boundary frequencies f1 and f4
+    v1, v2, v3, v4 : float
+        Function values at frequencies f1, f2, f3, f4
+    f1, f2, f3, f4 : float
+        Collocation point frequencies
+    IntAmpFlag : int
+        Version flag determining the ansatz order:
+        - 101: Linear (2 points)
+        - 102: Quadratic (2 points + 1 derivative)
+        - 1032: Cubic (2 points + 2 derivatives)
+        - 103: Cubic (4 points)
+        - 1043: Quartic (4 points + 1 derivative, no left)
+        - 1042: Quartic (2 points + 2 derivatives + 1 point)
+        - 104: Quartic (Geraint's version)
+        - 105: Quintic (4 points + 2 derivatives)
+
+    Returns
+    -------
+    float
+        The delta5 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IntAmpFlag is not valid
+    """
+    import jax.numpy as jnp
+
+    if IntAmpFlag == 101:
+        retVal = 0.0
+
+    elif IntAmpFlag == 102:  # Quadratic: v1, v2, d2
+        retVal = 0.0
+
+    elif IntAmpFlag == 1032:  # 2 freqs, points and derivatives: v1, v4, d1, d4
+        retVal = 0.0
+
+    elif IntAmpFlag == 103:  # 4 freqs, no boundaries derivatives
+        retVal = 0.0
+
+    elif IntAmpFlag == 1043:  # No left derivative: v1, v2, v3, v4, d4
+        retVal = 0.0
+
+    elif IntAmpFlag == 1042:  # 4th order poly: v1,d1, v2,d2, v3
+        retVal = 0.0
+
+    elif IntAmpFlag == 104:  # Geraint's Version, 4th order poly: v1,d1, v2,d2, v3
+        retVal = 0.0
+
+    elif IntAmpFlag == 105:  # Geraint, standard way: v1, v2, v3, v4, d1, d4
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+
+        f1mf22 = f1mf2 * f1mf2
+        f1mf32 = f1mf3 * f1mf3
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+
+        retVal = (
+            (d4 * f1mf22 * f1mf32 * f1mf4 * f2mf3 * f2mf4 * f3mf4 +
+             d1 * f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf42 * f3mf42 -
+             4 * f12 * f23 * f32 * v1 + 3 * f1 * f24 * f32 * v1 + 4 * f12 * f22 * f33 * v1 -
+             2 * f24 * f33 * v1 - 3 * f1 * f22 * f34 * v1 + 2 * f23 * f34 * v1 +
+             8 * f12 * f23 * f3 * f4 * v1 - 6 * f1 * f24 * f3 * f4 * v1 -
+             4 * f1 * f23 * f32 * f4 * v1 + 3 * f24 * f32 * f4 * v1 - 8 * f12 * f2 * f33 * f4 * v1 +
+             4 * f1 * f22 * f33 * f4 * v1 + 6 * f1 * f2 * f34 * f4 * v1 - 3 * f22 * f34 * f4 * v1 -
+             4 * f12 * f23 * f42 * v1 +
+            3 * f1 * f24 * f42 * v1 - 12 * f12 * f22 * f3 * f42 * v1 + 8 * f1 * f23 * f3 * f42 * v1 +
+            12 * f12 * f2 * f32 * f42 * v1 - 4 * f23 * f32 * f42 * v1 + 4 * f12 * f33 * f42 * v1 -
+            8 * f1 * f2 * f33 * f42 * v1 + 4 * f22 * f33 * f42 * v1 - 3 * f1 * f34 * f42 * v1 +
+            8 * f12 * f22 * f43 * v1 - 4 * f1 * f23 * f43 * v1 - f24 * f43 * v1 -
+            8 * f12 * f32 * f43 * v1 + 4 * f1 * f33 * f43 * v1 + f34 * f43 * v1 -
+            4 * f12 * f2 * f44 * v1 - f1 * f22 * f44 * v1 + 2 * f23 * f44 * v1 + 4 * f12 * f3 * f44 * v1 +
+            f1 * f32 * f44 * v1 -
+            2 * f33 * f44 * v1 + 2 * f1 * f2 * f45 * v1 - f22 * f45 * v1 - 2 * f1 * f3 * f45 * v1 +
+            f32 * f45 * v1 + f15 * f32 * v2 - 2 * f14 * f33 * v2 + f13 * f34 * v2 -
+            2 * f15 * f3 * f4 * v2 + f14 * f32 * f4 * v2 + 4 * f13 * f33 * f4 * v2 -
+            3 * f12 * f34 * f4 * v2 +
+            f15 * f42 * v2 + 4 * f14 * f3 * f42 * v2 - 8 * f13 * f32 * f42 * v2 +
+            3 * f1 * f34 * f42 * v2 - 3 * f14 * f43 * v2 + 8 * f12 * f32 * f43 * v2 -
+            4 * f1 * f33 * f43 * v2 - f34 * f43 * v2 + 3 * f13 * f44 * v2 - 4 * f12 * f3 * f44 * v2 -
+            f1 * f32 * f44 * v2 +
+            2 * f33 * f44 * v2 - f12 * f45 * v2 + 2 * f1 * f3 * f45 * v2 - f32 * f45 * v2 -
+            f15 * f22 * v3 + 2 * f14 * f23 * v3 - f13 * f24 * v3 + 2 * f15 * f2 * f4 * v3 -
+            f14 * f22 * f4 * v3 - 4 * f13 * f23 * f4 * v3 + 3 * f12 * f24 * f4 * v3 - f15 * f42 * v3 -
+            4 * f14 * f2 * f42 * v3 + 8 * f13 * f22 * f42 * v3 - 3 * f1 * f24 * f42 * v3 +
+            3 * f14 * f43 * v3 - 8 * f12 * f22 * f43 * v3 + 4 * f1 * f23 * f43 * v3 + f24 * f43 * v3 -
+            3 * f13 * f44 * v3 + 4 * f12 * f2 * f44 * v3 + f1 * f22 * f44 * v3 - 2 * f23 * f44 * v3 +
+            f12 * f45 * v3 - 2 * f1 * f2 * f45 * v3 + f22 * f45 * v3 +
+            f1mf22 * f1mf32 * f2mf3 * (2 * f2 * f3 + f1 * (f2 + f3 - 2 * f4) - 3 * (f2 + f3) * f4 +
+            4 * f42) * v4) / (f1mf22 * f1mf32 * f1mf43 * f2mf3 * f2mf42 * f3mf42)
+        )
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_Amp_delta5: "
             f"IMRPhenomXIntermediateAmpVersion {IntAmpFlag} is not valid."
         )
 
