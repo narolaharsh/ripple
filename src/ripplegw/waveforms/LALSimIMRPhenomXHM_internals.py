@@ -1,4 +1,7 @@
+import jax
 import jax.numpy as jnp
+from typing import Dict, Callable
+
 from .LALSimIMRPhenomTHM_fits import (evaluate_QNMfit_fring21,
                                       evaluate_QNMfit_fring33,
                                       evaluate_QNMfit_fring32,
@@ -37,8 +40,6 @@ from .LALSimIMRPhenomXHM_ringdown import (
         IMRPhenomXHM_RD_Amp_DAnsatz,
         IMRPhenomXHM_RD_Amp_NDAnsatz,
         IMRPhenomXHM_RD_Amp_Coefficients,
-        IMRPhenomXHM_Amplitude_fcutRD,
-        SpheroidalToSpherical
     )
 
 
@@ -64,12 +65,9 @@ from .LALSimIMRPhenomXHM_inspiral import (
         IMRPhenomXHM_Inspiral_Amp_rho1,
         IMRPhenomXHM_Inspiral_Amp_rho2,
         IMRPhenomXHM_Inspiral_Amp_rho3,
-        IMRPhenomXHM_GetPNAmplitudeCoefficients,
         IMRPhenomXHM_Inspiral_Amplitude_Veto,
         IMRPhenomXHM_Get_Inspiral_Amp_Coefficients,
-        IMRPhenomXHM_Amplitude_fcutInsp
     )
-
 
 from .LALSimIMRPhenomXHM_intermediate import (IMRPhenomXHM_Inter_Phase_AnsatzInt,
                                               IMRPhenomXHM_Inter_Phase_Ansatz)
@@ -90,8 +88,6 @@ from .LALSimIMRPhenomXHM_intermediate import (
 
 from .LALSimIMRPhenomXUtilities import IMRPhenomXPsi4ToStrain
 
-import jax
-from typing import Dict, Callable
 
 def IMRPhenomXHM_GenerateRingdownFrequency(ell: int, emm: int, wf22: dict) -> float:
     """
@@ -1892,13 +1888,830 @@ def RescaleFactor(powers_of_Mf: dict, pAmp: dict, rescalefactor: int) -> float:
     return factor
 
 
-def IMRPhenomXHM_Intermediate_CollocPtsFreqs(pPhase, pWFHM, pWF22):
-    #TODO
+def IMRPhenomXHM_Intermediate_CollocPtsFreqs(pPhase: dict, pWFHM: dict, pWF22: dict) -> dict:
+    """
+    Initialize frequencies of collocation points for intermediate phase reconstruction.
+
+    The frequencies are stored in the pPhase struct, which gets initialized with new
+    values as the code processes each mode. This function sets up the collocation points
+    for the intermediate region between inspiral and ringdown.
+
+    Parameters
+    ----------
+    pPhase : dict
+        Phase coefficient dictionary (will be updated with collocation frequencies)
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - fRING: Ringdown frequency for the mode
+        - fDAMP: Damping frequency for the mode
+        - IMRPhenomXHMIntermediatePhaseFreqsVersion: Version flag (122019 or 122022)
+        - modeTag: Mode identifier (21, 33, 32, 44)
+        - fMECOlm: MECO frequency for the mode
+    pWF22 : dict
+        Waveform structure for the (2,2) mode containing:
+        - fRING: Ringdown frequency for (2,2) mode
+        - fDAMP: Damping frequency for (2,2) mode
+        - eta: Symmetric mass ratio
+        - chi1L: Aligned spin of body 1
+
+    Returns
+    -------
+    dict
+        Updated pPhase dictionary with collocation point frequencies set
+
+    Raises
+    ------
+    ValueError
+        If version is not valid
+    """
+    import jax.numpy as jnp
+
+    fring = pWFHM['fRING']
+    fdamp = pWFHM['fDAMP']
+    version = pWFHM['IMRPhenomXHMIntermediatePhaseFreqsVersion']
+
+    if version == 122019 or version == 122022:  # Default version
+        fcut = GetfcutInsp(pWF22, pWFHM)
+        pPhase['CollocationPointsFreqsPhaseInter'][0] = fcut
+
+        if pWFHM['modeTag'] == 32:
+            # Special handling for (3,2) mode with spheroidal harmonics
+            fRD22 = pWF22['fRING']
+            fdamp22 = pWF22['fDAMP']
+            fEnd = fRD22 - 0.5 * fdamp22
+
+            pPhase['CollocationPointsFreqsPhaseInter'][1] = (
+                jnp.sqrt(3.0) * (fcut - fEnd) + 2.0 * (fcut + fEnd)
+            ) / 4.0
+            pPhase['CollocationPointsFreqsPhaseInter'][2] = (3.0 * fcut + fEnd) / 4.0
+            pPhase['CollocationPointsFreqsPhaseInter'][3] = (fcut + fEnd) / 2.0
+            # We use first and second derivative at fEnd, so this frequency is duplicated
+            pPhase['CollocationPointsFreqsPhaseInter'][4] = fEnd
+            pPhase['CollocationPointsFreqsPhaseInter'][5] = fEnd
+            pPhase['fPhaseMatchIM'] = fEnd
+
+            # Correct cutting frequency for EMR with negative spins
+            if pWF22['eta'] < 0.01 and pWF22['chi1L'] < 0 and version == 122019:
+                pPhase['fPhaseMatchIM'] = pPhase['fPhaseMatchIM'] * (1.2 - 0.25 * pWF22['chi1L'])
+
+        else:
+            # For modes 21, 33, 44 (spherical harmonics)
+            pPhase['CollocationPointsFreqsPhaseInter'][1] = (
+                jnp.sqrt(3.0) * (fcut - fring) + 2.0 * (fcut + fring)
+            ) / 4.0
+            pPhase['CollocationPointsFreqsPhaseInter'][2] = (3.0 * fcut + fring) / 4.0
+            pPhase['CollocationPointsFreqsPhaseInter'][3] = (fcut + fring) / 2.0
+            pPhase['CollocationPointsFreqsPhaseInter'][4] = (fcut + 3.0 * fring) / 4.0
+            pPhase['CollocationPointsFreqsPhaseInter'][5] = (fcut + 7.0 * fring) / 8.0
+            pPhase['fPhaseMatchIM'] = fring - fdamp
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_CollocPtsFreqs: version {version} is not valid. "
+            f"Version recommended is 122019."
+        )
+
+    pPhase['fPhaseMatchIN'] = pWFHM['fMECOlm']
+
     return pPhase
 
 
-def SpheroidalToSpherical():
-    return #TODO
+def SpheroidalToSpherical(
+    powers_of_Mf: dict,
+    pAmp22: dict,
+    pPhase22: dict,
+    pAmplm: dict,
+    pPhaselm: dict,
+    pWFlm: dict,
+    pWF22: dict
+) -> complex:
+    """
+    Convert spheroidal harmonics to spherical harmonics for mode mixing.
 
-def IMRPhenomXHM_PN21AmpSign():
-    return 
+    This function rotates the waveform from a spheroidal harmonic basis to a spherical
+    harmonic basis. Currently implemented for the (3,2) mode, which requires mixing
+    with the (2,2) mode due to spheroidal effects near the ringdown.
+
+    In principle, this could be generalized to the (4,3) mode, but for now it assumes
+    the mode being solved is only the (3,2) mode.
+
+    Parameters
+    ----------
+    powers_of_Mf : dict
+        Dictionary of powers of the frequency (Mf)
+    pAmp22 : dict
+        Amplitude coefficients for the (2,2) mode
+    pPhase22 : dict
+        Phase coefficients for the (2,2) mode
+    pAmplm : dict
+        Amplitude coefficients for the (l,m) mode
+    pPhaselm : dict
+        Phase coefficients for the (l,m) mode
+    pWFlm : dict
+        Waveform structure for the (l,m) mode containing:
+        - timeshift: Time shift parameter
+        - phaseshift: Phase shift parameter
+        - phiref22: Reference phase for (2,2) mode
+        - IMRPhenomXHMRingdownAmpVersion: Ringdown amplitude version
+        - ampNorm: Amplitude normalization
+        - mixingCoeffs: Array of mixing coefficients [c_222, c_223, c_322, c_323]
+    pWF22 : dict
+        Waveform structure for the (2,2) mode containing:
+        - fRING: Ringdown frequency
+        - fDAMP: Damping frequency
+        - eta: Symmetric mass ratio
+
+    Returns
+    -------
+    complex
+        The spherical harmonic waveform (complex amplitude * exp(i*phase))
+    """
+    import jax.numpy as jnp
+
+    Mf = powers_of_Mf['itself']
+
+    # Compute the 22 mode using PhenomX functions
+    # This gives the 22 mode rescaled with the leading order (because 32 is also rescaled)
+    amp22 = XLALSimIMRPhenomXRingdownAmplitude22AnsatzAnalytical(
+        Mf, pWF22['fRING'], pWF22['fDAMP'],
+        pAmp22['gamma1'], pAmp22['gamma2'], pAmp22['gamma3']
+    )
+
+    phi22 = (
+        1.0 / pWF22['eta'] * IMRPhenomX_Phase_22(Mf, powers_of_Mf, pPhase22, pWF22) +
+        pWFlm['timeshift'] * Mf +
+        pWFlm['phaseshift'] +
+        pWFlm['phiref22']
+    )
+
+    wf22R = amp22 * jnp.exp(1j * phi22)
+
+    if pWFlm['IMRPhenomXHMRingdownAmpVersion'] != 0:
+        wf22R *= pWFlm['ampNorm'] * powers_of_Mf['m_seven_sixths']
+
+    # Compute 32 mode in spheroidal basis
+    amplm = IMRPhenomXHM_RD_Amp_Ansatz(powers_of_Mf, pWFlm, pAmplm)
+    philm = IMRPhenomXHM_RD_Phase_AnsatzInt(Mf, powers_of_Mf, pWFlm, pPhaselm)
+
+    # Perform the rotation from spheroidal to spherical basis
+    # Using mixing coefficients: c_322 (index 2) and c_323 (index 3)
+    sphericalWF_32 = (
+        jnp.conj(pWFlm['mixingCoeffs'][2]) * wf22R +
+        jnp.conj(pWFlm['mixingCoeffs'][3]) * amplm * jnp.exp(1j * philm)
+    )
+
+    return sphericalWF_32
+
+
+def IMRPhenomXHM_PN21AmpSign(ff: float, wf22: dict) -> int:
+    """
+    Determine the sign of the Post-Newtonian 21 mode amplitude.
+
+    This function computes the sign of the PN amplitude for the (2,1) mode at a given
+    frequency. The sign can flip across the parameter space, and this must be accounted
+    for in the phase reconstruction since the model amplitude is positive by construction.
+
+    Parameters
+    ----------
+    ff : float
+        Frequency at which to evaluate the PN amplitude sign
+    wf22 : dict
+        Waveform structure for the (2,2) mode containing:
+        - eta: Symmetric mass ratio
+        - chi1L: Aligned spin of body 1
+        - chi2L: Aligned spin of body 2
+
+    Returns
+    -------
+    int
+        1 if the PN amplitude is positive or zero, -1 if negative
+    """
+    import jax.numpy as jnp
+
+    eta = wf22['eta']
+    chi1 = wf22['chi1L']
+    chi2 = wf22['chi2L']
+    delta = jnp.sqrt(1.0 - 4.0 * eta)
+
+    # Compute PN amplitude expression up to relevant order
+    output = (
+        (-16.0 * delta * eta * ff * jnp.power(jnp.pi, 1.5)) / (3.0 * jnp.sqrt(5.0)) +
+        (4.0 * jnp.power(2.0, 1.0/3.0) * (chi1 - chi2 + delta * (chi1 + chi2)) * eta *
+         jnp.power(ff, 4.0/3.0) * jnp.power(jnp.pi, 11.0/6.0)) / jnp.sqrt(5.0) +
+        (2.0 * jnp.power(2.0, 2.0/3.0) * eta * (306.0 * delta - 360.0 * delta * eta) *
+         jnp.power(ff, 5.0/3.0) * jnp.power(jnp.pi, 13.0/6.0)) / (189.0 * jnp.sqrt(5.0))
+    )
+
+    if output >= 0:
+        return 1
+    else:
+        return -1
+
+
+def IMRPhenomXHM_Amplitude_fcutRD(pWFHM: dict, pWF22: dict) -> float:
+    """
+    Ringdown cutting frequency for the amplitude.
+
+    Returns the end of the intermediate region and the beginning of the ringdown
+    for the amplitude of one mode. The cutting frequency depends on the mode and
+    the version of the model.
+
+    Parameters
+    ----------
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - fRING: Ringdown frequency for the mode
+        - fDAMP: Damping frequency for the mode
+        - modeTag: Mode identifier (21, 33, 32, 44)
+        - IMRPhenomXHMRingdownAmpFreqsVersion: Version flag (122018 or 122022)
+        - MixingOn: Flag for mode mixing (0 or 1)
+    pWF22 : dict
+        Waveform structure for the (2,2) mode containing:
+        - eta: Symmetric mass ratio
+        - chi1L: Aligned spin of body 1
+        - fRING: Ringdown frequency for the (2,2) mode
+        - fDAMP: Damping frequency for the (2,2) mode
+
+    Returns
+    -------
+    float
+        The cutting frequency between intermediate and ringdown regions
+
+    Raises
+    ------
+    ValueError
+        If version is not valid
+    """
+    import jax.numpy as jnp
+
+    fring = pWFHM['fRING']
+    fdamp = pWFHM['fDAMP']
+    version = pWFHM['IMRPhenomXHMRingdownAmpFreqsVersion']
+    eta = pWF22['eta']
+    chi1 = pWF22['chi1L']
+
+    if version == 122018:  # Default version
+        modeTag = pWFHM['modeTag']
+
+        if modeTag == 21:
+            fcut = 0.75 * fring
+
+        elif modeTag == 33:
+            fcut = 0.95 * fring
+
+        elif modeTag == 32:
+            fRD22 = pWF22['fRING']
+            c = 0.5
+            r = 5.0
+
+            if eta < 0.0453515:
+                # For extreme mass ratios (q > 20)
+                # Smooth step function between fring (negative spins) and fRD22 (positive spins)
+                fcut = (fring * jnp.exp(c * r) + fRD22 * jnp.exp(r * chi1)) / \
+                       (jnp.exp(c * r) + jnp.exp(r * chi1)) - fdamp
+            else:
+                # For comparable mass ratios
+                fcut = fRD22
+
+            # Special case for 6 < q < 45 with high spin
+            if 0.02126654064272212 < eta < 0.12244897959183673 and chi1 > 0.95:
+                fcut = fring - 2.0 * fdamp
+
+        elif modeTag == 44:
+            fcut = 0.9 * fring
+
+        else:
+            raise ValueError(
+                f"Error in IMRPhenomXHM_Amplitude_fcutRD: modeTag {modeTag} is not valid. "
+                f"Valid modes are 21, 33, 32, 44."
+            )
+
+    elif version == 122022:
+        if pWFHM['MixingOn'] == 1:
+            fcut = pWF22['fRING'] - 0.5 * pWF22['fDAMP']  # v8
+        else:
+            fcut = fring - fdamp  # v2
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Amplitude_fcutRD: version {version} is not valid. "
+            f"Valid versions are 122018 or 122022."
+        )
+
+    return fcut
+
+
+def IMRPhenomXHM_Amplitude_fcutInsp(pWFHM: dict, pWF22: dict) -> float:
+    """
+    Inspiral cutting frequency for the amplitude.
+
+    Returns the end frequency of the inspiral region and the beginning of the
+    intermediate region for the amplitude of one mode.
+
+    Parameters
+    ----------
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - IMRPhenomXHMInspiralAmpFreqsVersion: Version flag (122018 or 122022)
+        - fMECOlm: MECO frequency for the mode
+        - emm: Azimuthal quantum number m
+        - modeTag: Mode identifier (21, 33, 32, 44)
+        - fRING: Ringdown frequency for the mode
+    pWF22 : dict
+        Waveform structure for the (2,2) mode containing:
+        - eta: Symmetric mass ratio
+        - chi1L: Aligned spin of body 1
+        - chiEff: Effective aligned spin
+        - fISCO: ISCO frequency
+        - fRING: Ringdown frequency for the (2,2) mode
+        - q: Mass ratio
+
+    Returns
+    -------
+    float
+        The cutting frequency between inspiral and intermediate regions
+
+    Raises
+    ------
+    ValueError
+        If version is not valid
+    """
+    import jax.numpy as jnp
+
+    version = pWFHM['IMRPhenomXHMInspiralAmpFreqsVersion']
+    fMECO = pWFHM['fMECOlm']
+    emm = float(pWFHM['emm'])
+    eta = pWF22['eta']
+    chi1 = pWF22['chi1L']
+
+    # Cutting frequency for extreme mass ratios (fit to geometrical structure)
+    fcutEMR = (
+        1.25 * emm *
+        ((0.011671068725758493 - 0.0000858396080377194 * chi1 +
+          0.000316707064291237 * chi1**2) *
+         (0.8447212540381764 + 6.2873167352395125 * eta)) /
+        (1.2857082764038923 - 0.9977728883419751 * chi1)
+    )
+
+    if version == 122018:  # Default version
+        fring = pWFHM['fRING']
+        chieff = pWF22['chiEff']
+        fISCO = pWF22['fISCO'] * emm * 0.5
+        modeTag = pWFHM['modeTag']
+
+        if modeTag == 21:
+            if eta < 0.023795359904818562:  # EMR (q > 40)
+                fcut = fcutEMR
+            else:  # Comparable mass ratios
+                fcut = fMECO + (0.75 - 0.235 * chieff - 5.0/6.0 * chieff * chieff) * \
+                       jnp.abs(fISCO - fMECO)
+
+        elif modeTag == 33:
+            if eta < 0.04535147392290249:  # EMR (q > 20)
+                fcut = fcutEMR
+            else:  # Comparable mass ratios
+                fcut = fMECO + (0.75 - 0.235 * chieff - 5.0/6.0 * chieff) * \
+                       jnp.abs(fISCO - fMECO)
+
+        elif modeTag == 32:
+            if eta < 0.04535147392290249:  # EMR (q > 20)
+                fcut = fcutEMR
+            else:  # Comparable mass ratios
+                fcut = fMECO + (0.75 - 0.235 * jnp.abs(chieff)) * jnp.abs(fISCO - fMECO)
+                fcut = fcut * fring / pWF22['fRING']
+
+        elif modeTag == 44:
+            if eta < 0.04535147392290249:  # EMR (q > 20)
+                fcut = fcutEMR
+            else:  # Comparable mass ratios
+                fcut = fMECO + (0.75 - 0.235 * chieff) * jnp.abs(fISCO - fMECO)
+
+        else:
+            raise ValueError(
+                f"Error in IMRPhenomXHM_Amplitude_fcutInsp: modeTag {modeTag} is not valid. "
+                f"Valid modes are 21, 33, 32, 44."
+            )
+
+    elif version == 122022:
+        if pWF22['q'] < 20.0:
+            fcut = fMECO
+        else:
+            transition_eta = 0.0192234  # q = 50
+            sharpness = 0.004
+            funcs = 0.5 + 0.5 * jnp.tanh((eta - transition_eta) / sharpness)
+            fcut = funcs * fMECO + (1.0 - funcs) * fcutEMR
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Amplitude_fcutInsp: version {version} is not valid. "
+            f"Valid versions are 122018 or 122022."
+        )
+
+    return fcut
+
+
+
+def Get21PNAmplitudeCoefficients(pAmp: dict, pWF22: dict) -> None:
+    """
+    Post-Newtonian Inspiral Ansatz Coefficients for the 21 mode.
+
+    The 21 ansatz in Fourier Domain is built multiplying the Time-domain
+    Post-Newtonian series up to 3PN by the phasing factor given by the
+    Stationary-Phase-Approximation.
+
+    This function fills the pAmp dictionary with time-domain PN coefficients
+    and phasing factor expansion coefficients for the (2,1) mode.
+
+    Parameters
+    ----------
+    pAmp : dict
+        Amplitude coefficients dictionary to be filled with:
+        - PNTDfactor: Overall time-domain factor
+        - x05, x1, x15, x2, x25, x3: Time-domain PN coefficients
+        - xdot5, xdot6, xdot65, xdot7, xdot75, xdot8, xdot8Log, xdot85: Phasing coefficients
+        - log2pi_two_thirds: Log of (2π)^(2/3)
+    pWF22 : dict
+        Waveform structure for the (2,2) mode containing:
+        - m1, m2: Component masses
+        - chi1L, chi2L: Aligned spins
+        - delta: Mass difference parameter
+        - eta: Symmetric mass ratio
+
+    Returns
+    -------
+    None
+        The function modifies pAmp in place
+    """
+    import jax.numpy as jnp
+
+    m1 = pWF22['m1']
+    m2 = pWF22['m2']
+    m12 = m1 * m1
+    m22 = m2 * m2
+    m13 = m12 * m1
+    m23 = m22 * m2
+    m14 = m13 * m1
+    m24 = m23 * m2
+    m15 = m14 * m1
+    m25 = m24 * m2
+    m16 = m15 * m1
+
+    chi1 = pWF22['chi1L']
+    chi2 = pWF22['chi2L']
+    chiS = (chi1 + chi2) * 0.5
+    chiA = (chi1 - chi2) * 0.5
+    delta = pWF22['delta']
+    eta = pWF22['eta']
+    chi12 = chi1 * chi1
+    chi22 = chi2 * chi2
+    Sc = m12 * chi1 + m22 * chi2
+    Sigmac = m2 * chi2 - m1 * chi1
+
+    # Powers of 2
+    powers_of_2 = jnp.power(2.0, jnp.array([1./3., 2./3., 1., 4./3., 5./3., 2., 7./3., 8./3.]))
+    pow_2_one_third = powers_of_2[0]
+    pow_2_two_thirds = powers_of_2[1]
+    pow_2_itself = powers_of_2[2]
+    pow_2_four_thirds = powers_of_2[3]
+    pow_2_five_thirds = powers_of_2[4]
+    pow_2_two = powers_of_2[5]
+    pow_2_seven_thirds = powers_of_2[6]
+    pow_2_eight_thirds = powers_of_2[7]
+
+    logof2 = jnp.log(2.0)
+    log4 = 1.3862943611198906
+    EulerGamma = 0.5772156649015329
+
+    # Powers of pi
+    pi_sqrt = jnp.sqrt(jnp.pi)
+    pi_one_third = jnp.power(jnp.pi, 1./3.)
+    pi_two_thirds = jnp.power(jnp.pi, 2./3.)
+    pi_itself = jnp.pi
+    pi_four_thirds = jnp.power(jnp.pi, 4./3.)
+    pi_five_thirds = jnp.power(jnp.pi, 5./3.)
+    pi_two = jnp.pi * jnp.pi
+    pi_seven_thirds = jnp.power(jnp.pi, 7./3.)
+    pi_eight_thirds = jnp.power(jnp.pi, 8./3.)
+
+    # Complex coefficients of the Time-Domain Post-Newtonian expansion
+    factor = 8.0 * pWF22['eta'] * pi_two_thirds * pow_2_two_thirds * pi_sqrt / jnp.sqrt(5.0)
+    pAmp['PNTDfactor'] = factor
+    pAmp['x05'] = 1j * delta / 3.0 * pow_2_one_third * pi_one_third
+    pAmp['x1'] = -1j * 0.5 * (chiA + chiS * delta) * pow_2_two_thirds * pi_two_thirds
+    pAmp['x15'] = 1j * delta * (-17./28. + 5.0 * eta / 7.0) / 3.0 * pow_2_itself * pi_itself
+    pAmp['x2'] = (1j * (-43./21. * delta * Sc + (-79. + 139.0 * eta) / 42.0 * Sigmac) +
+                  1j / 3.0 * delta * (pi_itself + 1j * (-0.5 - 2.0 * logof2))) * pow_2_four_thirds * pi_four_thirds
+    pAmp['x25'] = 1j * delta * ((-43.0 - 509.0 * eta) / 126.0 + 79.0 * eta * eta / 168.0) / 3.0 * pow_2_five_thirds * pi_five_thirds
+    pAmp['x3'] = (1j * delta * ((-17.0 + 6.0 * eta) / 28.0 * pi_itself +
+                  1j * (17./56. + eta * (-353./28. - 3.0 * logof2 / 7.0) + 17.0 * logof2 / 14.0)) / 3.0 *
+                  pow_2_two * pi_two)
+
+    # Coefficients of the phasing factor expansion (equation E4 of arXiv:2001.10914)
+    pAmp['xdot5'] = (-(m1 * m2 * (-838252800.0 * m1 * m2 - 419126400.0 * m12 - 419126400.0 * m22) / 3.274425e7) *
+                     pow_2_five_thirds * pow_2_five_thirds * pi_five_thirds * pi_five_thirds)
+
+    pAmp['xdot6'] = (-(m1 * m2 * (1152597600.0 * m2 * m13 + 926818200.0 * m22 +
+                     2494800.0 * m1 * m2 * (743.0 + 462.0 * m22) +
+                     1247400.0 * m12 * (743.0 + 1848.0 * m22)) / 3.274425e7) *
+                     jnp.power(pow_2_two, 2) * jnp.power(pi_two, 2))
+
+    pAmp['xdot65'] = (-(m1 * m2 * (-34927200.0 * m1 * m2 * (-(m2 * (75.0 * chi1 + 376.0 * chi2 * m2)) + 96.0 * pi_itself) -
+                      34927200.0 * (-(m2 * (75.0 * chi2 + 188.0 * (chi1 + chi2) * m2)) + 48.0 * pi_itself) * m12 -
+                      2619540000.0 * chi1 * m13 + 13132627200.0 * chi1 * m2 * m13 + 6566313600.0 * chi1 * m14 -
+                      34927200.0 * (chi2 * (75.0 - 188.0 * m2) * m2 + 48.0 * pi_itself) * m22) / 3.274425e7) *
+                      pow_2_eight_thirds * pow_2_five_thirds * pi_eight_thirds * pi_five_thirds)
+
+    pAmp['xdot7'] = (-(m1 * m2 * (207900.0 * m2 * (-13661.0 - 19908.0 * chi1 * chi2 + 10206.0 * chi12 + 10206.0 * chi22) * m13 -
+                     23100.0 * (34103.0 + 91854.0 * chi22) * m22 - 1373803200.0 * m14 * m22 +
+                     23100.0 * m1 * m2 * (-2.0 * (34103.0 + 45927.0 * chi12 + 45927.0 * chi22) +
+                     9.0 * (-13661.0 - 19908.0 * chi1 * chi2 + 10206.0 * chi12 + 10206.0 * chi22) * m22) -
+                     2747606400.0 * m13 * m23 - 23100.0 * m12 * (34103.0 + 91854.0 * chi12 -
+                     18.0 * (-13661.0 - 19908.0 * chi1 * chi2 + 10206.0 * chi12 + 10206.0 * chi22) * m22 + 59472.0 * m24)) / 3.274425e7) *
+                     pow_2_seven_thirds * pow_2_seven_thirds * pi_seven_thirds * pi_seven_thirds)
+
+    pAmp['xdot75'] = (-(m1 * m2 * (-4036586400.0 * chi1 * m13 + 5821200.0 * m2 * (5861.0 * chi1 + 1701.0 * pi_itself) * m13 +
+                      17059026600.0 * chi1 * m14 + 14721814800.0 * chi1 * m2 * m14 - 34962127200.0 * chi1 * m2 * m15 +
+                      207900.0 * (2.0 * chi2 * m2 * (-9708.0 + 41027.0 * m2) + 12477.0 * pi_itself) * m22 -
+                      14721814800.0 * chi2 * m13 * m22 - 69924254400.0 * chi1 * m14 * m22 -
+                      34962127200.0 * (chi1 + chi2) * m13 * m23 +
+                      207900.0 * m12 * (3.0 * pi_itself * (4159.0 + 31752.0 * m22) +
+                      2.0 * m2 * (9708.0 * chi2 + 41027.0 * (chi1 + chi2) * m2 - 35406.0 * chi1 * m22 - 168168.0 * chi2 * m23)) +
+                      415800.0 * m1 * m2 * (9708.0 * chi1 * m2 + 82054.0 * chi2 * m22 +
+                      3.0 * pi_itself * (4159.0 + 7938.0 * m22) + 35406.0 * chi2 * m23 - 84084.0 * chi2 * m24)) / 3.274425e7) *
+                      pow_2_eight_thirds * pow_2_seven_thirds * pi_eight_thirds * pi_seven_thirds)
+
+    pAmp['xdot8'] = (-(m1 * m2 * (-10548014400.0 * chi1 * pi_itself * m13 - 63392868000.0 * chi1 * chi2 * m2 * m14 +
+                     34927200.0 * chi1 * (-375.0 * chi1 + 752.0 * pi_itself) * m14 + 63392868000.0 * chi12 * m15 -
+                     153213984000.0 * m2 * chi12 * m15 - 76606992000.0 * chi12 * m16 -
+                     63392868000.0 * chi1 * (chi1 - chi2) * m13 * m22 -
+                     51975.0 * (4869.0 + 2711352.0 * chi1 * chi2 + 1702428.0 * chi12 + 228508.0 * chi22) * m14 * m22 -
+                     103950.0 * (4869.0 + 2711352.0 * chi1 * chi2 + 228508.0 * chi12 + 228508.0 * chi22) * m13 * m23 +
+                     906328500.0 * m15 * m23 + 1812657000.0 * m14 * m24 + 906328500.0 * m13 * m25 +
+                     1925.0 * m2 * m13 * (56198689.0 + 13635864.0 * chi1 * chi2 + 27288576.0 * chi1 * pi_itself +
+                     30746952.0 * chi12 + 3617892.0 * chi22 - 2045736.0 * pi_two) -
+                     3.0 * m22 * (16447322263.0 - 2277918720.0 * EulerGamma -
+                     23284800.0 * chi2 * m2 * (-151.0 + 376.0 * m2) * pi_itself - 2277918720.0 * log4 +
+                     2321480700.0 * chi22 + 4365900000.0 * chi22 * m22 - 21130956000.0 * chi22 * m23 +
+                     25535664000.0 * chi22 * m24 + 745113600.0 * pi_two) +
+                     m12 * (6833756160.0 * EulerGamma + 10548014400.0 * chi2 * m2 * pi_itself +
+                     63392868000.0 * (chi1 - chi2) * chi2 * m23 -
+                     51975.0 * (4869.0 + 2711352.0 * chi1 * chi2 + 228508.0 * chi12 + 1702428.0 * chi22) * m24 -
+                     3850.0 * m22 * (-56198689.0 + 13580136.0 * chi1 * chi2 - 6822144.0 * (chi1 + chi2) * pi_itself -
+                     6976422.0 * chi12 - 6976422.0 * chi22 + 2045736.0 * pi_two) -
+                     3.0 * (16447322263.0 - 2277918720.0 * log4 + 2321480700.0 * chi12 + 745113600.0 * pi_two)) +
+                     m1 * m2 * (13667512320.0 * EulerGamma + 10548014400.0 * chi1 * m2 * pi_itself -
+                     63392868000.0 * chi1 * chi2 * m23 - 153213984000.0 * chi22 * m24 -
+                     1925.0 * m22 * (-56198689.0 - 13635864.0 * chi1 * chi2 - 27288576.0 * chi2 * pi_itself -
+                     3617892.0 * chi12 - 30746952.0 * chi22 + 2045736.0 * pi_two) -
+                     6.0 * (16447322263.0 - 2277918720.0 * log4 + 1160740350.0 * chi12 + 1160740350.0 * chi22 +
+                     745113600.0 * pi_two))) / 3.274425e7) *
+                     pow_2_eight_thirds * pow_2_eight_thirds * pi_eight_thirds * pi_eight_thirds)
+
+    pAmp['xdot8Log'] = (-(m1 * m2 * 3416878080.0) / 3.274425e7 *
+                        pow_2_eight_thirds * pow_2_eight_thirds * pi_eight_thirds * pi_eight_thirds)
+
+    pAmp['xdot85'] = (-(m1 * m2 * (-14891068500.0 * chi1 * m13 +
+                      1925.0 * m2 * (97151928.0 * chi1 + 6613488.0 * chi2 - 12912300.0 * pi_itself) * m13 +
+                      87143248500.0 * chi1 * m14 + 33313480200.0 * chi1 * m2 * m14 - 198816225300.0 * chi1 * m2 * m15 +
+                      57750.0 * (2.0 * chi2 * m2 * (-128927.0 + 754487.0 * m2) + 7947.0 * pi_itself) * m22 -
+                      33313480200.0 * chi2 * m13 * m22 -
+                      138600.0 * (3399633.0 * chi1 + 530712.0 * chi2 + 182990.0 * pi_itself) * m14 * m22 -
+                      35665037100.0 * chi1 * m15 * m22 + 84184254000.0 * chi1 * m16 * m22 -
+                      23100.0 * m1 * m2 * (15.0 * pi_itself * (-2649.0 + 71735.0 * m22) +
+                      m2 * (-(chi1 * (644635.0 + 551124.0 * m2)) +
+                      chi2 * m2 * (-8095994.0 - 1442142.0 * m2 + 8606763.0 * m22))) -
+                      69300.0 * (4991769.0 * (chi1 + chi2) + 731960.0 * pi_itself) * m13 * m23 +
+                      35665037100.0 * chi2 * m14 * m23 + 170726094000.0 * chi1 * m15 * m23 +
+                      2357586000.0 * chi2 * m15 * m23 + 35665037100.0 * chi1 * m13 * m24 +
+                      88899426000.0 * (chi1 + chi2) * m14 * m24 + 9702000.0 * (243.0 * chi1 + 17597.0 * chi2) * m13 * m25 -
+                      11550.0 * m12 * (15.0 * pi_itself * (-2649.0 + 286940.0 * m22 + 146392.0 * m24) +
+                      2.0 * m2 * (-644635.0 * chi2 - 4874683.0 * (chi1 + chi2) * m2 + 1442142.0 * chi1 * m22 +
+                      54.0 * (58968.0 * chi1 + 377737.0 * chi2) * m23 + 1543941.0 * chi2 * m24 - 3644340.0 * chi2 * m25))) / 3.274425e7) *
+                      pow_2_eight_thirds * pow_2_eight_thirds * pow_2_one_third *
+                      pi_eight_thirds * pi_eight_thirds * pi_one_third)
+
+    pAmp['log2pi_two_thirds'] = jnp.log(pi_two_thirds * pow_2_two_thirds)
+
+
+def IMRPhenomXHM_GetPNAmplitudeCoefficients(pAmp: dict, pWFHM: dict, pWF22: dict) -> None:
+    """
+    Fill pAmp with coefficients of power series in frequency for the
+    Fourier Domain Post-Newtonian Inspiral Ansatz.
+
+    The ansatz in Fourier Domain is built by multiplying the Time-domain
+    Post-Newtonian series up to 3PN by the phasing factor given by the
+    Stationary-Phase-Approximation, and then re-expanding in powers of f up to 3PN.
+
+    The 21 mode by default does not use the power series because it breaks down
+    before the end of the inspiral, but a corresponding power series is available.
+
+    The coefficients correspond to those in equations E10-E14 in arXiv:2001.10914.
+
+    Parameters
+    ----------
+    pAmp : dict
+        Amplitude coefficients dictionary to be filled with:
+        - PNglobalfactor: Global prefactor for the mode
+        - pnInitial, pnOneThird, pnTwoThirds, pnThreeThirds, pnFourThirds,
+          pnFiveThirds, pnSixThirds: PN frequency series coefficients
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - emm: Mode m value (1, 2, 3, or 4)
+        - modeTag: Mode identifier (21, 33, 32, 44)
+        - modeInt: Mode integer index (0, 1, 2, 3)
+        - chi_a: Antisymmetric spin combination
+        - chi_s: Symmetric spin combination
+        - useFAmpPN: Flag for 21 mode (1 = use alternative form, 0 = power series)
+    pWF22 : dict
+        Waveform structure for the (2,2) mode containing:
+        - eta: Symmetric mass ratio
+        - delta: Mass difference parameter
+
+    Returns
+    -------
+    None
+        The function modifies pAmp in place
+
+    Raises
+    ------
+    ValueError
+        If modeTag is not valid (21, 33, 32, 44)
+    """
+    import jax.numpy as jnp
+
+    chiA = pWFHM['chi_a']
+    chiS = pWFHM['chi_s']
+    eta = pWF22['eta']
+    delta = pWF22['delta']
+    PI = jnp.pi
+
+    # Global factors of each PN h_lm
+    prefactors = jnp.array([
+        jnp.sqrt(2.0) / 3.0,           # 21 mode
+        0.75 * jnp.sqrt(5.0 / 7.0),    # 33 mode
+        jnp.sqrt(5.0 / 7.0) / 3.0,     # 32 mode
+        4.0 * jnp.sqrt(2.0) / 9.0 * jnp.sqrt(5.0 / 7.0)  # 44 mode
+    ])
+
+    # Compensate for rescaling data with the leading order of the 22
+    pAmp['PNglobalfactor'] = (jnp.power(2.0 / pWFHM['emm'], -7.0/6.0) *
+                              prefactors[pWFHM['modeInt']])
+
+    modeTag = pWFHM['modeTag']
+
+    if modeTag == 21:
+        if pWFHM['useFAmpPN'] == 1:
+            # Use the more accurate non-reexpanded form
+            Get21PNAmplitudeCoefficients(pAmp, pWF22)
+            pAmp['pnInitial'] = 0.0
+            pAmp['pnOneThird'] = 0.0
+            pAmp['pnTwoThirds'] = 0.0
+            pAmp['pnThreeThirds'] = 0.0
+            pAmp['pnFourThirds'] = 0.0
+            pAmp['pnFiveThirds'] = 0.0
+            pAmp['pnSixThirds'] = 0.0
+        else:
+            # Use power series expansion
+            pow_2_one_third = jnp.power(2.0, 1.0/3.0)
+            pow_2_two_thirds = jnp.power(2.0, 2.0/3.0)
+            pow_2_itself = 2.0
+            pow_2_four_thirds = jnp.power(2.0, 4.0/3.0)
+            pow_2_five_thirds = jnp.power(2.0, 5.0/3.0)
+            pow_2_two = 4.0
+
+            pi_one_third = jnp.power(PI, 1.0/3.0)
+            pi_two_thirds = jnp.power(PI, 2.0/3.0)
+            pi_itself = PI
+            pi_four_thirds = jnp.power(PI, 4.0/3.0)
+            pi_five_thirds = jnp.power(PI, 5.0/3.0)
+            pi_two = PI * PI
+
+            pAmp['pnInitial'] = 0.0
+            pAmp['pnOneThird'] = delta * pi_one_third * pow_2_one_third
+            pAmp['pnTwoThirds'] = (-3.0 * (chiA + chiS * delta) / 2.0 *
+                                   pi_two_thirds * pow_2_two_thirds)
+            pAmp['pnThreeThirds'] = ((335.0 * delta + 1404.0 * delta * eta) / 672.0 *
+                                     pi_itself * pow_2_itself)
+            pAmp['pnFourThirds'] = ((3427.0 * chiA - 1j * 672.0 * delta + 3427.0 * chiS * delta -
+                                     8404.0 * chiA * eta - 3860.0 * chiS * delta * eta -
+                                     1344.0 * delta * PI - 1j * 672.0 * delta * jnp.log(16.0)) / 1344.0 *
+                                    pi_four_thirds * pow_2_four_thirds)
+            pAmp['pnFiveThirds'] = ((-155965824.0 * chiA * chiS - 964357.0 * delta +
+                                     432843264.0 * chiA * chiS * eta - 23670792.0 * delta * eta +
+                                     24385536.0 * chiA * PI + 24385536.0 * chiS * delta * PI -
+                                     77982912.0 * delta * chiA * chiA + 81285120.0 * delta * eta * chiA * chiA -
+                                     77982912.0 * delta * chiS * chiS + 39626496.0 * delta * eta * chiS * chiS +
+                                     21535920.0 * delta * eta * eta) / 8.128512e6 *
+                                    pi_five_thirds * pow_2_five_thirds)
+            pAmp['pnSixThirds'] = ((143063173.0 * chiA - 1j * 1350720.0 * delta +
+                                    143063173.0 * chiS * delta - 546199608.0 * chiA * eta -
+                                    1j * 72043776.0 * delta * eta - 169191096.0 * chiS * delta * eta -
+                                    9898560.0 * delta * PI + 20176128.0 * delta * eta * PI -
+                                    1j * 5402880.0 * delta * jnp.log(2.0) -
+                                    1j * 17224704.0 * delta * eta * jnp.log(2.0) +
+                                    61725888.0 * chiS * delta * chiA * chiA -
+                                    81285120.0 * chiS * delta * eta * chiA * chiA +
+                                    20575296.0 * jnp.power(chiA, 3) - 81285120.0 * eta * jnp.power(chiA, 3) +
+                                    61725888.0 * chiA * chiS * chiS - 165618432.0 * chiA * eta * chiS * chiS +
+                                    20575296.0 * delta * jnp.power(chiS, 3) -
+                                    1016064.0 * delta * eta * chiS * chiS * chiS +
+                                    128873808.0 * chiA * eta * eta - 3859632.0 * chiS * delta * eta * eta) / 5.419008e6 *
+                                   pi_two * pow_2_two)
+
+    elif modeTag == 33:
+        pow_2d3_one_third = jnp.power(2.0/3.0, 1.0/3.0)
+        pow_2d3_itself = 2.0 / 3.0
+        pow_2d3_four_thirds = jnp.power(2.0/3.0, 4.0/3.0)
+        pow_2d3_five_thirds = jnp.power(2.0/3.0, 5.0/3.0)
+        pow_2d3_two = jnp.power(2.0/3.0, 2.0)
+
+        pi_one_third = jnp.power(PI, 1.0/3.0)
+        pi_itself = PI
+        pi_four_thirds = jnp.power(PI, 4.0/3.0)
+        pi_five_thirds = jnp.power(PI, 5.0/3.0)
+        pi_two = PI * PI
+
+        pAmp['pnInitial'] = 0.0
+        pAmp['pnOneThird'] = delta * pi_one_third * pow_2d3_one_third
+        pAmp['pnTwoThirds'] = 0.0
+        pAmp['pnThreeThirds'] = ((-1945.0 * delta + 2268.0 * delta * eta) / 672.0 *
+                                 pi_itself * pow_2d3_itself)
+        pAmp['pnFourThirds'] = ((325.0 * chiA - 1j * 504.0 * delta + 325.0 * chiS * delta -
+                                 1120.0 * chiA * eta - 80.0 * chiS * delta * eta +
+                                 120.0 * delta * PI + 1j * 720.0 * delta * jnp.log(1.5)) / 120.0 *
+                                pi_four_thirds * pow_2d3_four_thirds)
+        pAmp['pnFiveThirds'] = ((-2263282560.0 * chiA * chiS - 1077664867.0 * delta +
+                                 9053130240.0 * chiA * chiS * eta - 5926068792.0 * delta * eta -
+                                 1131641280.0 * delta * chiA * chiA + 4470681600.0 * delta * eta * chiA * chiA -
+                                 1131641280.0 * delta * chiS * chiS + 55883520.0 * delta * eta * chiS * chiS +
+                                 2966264784.0 * delta * eta * eta) / 4.4706816e8 *
+                                pi_five_thirds * pow_2d3_five_thirds)
+        pAmp['pnSixThirds'] = ((22007835.0 * chiA + 1j * 26467560.0 * delta +
+                                22007835.0 * chiS * delta - 80190540.0 * chiA * eta -
+                                1j * 98774368.0 * delta * eta - 31722300.0 * chiS * delta * eta -
+                                9193500.0 * delta * PI + 17826480.0 * delta * eta * PI -
+                                1j * 37810800.0 * delta * jnp.log(1.5) +
+                                1j * 37558080.0 * delta * eta * jnp.log(1.5) -
+                                12428640.0 * chiA * eta * eta - 6078240.0 * chiS * delta * eta * eta) / 2.17728e6 *
+                               pi_two * pow_2d3_two)
+
+    elif modeTag == 32:
+        pi_two_thirds = jnp.power(PI, 2.0/3.0)
+        pi_itself = PI
+        pi_four_thirds = jnp.power(PI, 4.0/3.0)
+        pi_five_thirds = jnp.power(PI, 5.0/3.0)
+        pi_two = PI * PI
+
+        pAmp['pnInitial'] = 0.0
+        pAmp['pnOneThird'] = 0.0
+        pAmp['pnTwoThirds'] = (-1.0 + 3.0 * eta) * pi_two_thirds
+        pAmp['pnThreeThirds'] = -4.0 * chiS * eta * pi_itself
+        pAmp['pnFourThirds'] = ((10471.0 - 61625.0 * eta + 82460.0 * eta * eta) / 10080.0 *
+                                pi_four_thirds)
+        pAmp['pnFiveThirds'] = ((1j * 2520.0 - 3955.0 * chiS - 3955.0 * chiA * delta -
+                                 1j * 11088.0 * eta + 10810.0 * chiS * eta +
+                                 11865.0 * chiA * delta * eta - 12600.0 * chiS * eta * eta) / 840.0 *
+                                pi_five_thirds)
+        pAmp['pnSixThirds'] = ((824173699.0 + 2263282560.0 * chiA * chiS * delta - 26069649.0 * eta -
+                                15209631360.0 * chiA * chiS * delta * eta + 3576545280.0 * chiS * eta * PI +
+                                1131641280.0 * chiA * chiA - 7865605440.0 * eta * chiA * chiA +
+                                1131641280.0 * chiS * chiS - 11870591040.0 * eta * chiS * chiS -
+                                13202119896.0 * eta * eta + 13412044800.0 * chiA * chiA * eta * eta +
+                                5830513920.0 * chiS * chiS * eta * eta + 5907445488.0 * jnp.power(eta, 3)) / 4.4706816e8 *
+                               pi_two)
+
+    elif modeTag == 44:
+        pow_0p5_two_thirds = jnp.power(0.5, 2.0/3.0)
+        pow_0p5_four_thirds = jnp.power(0.5, 4.0/3.0)
+        pow_0p5_five_thirds = jnp.power(0.5, 5.0/3.0)
+        pow_0p5_two = 0.25
+
+        pi_two_thirds = jnp.power(PI, 2.0/3.0)
+        pi_four_thirds = jnp.power(PI, 4.0/3.0)
+        pi_five_thirds = jnp.power(PI, 5.0/3.0)
+        pi_two = PI * PI
+
+        pAmp['pnInitial'] = 0.0
+        pAmp['pnOneThird'] = 0.0
+        pAmp['pnTwoThirds'] = (1.0 - 3.0 * eta) * pi_two_thirds * pow_0p5_two_thirds
+        pAmp['pnThreeThirds'] = 0.0
+        pAmp['pnFourThirds'] = ((-158383.0 + 641105.0 * eta - 446460.0 * eta * eta) / 36960.0 *
+                                pi_four_thirds * pow_0p5_four_thirds)
+        pAmp['pnFiveThirds'] = ((1j * -1008.0 + 565.0 * chiS + 565.0 * chiA * delta +
+                                 1j * 3579.0 * eta - 2075.0 * chiS * eta - 1695.0 * chiA * delta * eta +
+                                 240.0 * PI - 720.0 * eta * PI + 1j * 960.0 * jnp.log(2.0) -
+                                 1j * 2880.0 * eta * jnp.log(2.0) + 1140.0 * chiS * eta * eta) / 120.0 *
+                                pi_five_thirds * pow_0p5_five_thirds)
+        pAmp['pnSixThirds'] = ((7888301437.0 - 147113366400.0 * chiA * chiS * delta -
+                                745140957231.0 * eta + 441340099200.0 * chiA * chiS * delta * eta -
+                                73556683200.0 * chiA * chiA + 511264353600.0 * eta * chiA * chiA -
+                                73556683200.0 * chiS * chiS + 224302478400.0 * eta * chiS * chiS +
+                                2271682065240.0 * eta * eta - 871782912000.0 * chiA * chiA * eta * eta -
+                                10897286400.0 * chiS * chiS * eta * eta - 805075876080.0 * jnp.power(eta, 3)) / 2.90594304e10 *
+                               pi_two * pow_0p5_two)
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_GetPNAmplitudeCoefficients: modeTag {modeTag} is not valid. "
+            f"Valid modes are 21, 33, 32, 44."
+        )

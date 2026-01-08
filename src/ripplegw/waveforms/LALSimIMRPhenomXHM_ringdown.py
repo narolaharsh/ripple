@@ -2234,3 +2234,465 @@ def IMRPhenomXHM_RD_Phase_22_alpha2():
 
 def IMRPhenomXHM_RD_Phase_22_alphaL():
     return #TODO
+
+
+# ==================== Additional Ringdown Amplitude Functions ====================
+
+def IMRPhenomXHM_RD_Amp_Ansatz(powers_of_Mf: dict, pWFHM: dict, pAmp: dict) -> float:
+    """
+    Ansatz for the ringdown amplitude (spheroidal part) for modes with mixing.
+
+    This function computes the ringdown amplitude using different fitting formulas
+    depending on the version flag. It supports multiple parameterizations including
+    the canonical form with Lorentzian + exponential falloff and auxiliary polynomials.
+
+    Parameters
+    ----------
+    powers_of_Mf : dict
+        Dictionary containing powers of the frequency (Mf), including 'itself'
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - IMRPhenomXHMRingdownAmpVersion: Version flag for amplitude formula
+        - fRING: Ringdown frequency
+        - fDAMP: Damping frequency
+        - fAmpRDfalloff: Frequency where exponential falloff begins (if applicable)
+    pAmp : dict
+        Amplitude coefficients structure containing:
+        - RDCoefficient: Array of ringdown coefficients
+        - nCoefficientsRDAux: Number of auxiliary polynomial coefficients
+        - RDAuxCoefficient: Auxiliary polynomial coefficients (if applicable)
+        - fRDAux: Frequency threshold for auxiliary polynomial (if applicable)
+        - RDRescaleFactor: Rescaling factor flag
+
+    Returns
+    -------
+    float
+        The ringdown amplitude at the given frequency
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXHMRingdownAmpVersion is not valid
+    """
+    from .LALSimIMRPhenomXUtilities import IMRPhenomX_StepFuncBool
+    from .LALSimIMRPhenomXHM_internals import RescaleFactor
+
+    ff = powers_of_Mf['itself']
+    RDAmpFlag = pWFHM['IMRPhenomXHMRingdownAmpVersion']
+    frd = pWFHM['fRING']
+    fda = pWFHM['fDAMP']
+    dfr = ff - frd
+    ampRD = 0.0
+
+    if RDAmpFlag == 0:
+        # Canonical, 3 fitted coefficients + fring, fdamp, lc that are fixed.
+        # sigma is also fixed except for the 21 mode.
+        # Only for the 122018 release.
+        dfd = fda * pAmp['RDCoefficient'][2]
+        lc = pAmp['RDCoefficient'][3]
+        ampRD = (fda * jnp.abs(pAmp['RDCoefficient'][0]) * pAmp['RDCoefficient'][2]) * \
+                jnp.exp(-dfr * pAmp['RDCoefficient'][1] / dfd) / \
+                (dfr * dfr + dfd * dfd) * jnp.power(ff, -lc)
+
+    elif RDAmpFlag == 1 or RDAmpFlag == 2:
+        # Check if we should use auxiliary polynomial
+        if pAmp['nCoefficientsRDAux'] > 0 and not IMRPhenomX_StepFuncBool(ff, pAmp['fRDAux']):
+            # Polynomial
+            fpower = 1.0
+            for i in range(pAmp['nCoefficientsRDAux']):
+                ampRD += fpower * pAmp['RDAuxCoefficient'][i]
+                fpower *= ff
+        # Check if we should use exponential falloff
+        elif pWFHM['fAmpRDfalloff'] > 0 and IMRPhenomX_StepFuncBool(ff, pWFHM['fAmpRDfalloff']):
+            ampRD = pAmp['RDCoefficient'][3] * jnp.exp(-pAmp['RDCoefficient'][4] * (ff - pWFHM['fAmpRDfalloff']))
+        else:
+            # Lorentzian with exponential falloff
+            dfd = fda * pAmp['RDCoefficient'][2]
+            ampRD = pAmp['RDCoefficient'][0] * fda / \
+                    (jnp.exp(pAmp['RDCoefficient'][1] / dfd * dfr) * (dfr * dfr + dfd * dfd))
+
+        # Apply rescaling if needed
+        if pAmp['RDRescaleFactor'] != 0:
+            ampRD /= RescaleFactor(powers_of_Mf, pAmp, pAmp['RDRescaleFactor'])
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_RD_Amp_Ansatz: IMRPhenomXHMRingdownAmpVersion = {RDAmpFlag} is not valid."
+        )
+
+    return ampRD
+
+
+def IMRPhenomXHM_RD_Amp_DAnsatz(powers_of_Mf: dict, pWF: dict, pAmp: dict) -> float:
+    """
+    Derivative of the ringdown amplitude ansatz for modes without mixing.
+
+    This function computes the frequency derivative of the ringdown amplitude
+    using different formulas depending on the version flag.
+
+    Parameters
+    ----------
+    powers_of_Mf : dict
+        Dictionary containing powers of the frequency (Mf), including 'itself'
+    pWF : dict
+        Waveform structure containing:
+        - IMRPhenomXHMRingdownAmpVersion: Version flag for amplitude formula
+        - fRING: Ringdown frequency
+        - fDAMP: Damping frequency
+    pAmp : dict
+        Amplitude coefficients structure containing:
+        - RDCoefficient: Array of ringdown coefficients
+
+    Returns
+    -------
+    float
+        The derivative of the ringdown amplitude with respect to frequency
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXHMRingdownAmpVersion is not valid
+    """
+    ff = powers_of_Mf['itself']
+    RDAmpFlag = pWF['IMRPhenomXHMRingdownAmpVersion']
+    frd = pWF['fRING']
+    fda = pWF['fDAMP']
+
+    if RDAmpFlag == 0:
+        # Canonical formula
+        dfd = fda * pAmp['RDCoefficient'][2]
+        lc = pAmp['RDCoefficient'][3]
+        lambda_coeff = pAmp['RDCoefficient'][1]
+
+        numerator = jnp.abs(pAmp['RDCoefficient'][0]) * jnp.power(ff, -1.0 - lc) * (
+            dfd * lc * (frd * frd + dfd * dfd)
+            + ff * (frd * frd * lambda_coeff - 2.0 * dfd * frd * (1.0 + lc) + dfd * dfd * lambda_coeff)
+            + ff * ff * (-2.0 * lambda_coeff * frd + dfd * (2.0 + lc))
+            + ff * ff * ff * lambda_coeff
+        )
+
+        denom = frd * frd + dfd * dfd - ff * 2.0 * frd + ff * ff
+        expon = jnp.exp(-(ff - frd) * lambda_coeff / dfd)
+        DampRD = -numerator * expon / (denom * denom)
+
+    elif RDAmpFlag == 1 or RDAmpFlag == 2:
+        dfr = ff - frd
+        numerator = pAmp['RDCoefficient'][0] * (
+            dfr * dfr * pAmp['RDCoefficient'][1]
+            + 2.0 * fda * dfr * pAmp['RDCoefficient'][2]
+            + fda * fda * pAmp['RDCoefficient'][1] * pAmp['RDCoefficient'][2] * pAmp['RDCoefficient'][2]
+        )
+
+        denom = (dfr * dfr + fda * fda * pAmp['RDCoefficient'][2] * pAmp['RDCoefficient'][2])
+        denom = pAmp['RDCoefficient'][2] * denom * denom * \
+                jnp.exp(dfr * pAmp['RDCoefficient'][1] / (fda * pAmp['RDCoefficient'][2]))
+
+        DampRD = -numerator / denom
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_RD_Amp_DAnsatz: IMRPhenomXHMRingdownAmpVersion = {RDAmpFlag} is not valid."
+        )
+
+    return DampRD
+
+
+def IMRPhenomXHM_RD_Amp_NDAnsatz(
+    powers_of_Mf: dict,
+    pAmp: dict,
+    pPhase: dict,
+    pWFHM: dict,
+    pAmp22: dict,
+    pPhase22: dict,
+    pWF22: dict
+) -> float:
+    """
+    Numerical derivative of the ringdown amplitude ansatz for modes with mixing.
+
+    This function computes the derivative using 4th-order finite differences since
+    the analytical derivative cannot be obtained for modes with spheroidal-spherical mixing.
+
+    Parameters
+    ----------
+    powers_of_Mf : dict
+        Dictionary containing powers of the frequency (Mf), including 'itself'
+    pAmp : dict
+        Amplitude coefficients structure for the higher mode
+    pPhase : dict
+        Phase coefficients structure for the higher mode
+    pWFHM : dict
+        Waveform structure for the higher mode
+    pAmp22 : dict
+        Amplitude coefficients structure for the 22 mode
+    pPhase22 : dict
+        Phase coefficients structure for the 22 mode
+    pWF22 : dict
+        Waveform structure for the 22 mode
+
+    Returns
+    -------
+    float
+        The numerical derivative of the ringdown amplitude with respect to frequency
+    """
+    from .LALSimIMRPhenomXHM_internals import SpheroidalToSpherical
+
+    ff = powers_of_Mf['itself']
+    df = 10e-10
+
+    # Compute function values at 4 points for 4th-order finite difference
+    fun2R = ff + 2.0 * df
+    funR = ff + df
+    funL = ff - df
+    fun2L = ff - 2.0 * df
+
+    # Evaluate at ff + 2*df
+    powers_of_fun = {'itself': fun2R}
+    # Note: You may need to compute other powers depending on what SpheroidalToSpherical needs
+    fun2R = jnp.abs(SpheroidalToSpherical(powers_of_fun, pAmp22, pPhase22, pAmp, pPhase, pWFHM, pWF22))
+
+    # Evaluate at ff + df
+    powers_of_fun = {'itself': funR}
+    funR = jnp.abs(SpheroidalToSpherical(powers_of_fun, pAmp22, pPhase22, pAmp, pPhase, pWFHM, pWF22))
+
+    # Evaluate at ff - df
+    powers_of_fun = {'itself': funL}
+    funL = jnp.abs(SpheroidalToSpherical(powers_of_fun, pAmp22, pPhase22, pAmp, pPhase, pWFHM, pWF22))
+
+    # Evaluate at ff - 2*df
+    powers_of_fun = {'itself': fun2L}
+    fun2L = jnp.abs(SpheroidalToSpherical(powers_of_fun, pAmp22, pPhase22, pAmp, pPhase, pWFHM, pWF22))
+
+    # 4th-order finite difference formula
+    Nder = (-fun2R + 8.0 * funR - 8.0 * funL + fun2L) / (12.0 * df)
+
+    return Nder
+
+
+def IMRPhenomXHM_Ringdown_Amplitude_Veto(V2: float, V3: float, V4: float, pWFHM: dict, pWF22: dict) -> tuple:
+    """
+    Veto function for ringdown amplitude reconstruction.
+
+    For some modes where the ringdown amplitude is very low compared to the inspiral,
+    the intermediate reconstruction fails to connect them. In those cases, this function
+    removes collocation points and switches to a simpler reconstruction (3rd order polynomial
+    or linear for the 32 mode).
+
+    Parameters
+    ----------
+    V2 : float
+        Second collocation point value
+    V3 : float
+        Third collocation point value
+    V4 : float
+        Fourth collocation point value
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - modeTag: Mode identifier (e.g., 32)
+    pWF22 : dict
+        Waveform structure for the 22 mode containing:
+        - ampNorm: Amplitude normalization
+
+    Returns
+    -------
+    tuple
+        (V2_new, V3_new, pWFHM_updated) - Updated collocation points and waveform structure.
+        If veto is triggered, V2 and V3 are set to 1.0 and IMRPhenomXHMIntermediateAmpVersion
+        is modified in pWFHM.
+    """
+    # Make a copy to avoid modifying the input
+    pWFHM_out = pWFHM.copy()
+    V2_out = V2
+    V3_out = V3
+
+    if pWFHM['modeTag'] == 32:
+        threshold = 0.1 / pWF22['ampNorm']
+        if 1.0 / V4 < threshold:
+            V2_out = 1.0
+            V3_out = 1.0
+            pWFHM_out['IMRPhenomXHMIntermediateAmpVersion'] = 101
+    else:
+        threshold = 0.01 / pWF22['ampNorm']
+        if 1.0 / V4 < threshold:
+            V2_out = 1.0
+            V3_out = 1.0
+            pWFHM_out['IMRPhenomXHMIntermediateAmpVersion'] = 1032
+
+    return V2_out, V3_out, pWFHM_out
+
+
+def IMRPhenomXHM_RD_Amp_Coefficients(pWF22: dict, pWFHM: dict, pAmp: dict) -> dict:
+    """
+    Compute ringdown amplitude coefficients for higher modes.
+
+    This function calculates the ringdown amplitude coefficients based on the selected
+    version flag. It supports three approaches:
+    - Version 0: Three fitted coefficients (alambda, lambda, sigma) with fixed parameters
+    - Version 1: Three fitted coefficients with optional auxiliary polynomial and falloff
+    - Version 2: Collocation point-based reconstruction with veto logic
+
+    Parameters
+    ----------
+    pWF22 : dict
+        Waveform structure for the 22 mode
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - IMRPhenomXHMRingdownAmpVersion: Version flag (0, 1, or 2)
+        - IMRPhenomXHMRingdownAmpFitsVersion: Version flag for fit formulas
+        - modeInt: Mode integer index (0=21, 1=33, 2=32, 3=44)
+        - fRING: Ringdown frequency
+        - fDAMP: Damping frequency
+        - fAmpRDfalloff: Frequency where exponential falloff begins (if applicable)
+        - RingdownAmpVeto: Flag to apply veto logic
+    pAmp : dict
+        Amplitude coefficients structure containing:
+        - RingdownAmpFits: Array of fit functions
+        - nCoefficientsRDAux: Number of auxiliary polynomial coefficients
+
+    Returns
+    -------
+    dict
+        Updated pAmp dictionary with computed ringdown coefficients:
+        - RDCoefficient: Array of ringdown coefficients
+        - CollocationPointsFreqsAmplitudeRD: Collocation point frequencies (version 2)
+        - CollocationPointsValuesAmplitudeRD: Collocation point values (version 2)
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXHMRingdownAmpVersion is not valid
+    """
+    # Make a copy to avoid modifying the input
+    pAmp_out = pAmp.copy()
+
+    # Initialize RDCoefficient array if not present
+    if 'RDCoefficient' not in pAmp_out:
+        pAmp_out['RDCoefficient'] = [0.0] * 5
+
+    RDAmpVersion = pWFHM['IMRPhenomXHMRingdownAmpVersion']
+
+    if RDAmpVersion == 0:
+        # Canonical version with three fitted coefficients
+        # alambda, lambda, sigma. Sigma is constant for all modes except 21.
+        pAmp_out['RDCoefficient'][0] = jnp.abs(
+            pAmp['RingdownAmpFits'][pWFHM['modeInt'] * 3](
+                pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+            )
+        )
+        pAmp_out['RDCoefficient'][1] = pAmp['RingdownAmpFits'][pWFHM['modeInt'] * 3 + 1](
+            pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+        )
+        pAmp_out['RDCoefficient'][2] = pAmp['RingdownAmpFits'][pWFHM['modeInt'] * 3 + 2](
+            pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+        )
+        pAmp_out['RDCoefficient'][3] = 1.0 / 12.0
+
+    elif RDAmpVersion == 1 or RDAmpVersion == 2:
+        if RDAmpVersion == 1:
+            # Use standard fit coefficients
+            pAmp_out['RDCoefficient'][0] = jnp.abs(
+                pAmp['RingdownAmpFits'][pWFHM['modeInt'] * 3](
+                    pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+                )
+            )
+            pAmp_out['RDCoefficient'][1] = pAmp['RingdownAmpFits'][pWFHM['modeInt'] * 3 + 1](
+                pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+            )
+            pAmp_out['RDCoefficient'][2] = pAmp['RingdownAmpFits'][pWFHM['modeInt'] * 3 + 2](
+                pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+            )
+
+        elif RDAmpVersion == 2:
+            # Use collocation points to determine coefficients
+            rdcp1 = jnp.abs(
+                pAmp['RingdownAmpFits'][12 + pWFHM['modeInt'] * 3](
+                    pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+                )
+            )
+            rdcp2 = jnp.abs(
+                pAmp['RingdownAmpFits'][13 + pWFHM['modeInt'] * 3](
+                    pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+                )
+            )
+            rdcp3 = jnp.abs(
+                pAmp['RingdownAmpFits'][14 + pWFHM['modeInt'] * 3](
+                    pWF22, pWFHM['IMRPhenomXHMRingdownAmpFitsVersion']
+                )
+            )
+
+            # Set collocation point frequencies
+            pAmp_out['CollocationPointsFreqsAmplitudeRD'] = [
+                pWFHM['fRING'] - pWFHM['fDAMP'],
+                pWFHM['fRING'],
+                pWFHM['fRING'] + pWFHM['fDAMP']
+            ]
+
+            # Apply vetos to collocation point values
+            # Veto 1: Prevent rdcp3 from being too large relative to rdcp1 and rdcp2
+            if rdcp3 >= rdcp2 * rdcp2 / rdcp1:
+                rdcp3 = 0.5 * rdcp2 * rdcp2 / rdcp1
+
+            # Veto 2: Prevent rdcp3 from exceeding rdcp2
+            if rdcp3 > rdcp2:
+                rdcp3 = 0.5 * rdcp2
+
+            # Veto 3: Ensure monotonic decrease if rdcp1 < rdcp2
+            if rdcp1 < rdcp2 and rdcp3 > rdcp1:
+                rdcp3 = rdcp1
+
+            # Store collocation point values
+            pAmp_out['CollocationPointsValuesAmplitudeRD'] = [rdcp1, rdcp2, rdcp3]
+
+            # Compute coefficients from collocation points
+            deno = jnp.sqrt(rdcp1 / rdcp3) - (rdcp1 / rdcp2)
+            # Protect against division by zero
+            deno = jnp.where(deno <= 0, 1e-16, deno)
+
+            pAmp_out['RDCoefficient'][0] = rdcp1 * pWFHM['fDAMP'] / deno
+            pAmp_out['RDCoefficient'][2] = jnp.sqrt(
+                pAmp_out['RDCoefficient'][0] / (rdcp2 * pWFHM['fDAMP'])
+            )
+            pAmp_out['RDCoefficient'][1] = 0.5 * pAmp_out['RDCoefficient'][2] * jnp.log(rdcp1 / rdcp3)
+
+        # Apply ringdown amplitude veto if requested
+        if pWFHM.get('RingdownAmpVeto', 0) == 1:
+            pAmp_out['RDCoefficient'][1] = 1.0
+            pAmp_out['RDCoefficient'][2] = 1.35
+            pAmp_out['RDCoefficient'][0] = (
+                pAmp_out['CollocationPointsValuesAmplitudeRD'][2] *
+                pWFHM['fDAMP'] *
+                pAmp_out['RDCoefficient'][2] *
+                pAmp_out['RDCoefficient'][2]
+            )
+
+        # Compute exponential falloff coefficients if needed
+        if pWFHM.get('fAmpRDfalloff', 0) > 0:
+            # Create powers structure for falloff frequency
+            powers_of_RDfalloff = {'itself': pWFHM['fAmpRDfalloff']}
+            # Additional powers may be needed - add them as required
+
+            # Temporarily disable falloff to compute the amplitude at falloff point
+            tmp = pWFHM['fAmpRDfalloff']
+            pWFHM_temp = pWFHM.copy()
+            pWFHM_temp['fAmpRDfalloff'] = 0
+
+            pAmp_out['RDCoefficient'][3] = IMRPhenomXHM_RD_Amp_Ansatz(
+                powers_of_RDfalloff, pWFHM_temp, pAmp_out
+            )
+            pAmp_out['RDCoefficient'][4] = -1.0 * IMRPhenomXHM_RD_Amp_DAnsatz(
+                powers_of_RDfalloff, pWFHM_temp, pAmp_out
+            ) / pAmp_out['RDCoefficient'][3]
+
+        # Compute auxiliary polynomial coefficients if needed
+        if pAmp.get('nCoefficientsRDAux', 0) > 0:
+            # Note: IMRPhenomXHM_RDAux_Amp_Coefficients needs to be implemented
+            # For now, we'll add a placeholder
+            # pAmp_out = IMRPhenomXHM_RDAux_Amp_Coefficients(pWF22, pWFHM, pAmp_out)
+            pass
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_RD_Amp_Coefficients: "
+            f"IMRPhenomXHMRingdownAmpVersion = {RDAmpVersion} is not valid."
+        )
+
+    return pAmp_out

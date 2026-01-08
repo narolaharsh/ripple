@@ -2634,3 +2634,573 @@ def IMRPhenomXHM_Inter_Phase_44_p6(pWF: dict, InterPhaseFlag: int) -> float:
         )
 
     return total
+
+
+def IMRPhenomXHM_Intermediate_Amp_CollocationPoints(
+    pAmp: dict, pWFHM: dict, pWF22: dict, pPhase: dict, pAmp22: dict, pPhase22: dict
+) -> None:
+    """
+    Define collocation points for intermediate amplitude region.
+
+    Sets up the frequencies and values at collocation points used to solve for
+    the intermediate amplitude coefficients. The collocation points can be
+    distributed equispaced or using Chebyshev spacing.
+
+    Parameters
+    ----------
+    pAmp : dict
+        Amplitude coefficients dictionary containing:
+        - fAmpMatchIN: Inspiral-intermediate matching frequency
+        - fAmpMatchIM: Intermediate-ringdown matching frequency
+        - VersionCollocPtsInter: Array indicating point type (0=unused, 1=point, 2=point+derivative)
+        - nCoefficientsInter: Number of free coefficients
+        - CollocationPointsFreqsAmplitudeInter: Output array for frequencies
+        - CollocationPointsValuesAmplitudeInter: Output array for values
+        - InspRescaleFactor, InterRescaleFactor, RDRescaleFactor: Rescaling factors
+        - IntermediateAmpFits: Array of fit functions
+    pWFHM : dict
+        Higher mode waveform structure containing:
+        - nCollocPtsInterAmp: Number of collocation points
+        - IMRPhenomXHMIntermediateAmpFreqsVersion: Version (0=equispaced, 1=Chebyshev)
+        - modeInt: Mode integer index
+        - MixingOn: Mode mixing flag
+        - IMRPhenomXHMIntermediateAmpFitsVersion: Version for amplitude fits
+    pWF22 : dict
+        (2,2) mode waveform structure
+    pPhase : dict
+        Phase coefficients dictionary
+    pAmp22 : dict
+        (2,2) mode amplitude coefficients
+    pPhase22 : dict
+        (2,2) mode phase coefficients
+
+    Returns
+    -------
+    None
+        Modifies pAmp in place
+
+    Raises
+    ------
+    ValueError
+        If version is not valid or number of collocation points is inconsistent
+    """
+    from .LALSimIMRPhenomXHM_internals import SpheroidalToSpherical
+    from .LALSimIMRPhenomXHM_inspiral import (
+        IMRPhenomXHM_Inspiral_Amp_Ansatz,
+        IMRPhenomXHM_Inspiral_Amp_NDAnsatz,
+    )
+    from .LALSimIMRPhenomXHM_ringdown import (
+        IMRPhenomXHM_RD_Amp_Ansatz,
+        IMRPhenomXHM_RD_Amp_DAnsatz,
+        IMRPhenomXHM_RD_Amp_NDAnsatz,
+    )
+
+    # Define collocation points frequencies
+    version = pWFHM['IMRPhenomXHMIntermediateAmpFreqsVersion']
+
+    if version == 0:  # Equispaced
+        deltaf = (pAmp['fAmpMatchIM'] - pAmp['fAmpMatchIN']) / (pWFHM['nCollocPtsInterAmp'] - 1)
+        idx = 0
+        for i in range(pWFHM['nCollocPtsInterAmp']):
+            if pAmp['VersionCollocPtsInter'][i] == 1:
+                # Add point
+                pAmp['CollocationPointsFreqsAmplitudeInter'][idx] = pAmp['fAmpMatchIN'] + deltaf * i
+            elif pAmp['VersionCollocPtsInter'][i] == 2:
+                # Add point + derivative
+                pAmp['CollocationPointsFreqsAmplitudeInter'][idx] = pAmp['fAmpMatchIN'] + deltaf * i
+                pAmp['CollocationPointsFreqsAmplitudeInter'][idx + 1] = pAmp['CollocationPointsFreqsAmplitudeInter'][idx]
+            idx += pAmp['VersionCollocPtsInter'][i]
+
+    elif version == 1:  # Chebyshev
+        semisum = 0.5 * (pAmp['fAmpMatchIN'] + pAmp['fAmpMatchIM'])
+        semidif = 0.5 * (pAmp['fAmpMatchIM'] - pAmp['fAmpMatchIN'])
+        for i in range(pWFHM['nCollocPtsInterAmp'] + 2, -1, -1):
+            pAmp['CollocationPointsFreqsAmplitudeInter'][i] = (
+                semisum + semidif * jnp.cos(i * jnp.pi / pWFHM['nCollocPtsInterAmp'])
+            )
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_Amp_CollocationPoints: "
+            f"IMRPhenomXHMIntermediateAmpFreqsVersion = {version} is not valid."
+        )
+
+    # Define values
+    from .LALSimIMRPhenomX_internals import IMRPhenomX_Initialize_Powers
+
+    powers_of_finsp = IMRPhenomX_Initialize_Powers(pAmp['fAmpMatchIN'])
+
+    # Temporarily swap rescale factors for inspiral boundary
+    tmp_factor = pAmp['InspRescaleFactor']
+    pAmp['InspRescaleFactor'] = pAmp['InterRescaleFactor']
+    tmpnCollocPts = 0
+
+    if pAmp['VersionCollocPtsInter'][0] == 1:
+        pAmp['CollocationPointsValuesAmplitudeInter'][0] = IMRPhenomXHM_Inspiral_Amp_Ansatz(
+            powers_of_finsp, pWFHM, pAmp
+        )
+        tmpnCollocPts += 1
+    elif pAmp['VersionCollocPtsInter'][0] == 2:
+        pAmp['CollocationPointsValuesAmplitudeInter'][0] = IMRPhenomXHM_Inspiral_Amp_Ansatz(
+            powers_of_finsp, pWFHM, pAmp
+        )
+        pAmp['CollocationPointsValuesAmplitudeInter'][1] = IMRPhenomXHM_Inspiral_Amp_NDAnsatz(
+            powers_of_finsp, pWFHM, pAmp
+        )
+        tmpnCollocPts += 2
+
+    pAmp['InspRescaleFactor'] = tmp_factor
+
+    # Call parameter space fits for intermediate points
+    idx = 0
+    for i in range(1, pWFHM['nCollocPtsInterAmp'] - 1):
+        if i <= 2:
+            idx = pWFHM['modeInt'] * 2 + i - 1
+        else:
+            idx = pWFHM['modeInt'] * 2 + i - 3 + 16
+
+        if pAmp['VersionCollocPtsInter'][i] == 1:
+            pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts] = jnp.abs(
+                pAmp['IntermediateAmpFits'][idx](pWF22, pWFHM['IMRPhenomXHMIntermediateAmpFitsVersion'])
+            )
+            tmpnCollocPts += 1
+
+    # Ringdown boundary
+    tmp_factor = pAmp['RDRescaleFactor']
+    pAmp['RDRescaleFactor'] = pAmp['InterRescaleFactor']
+    powers_of_fRD = IMRPhenomX_Initialize_Powers(pAmp['fAmpMatchIM'])
+
+    version_last = pAmp['VersionCollocPtsInter'][pWFHM['nCollocPtsInterAmp'] - 1]
+
+    if version_last == 1:  # Add point
+        if pWFHM['MixingOn'] == 0:
+            pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts] = IMRPhenomXHM_RD_Amp_Ansatz(
+                powers_of_fRD, pWFHM, pAmp
+            )
+        else:
+            pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts] = jnp.abs(
+                SpheroidalToSpherical(powers_of_fRD, pAmp22, pPhase22, pAmp, pPhase, pWFHM, pWF22)
+            )
+        tmpnCollocPts += 1
+
+    elif version_last == 2:  # Add point + derivative
+        if pWFHM['MixingOn'] == 0:
+            pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts] = IMRPhenomXHM_RD_Amp_Ansatz(
+                powers_of_fRD, pWFHM, pAmp
+            )
+            pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts + 1] = IMRPhenomXHM_RD_Amp_DAnsatz(
+                powers_of_fRD, pWFHM, pAmp
+            )
+        else:
+            pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts] = jnp.abs(
+                SpheroidalToSpherical(powers_of_fRD, pAmp22, pPhase22, pAmp, pPhase, pWFHM, pWF22)
+            )
+            pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts + 1] = IMRPhenomXHM_RD_Amp_NDAnsatz(
+                powers_of_fRD, pAmp, pPhase, pWFHM, pAmp22, pPhase22, pWF22
+            )
+        tmpnCollocPts += 2
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_Amp_CollocationPoints: "
+            f"version {version_last} is not valid."
+        )
+
+    pAmp['RDRescaleFactor'] = tmp_factor
+
+    # Verify consistency
+    if tmpnCollocPts != pAmp['nCoefficientsInter']:
+        raise ValueError(
+            f"IMRPhenomXHM_Intermediate_Amp_CollocationPoints failed. "
+            f"Inconsistent number of free parameters {tmpnCollocPts}, {pAmp['nCoefficientsInter']}."
+        )
+
+
+def IMRPhenomXHM_Intermediate_Amp_Coefficients(
+    pAmp: dict, pWFHM: dict, pWF22: dict, pPhase: dict, pAmp22: dict, pPhase22: dict
+) -> None:
+    """
+    Compute intermediate amplitude coefficients via collocation.
+
+    Solves a linear system A x = b to determine the coefficients of the
+    intermediate amplitude ansatz. The ansatz is a polynomial divided by f^(7/6).
+
+    Parameters
+    ----------
+    pAmp : dict
+        Amplitude coefficients dictionary to be filled with:
+        - nCoefficientsInter: Number of free coefficients
+        - InterCoefficient: Output array for intermediate coefficients
+        - VersionCollocPtsInter: Array indicating collocation point types
+        - CollocationPointsFreqsAmplitudeInter: Collocation point frequencies
+        - CollocationPointsValuesAmplitudeInter: Target values at collocation points
+    pWFHM : dict
+        Higher mode waveform structure containing:
+        - nCollocPtsInterAmp: Number of collocation points
+    pWF22 : dict
+        (2,2) mode waveform structure
+    pPhase : dict
+        Phase coefficients dictionary
+    pAmp22 : dict
+        (2,2) mode amplitude coefficients
+    pPhase22 : dict
+        (2,2) mode phase coefficients
+
+    Returns
+    -------
+    None
+        Modifies pAmp['InterCoefficient'] in place
+
+    Raises
+    ------
+    ValueError
+        If number of collocation points is inconsistent with free parameters
+
+    Notes
+    -----
+    The intermediate ansatz is of the form:
+        A_inter(f) = (c0 + c1*f + c2*f^2 + ... + cn*f^n) * f^(-7/6)
+
+    For derivative constraints, the derivative is:
+        dA/df = sum_j (j - 7/6) * cj * f^(j - 7/6 - 1)
+    """
+
+    nCollocPtsInterAmp = pAmp['nCoefficientsInter']
+
+    # Define set of collocation points
+    IMRPhenomXHM_Intermediate_Amp_CollocationPoints(pAmp, pWFHM, pWF22, pPhase, pAmp22, pPhase22)
+
+    # Define linear system of equations: A x = b
+    # x is the solution vector: the coefficients of the intermediate ansatz
+    # b is the vector of collocation points for a set of frequencies
+    # A is the matrix of multiplicative factors to each coefficient
+
+    b = jnp.zeros(nCollocPtsInterAmp)
+    A = jnp.zeros((nCollocPtsInterAmp, nCollocPtsInterAmp))
+
+    seven_sixths = 7.0 / 6.0
+    tmpnCollocPts = 0
+
+    for i in range(pWFHM['nCollocPtsInterAmp']):
+        # Skip the 0 cases (collocation point not used)
+        if pAmp['VersionCollocPtsInter'][i] > 0:
+            # Set b vector
+            b = b.at[tmpnCollocPts].set(pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts])
+
+            # Set system matrix: Polynomial/f^(7/6) at the collocation point frequencies
+            # A = (1, f1, f1^2, f1^3, ...) * f1^(-7/6)
+            #     (1, f2, f2^2, f2^3, ...) * f2^(-7/6)
+            #     ...
+            fcollpoint = pAmp['CollocationPointsFreqsAmplitudeInter'][tmpnCollocPts]
+            fcollpoint_m_seven_sixths = jnp.power(fcollpoint, -seven_sixths)
+            fpower = 1.0  # 1, f, f^2, f^3, ...
+
+            # Add equation for point
+            for j in range(nCollocPtsInterAmp):
+                A = A.at[tmpnCollocPts, j].set(fpower * fcollpoint_m_seven_sixths)
+                fpower *= fcollpoint
+
+            tmpnCollocPts += 1
+
+            # Add equation for derivative if required
+            if pAmp['VersionCollocPtsInter'][i] == 2:
+                b = b.at[tmpnCollocPts].set(pAmp['CollocationPointsValuesAmplitudeInter'][tmpnCollocPts])
+                fpower = 1.0 / fcollpoint
+
+                for j in range(nCollocPtsInterAmp):
+                    derivative = (j - seven_sixths) * fpower * fcollpoint_m_seven_sixths
+                    A = A.at[tmpnCollocPts, j].set(derivative)
+                    fpower *= fcollpoint
+
+                tmpnCollocPts += 1
+
+    # Verify consistency
+    if tmpnCollocPts != pAmp['nCoefficientsInter']:
+        raise ValueError(
+            f"IMRPhenomXHM_Intermediate_Amp_Coefficients failed. "
+            f"Inconsistent number of collocation points ({tmpnCollocPts}) "
+            f"and free parameters ({pAmp['nCoefficientsInter']})."
+        )
+
+    # Solve the linear system A x = b via LU decomposition
+    x = jnp.linalg.solve(A, b)
+
+    # The solution corresponds to the coefficients of the ansatz
+    for i in range(pAmp['nCoefficientsInter']):
+        pAmp['InterCoefficient'][i] = x[i]
+
+
+def IMRPhenomXHM_Intermediate_Amp_delta0(
+    d1: float, d4: float, v1: float, v2: float, v3: float, v4: float,
+    f1: float, f2: float, f3: float, f4: float, IntAmpFlag: int
+) -> float:
+    """
+    Compute delta0 coefficient for intermediate amplitude reconstruction.
+
+    This function computes the constant coefficient (delta0) for polynomial
+    ansatzes of various orders used in the intermediate amplitude region.
+
+    Parameters
+    ----------
+    d1, d4 : float
+        Derivative values at boundary frequencies f1 and f4
+    v1, v2, v3, v4 : float
+        Function values at frequencies f1, f2, f3, f4
+    f1, f2, f3, f4 : float
+        Collocation point frequencies
+    IntAmpFlag : int
+        Version flag determining the ansatz order:
+        - 101: Linear (2 points)
+        - 102: Quadratic (2 points + 1 derivative)
+        - 1032: Cubic (2 points + 2 derivatives)
+        - 103: Cubic (4 points)
+        - 1043: Quartic (4 points + 1 derivative, no left)
+        - 1042: Quartic (2 points + 2 derivatives + 1 point)
+        - 104: Quartic (Geraint's version)
+        - 105: Quintic (4 points + 2 derivatives)
+
+    Returns
+    -------
+    float
+        The delta0 coefficient
+
+    Raises
+    ------
+    ValueError
+        If IntAmpFlag is not valid
+    """
+    import jax.numpy as jnp
+
+    if IntAmpFlag == 101:  # Linear
+        f1mf4 = f1 - f4
+        retVal = (-(f4 * v1) + f1 * v4) / f1mf4
+
+    elif IntAmpFlag == 102:  # Quadratic
+        f12 = f1 * f1
+        f42 = f4 * f4
+        f1mf4 = f1 - f4
+        f1mf42 = f1mf4 * f1mf4
+        retVal = (-(d4 * f1 * f1mf4 * f4) + f42 * v1 + f12 * v4 - 2 * f1 * f4 * v4) / f1mf42
+
+    elif IntAmpFlag == 1032:  # 2 freqs, points and derivatives
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f1mf4 = f1 - f4
+        f1mf42 = f1mf4 * f1mf4
+        f1mf43 = f1mf42 * f1mf4
+        retVal = (d4 * f12 * f4 * (-f1 + f4) + d1 * f1 * (-f1 + f4) * f42 + 3 * f1 * f42 * v1 - 
+                  f43 * v1 + f13 * v4 - 3 * f12 * f4 * v4) / f1mf43
+
+    elif IntAmpFlag == 103:  # 4 freqs, no boundary derivatives
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+        
+        retVal = (f1 * f1mf3 * f1mf4 * f3 * f3mf4 * f4 * v2 + 
+                  f23 * (f1 * f1mf4 * f4 * v3 + f32 * (-(f4 * v1) + f1 * v4) + 
+                  f3 * (f42 * v1 - f12 * v4)) + 
+                  f2 * (f12 * f1mf4 * f42 * v3 + f33 * (-(f42 * v1) + f12 * v4) + 
+                  f32 * (f43 * v1 - f13 * v4)) + 
+                  f22 * (f1 * f4 * (-f12 + f42) * v3 + f33 * (f4 * v1 - f1 * v4) + 
+                  f3 * (-(f43 * v1) + f13 * v4))) / (f1mf2 * f1mf3 * f1mf4 * f2mf3 * f2mf4 * f3mf4)
+
+    elif IntAmpFlag == 1043:  # No left derivative
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+        
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+        f1mf42 = f1mf4 * f1mf4
+        f3mf42 = f3mf4 * f3mf4
+        f2mf42 = f2mf4 * f2mf4
+        
+        retVal = (-(d4 * f1 * f1mf2 * f1mf3 * f1mf4 * f2 * f2mf3 * f2mf4 * f3 * f3mf4 * f4) - 
+                  f1 * f1mf3 * f1mf42 * f3 * f3mf42 * f42 * v2 + 
+                  f24 * (-(f1 * f1mf42 * f42 * v3) + f33 * (f42 * v1 + f12 * v4 - 2 * f1 * f4 * v4) + 
+                  f3 * f4 * (f43 * v1 + 2 * f13 * v4 - 3 * f12 * f4 * v4) - 
+                  f32 * (2 * f43 * v1 + f13 * v4 - 3 * f1 * f42 * v4)) + 
+                  f2 * f4 * (f12 * f1mf42 * f43 * v3 - f34 * (f43 * v1 + 2 * f13 * v4 - 3 * f12 * f4 * v4) - 
+                  f32 * f4 * (f44 * v1 + 3 * f14 * v4 - 4 * f13 * f4 * v4) + 
+                  2 * f33 * (f44 * v1 + f14 * v4 - 2 * f12 * f42 * v4)) + 
+                  f22 * (-(f1 * f1mf42 * (2 * f1 + f4) * f43 * v3) + 
+                  f3 * f42 * (f44 * v1 + 3 * f14 * v4 - 4 * f13 * f4 * v4) + 
+                  f34 * (2 * f43 * v1 + f13 * v4 - 3 * f1 * f42 * v4) - 
+                  f33 * (3 * f44 * v1 + f14 * v4 - 4 * f1 * f43 * v4)) + 
+                  f23 * (f1 * f1mf42 * (f1 + 2 * f4) * f42 * v3 - 
+                  f34 * (f42 * v1 + f12 * v4 - 2 * f1 * f4 * v4) + 
+                  f32 * (3 * f44 * v1 + f14 * v4 - 4 * f1 * f43 * v4) - 
+                  2 * f3 * (f45 * v1 + f14 * f4 * v4 - 2 * f12 * f43 * v4))) / (f1mf2 * f1mf3 * f1mf42 * f2mf3 * f2mf42 * f3mf42)
+
+    elif IntAmpFlag == 1042:  # 4th order poly: v1,d1, v4,d4, v3
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        
+        f1mf4 = f1 - f4
+        f1mf3 = f1 - f3
+        f3mf4 = f3 - f4
+        f1mf42 = f1mf4 * f1mf4
+        f1mf32 = f1mf3 * f1mf3
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf42 * f1mf4
+        
+        retVal = (-(d4 * f12 * f1mf32 * f1mf4 * f3 * f3mf4 * f4) + 
+                  d1 * f1 * f1mf3 * f1mf4 * f3 * f3mf42 * f42 - 
+                  4 * f12 * f33 * f42 * v1 + 3 * f1 * f34 * f42 * v1 + 
+                  8 * f12 * f32 * f43 * v1 - 4 * f1 * f33 * f43 * v1 - f34 * f43 * v1 - 
+                  4 * f12 * f3 * f44 * v1 - f1 * f32 * f44 * v1 + 2 * f33 * f44 * v1 + 
+                  2 * f1 * f3 * f45 * v1 - f32 * f45 * v1 + f15 * f42 * v3 - 
+                  3 * f14 * f43 * v3 + 3 * f13 * f44 * v3 - f12 * f45 * v3 + 
+                  f15 * f32 * v4 - 2 * f14 * f33 * v4 + f13 * f34 * v4 - 
+                  2 * f15 * f3 * f4 * v4 + f14 * f32 * f4 * v4 + 4 * f13 * f33 * f4 * v4 - 
+                  3 * f12 * f34 * f4 * v4 + 4 * f14 * f3 * f42 * v4 - 
+                  8 * f13 * f32 * f42 * v4 + 4 * f12 * f33 * f42 * v4) / (f1mf32 * f1mf43 * f3mf42)
+
+    elif IntAmpFlag == 104:  # Geraint's version
+        f12 = f1 * f1
+        f42 = f4 * f4
+        f1mf2 = f1 - f2
+        f1mf4 = f1 - f4
+        f2mf4 = f2 - f4
+        f1mf22 = f1mf2 * f1mf2
+        f2mf42 = f2mf4 * f2mf4
+        f1mf43 = f1mf4 * f1mf4 * f1mf4
+        
+        retVal = ((-(d4 * f12 * f1mf22 * f1mf4 * f2 * f2mf4 * f4) + 
+                   d1 * f1 * f1mf2 * f1mf4 * f2 * f2mf42 * f42 + 
+                   f42 * (f2 * f2mf42 * (-4 * f12 + 3 * f1 * f2 + 2 * f1 * f4 - f2 * f4) * v1 + 
+                   f12 * f1mf43 * v2) + 
+                   f12 * f1mf22 * f2 * (f1 * f2 - 2 * f1 * f4 - 3 * f2 * f4 + 4 * f42) * v4) / 
+                  (f1mf22 * f1mf43 * f2mf42))
+
+    elif IntAmpFlag == 105:  # Geraint, standard way
+        f12 = f1 * f1
+        f13 = f12 * f1
+        f14 = f13 * f1
+        f15 = f14 * f1
+        f16 = f15 * f1
+        f17 = f16 * f1
+        f22 = f2 * f2
+        f23 = f22 * f2
+        f24 = f23 * f2
+        f25 = f24 * f2
+        f32 = f3 * f3
+        f33 = f32 * f3
+        f34 = f33 * f3
+        f35 = f34 * f3
+        f42 = f4 * f4
+        f43 = f42 * f4
+        f44 = f43 * f4
+        f45 = f44 * f4
+        f46 = f45 * f4
+        f47 = f46 * f4
+        
+        f1mf2 = f1 - f2
+        f1mf3 = f1 - f3
+        f1mf4 = f1 - f4
+        f2mf3 = f2 - f3
+        f2mf4 = f2 - f4
+        f3mf4 = f3 - f4
+        f1mf22 = f1mf2 * f1mf2
+        f1mf32 = f1mf3 * f1mf3
+        f1mf42 = f1mf4 * f1mf4
+        f2mf42 = f2mf4 * f2mf4
+        f3mf42 = f3mf4 * f3mf4
+        f1mf43 = f1mf42 * f1mf4
+        
+        retVal = ((-(d4 * f12 * f1mf22 * f1mf32 * f1mf4 * f2 * f2mf3 * f2mf4 * f3 * f3mf4 * f4) - 
+                   d1 * f1 * f1mf2 * f1mf3 * f1mf4 * f2 * f2mf3 * f2mf42 * f3 * f3mf42 * f42 + 
+                   5 * f13 * f24 * f33 * f42 * v1 - 4 * f12 * f25 * f33 * f42 * v1 - 
+                   5 * f13 * f23 * f34 * f42 * v1 + 3 * f1 * f25 * f34 * f42 * v1 + 
+                   4 * f12 * f23 * f35 * f42 * v1 - 3 * f1 * f24 * f35 * f42 * v1 - 
+                   10 * f13 * f24 * f32 * f43 * v1 + 8 * f12 * f25 * f32 * f43 * v1 + 
+                   5 * f12 * f24 * f33 * f43 * v1 - 4 * f1 * f25 * f33 * f43 * v1 + 
+                   10 * f13 * f22 * f34 * f43 * v1 - 5 * f12 * f23 * f34 * f43 * v1 - 
+                   f25 * f34 * f43 * v1 - 8 * f12 * f22 * f35 * f43 * v1 + 
+                   4 * f1 * f23 * f35 * f43 * v1 + f24 * f35 * f43 * v1 + 
+                   5 * f13 * f24 * f3 * f44 * v1 - 4 * f12 * f25 * f3 * f44 * v1 + 
+                   15 * f13 * f23 * f32 * f44 * v1 - 10 * f12 * f24 * f32 * f44 * v1 - 
+                   f1 * f25 * f32 * f44 * v1 - 15 * f13 * f22 * f33 * f44 * v1 + 
+                   5 * f1 * f24 * f33 * f44 * v1 + 2 * f25 * f33 * f44 * v1 - 
+                   5 * f13 * f2 * f34 * f44 * v1 + 10 * f12 * f22 * f34 * f44 * v1 - 
+                   5 * f1 * f23 * f34 * f44 * v1 + 4 * f12 * f2 * f35 * f44 * v1 + 
+                   f1 * f22 * f35 * f44 * v1 - 2 * f23 * f35 * f44 * v1 - 
+                   10 * f13 * f23 * f3 * f45 * v1 + 5 * f12 * f24 * f3 * f45 * v1 + 
+                   2 * f1 * f25 * f3 * f45 * v1 - f12 * f23 * f32 * f45 * v1 + 
+                   2 * f1 * f24 * f32 * f45 * v1 - f25 * f32 * f45 * v1 + 
+                   10 * f13 * f2 * f33 * f45 * v1 + f12 * f22 * f33 * f45 * v1 - 
+                   3 * f24 * f33 * f45 * v1 - 5 * f12 * f2 * f34 * f45 * v1 - 
+                   2 * f1 * f22 * f34 * f45 * v1 + 3 * f23 * f34 * f45 * v1 - 
+                   2 * f1 * f2 * f35 * f45 * v1 + f22 * f35 * f45 * v1 + 
+                   5 * f13 * f22 * f3 * f46 * v1 + 2 * f12 * f23 * f3 * f46 * v1 - 
+                   4 * f1 * f24 * f3 * f46 * v1 - 5 * f13 * f2 * f32 * f46 * v1 - 
+                   f1 * f23 * f32 * f46 * v1 + 2 * f24 * f32 * f46 * v1 - 
+                   2 * f12 * f2 * f33 * f46 * v1 + f1 * f22 * f33 * f46 * v1 + 
+                   4 * f1 * f2 * f34 * f46 * v1 - 2 * f22 * f34 * f46 * v1 - 
+                   3 * f12 * f22 * f3 * f47 * v1 + 2 * f1 * f23 * f3 * f47 * v1 + 
+                   3 * f12 * f2 * f32 * f47 * v1 - f23 * f32 * f47 * v1 - 
+                   2 * f1 * f2 * f33 * f47 * v1 + f22 * f33 * f47 * v1 - 
+                   f17 * f33 * f42 * v2 + 2 * f16 * f34 * f42 * v2 - f15 * f35 * f42 * v2 + 
+                   2 * f17 * f32 * f43 * v2 - f16 * f33 * f43 * v2 - 4 * f15 * f34 * f43 * v2 + 
+                   3 * f14 * f35 * f43 * v2 - f17 * f3 * f44 * v2 - 4 * f16 * f32 * f44 * v2 + 
+                   8 * f15 * f33 * f44 * v2 - 3 * f13 * f35 * f44 * v2 + 3 * f16 * f3 * f45 * v2 - 
+                   8 * f14 * f33 * f45 * v2 + 4 * f13 * f34 * f45 * v2 + f12 * f35 * f45 * v2 - 
+                   3 * f15 * f3 * f46 * v2 + 4 * f14 * f32 * f46 * v2 + f13 * f33 * f46 * v2 - 
+                   2 * f12 * f34 * f46 * v2 + f14 * f3 * f47 * v2 - 2 * f13 * f32 * f47 * v2 + 
+                   f12 * f33 * f47 * v2 + f17 * f23 * f42 * v3 - 2 * f16 * f24 * f42 * v3 + 
+                   f15 * f25 * f42 * v3 - 2 * f17 * f22 * f43 * v3 + f16 * f23 * f43 * v3 + 
+                   4 * f15 * f24 * f43 * v3 - 3 * f14 * f25 * f43 * v3 + f17 * f2 * f44 * v3 + 
+                   4 * f16 * f22 * f44 * v3 - 8 * f15 * f23 * f44 * v3 + 3 * f13 * f25 * f44 * v3 - 
+                   3 * f16 * f2 * f45 * v3 + 8 * f14 * f23 * f45 * v3 - 4 * f13 * f24 * f45 * v3 - 
+                   f12 * f25 * f45 * v3 + 3 * f15 * f2 * f46 * v3 - 4 * f14 * f22 * f46 * v3 - 
+                   f13 * f23 * f46 * v3 + 2 * f12 * f24 * f46 * v3 - f14 * f2 * f47 * v3 + 
+                   2 * f13 * f22 * f47 * v3 - f12 * f23 * f47 * v3 + 
+                   f12 * f1mf22 * f1mf32 * f2 * f2mf3 * f3 * 
+                   (f4 * (-3 * f2 * f3 + 4 * (f2 + f3) * f4 - 5 * f42) + 
+                   f1 * (f2 * f3 - 2 * (f2 + f3) * f4 + 3 * f42)) * v4) / 
+                  (f1mf22 * f1mf32 * f1mf43 * f2mf3 * f2mf42 * f3mf42))
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Intermediate_Amp_delta0: "
+            f"IMRPhenomXIntermediateAmpVersion {IntAmpFlag} is not valid."
+        )
+
+    return retVal

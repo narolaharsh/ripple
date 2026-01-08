@@ -1818,9 +1818,295 @@ def compute_powers_of_f(f: float) -> dict:
     }
 
 
-# Note: The following functions would require additional implementation:
-# - RescaleFactor: Used in PNAmp_21Ansatz and Inspiral_Amp_Ansatz
-# - IMRPhenomXHM_Get_Inspiral_Amp_Coefficients
-# - IMRPhenomXHM_Inspiral_Amp_CollocationPoints
-# - IMRPhenomXHM_Inspiral_Amp_Coefficients
-# These depend on broader waveform infrastructure and fits data structures.
+# ==================== Coefficient Computation Functions ====================
+
+def IMRPhenomXHM_Inspiral_Amp_CollocationPoints(pAmp: dict, pWFHM: dict, pWF22: dict) -> dict:
+    """
+    Compute collocation point frequencies and values for inspiral amplitude reconstruction.
+
+    This function sets the frequencies where the amplitude will be evaluated for
+    collocation, and evaluates the fitted amplitude values at those frequencies.
+
+    Parameters
+    ----------
+    pAmp : dict
+        Amplitude coefficients structure containing:
+        - fAmpMatchIN: Matching frequency for inspiral-intermediate transition
+        - InspiralAmpFits: Array of fit functions for inspiral amplitude
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - IMRPhenomXHMInspiralAmpFreqsVersion: Version flag for frequency selection
+        - nCollocPtsInspAmp: Number of collocation points
+        - modeInt: Mode integer index
+        - IMRPhenomXHMInspiralAmpFitsVersion: Version flag for fit formulas
+        - InspiralAmpVeto: Flag for applying veto logic
+    pWF22 : dict
+        Waveform structure for the 22 mode
+
+    Returns
+    -------
+    dict
+        Updated pAmp dictionary with:
+        - CollocationPointsFreqsAmplitudeInsp: Frequencies at collocation points
+        - CollocationPointsValuesAmplitudeInsp: Amplitude values at collocation points
+        Also updates pWFHM['IMRPhenomXHMInspiralAmpVersion'] if veto is applied
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXHMInspiralAmpFreqsVersion is not valid
+    """
+    pAmp_out = pAmp.copy()
+    pWFHM_out = pWFHM.copy()
+
+    # Initialize arrays
+    pAmp_out['CollocationPointsFreqsAmplitudeInsp'] = [0.0] * pWFHM['nCollocPtsInspAmp']
+    pAmp_out['CollocationPointsValuesAmplitudeInsp'] = [0.0] * pWFHM['nCollocPtsInspAmp']
+
+    AmpFreqsVersion = pWFHM['IMRPhenomXHMInspiralAmpFreqsVersion']
+
+    if AmpFreqsVersion == 122022 or AmpFreqsVersion == 102021:
+        # Standard collocation point frequencies
+        pAmp_out['CollocationPointsFreqsAmplitudeInsp'][0] = 0.5 * pAmp['fAmpMatchIN']
+        pAmp_out['CollocationPointsFreqsAmplitudeInsp'][1] = 0.75 * pAmp['fAmpMatchIN']
+        pAmp_out['CollocationPointsFreqsAmplitudeInsp'][2] = pAmp['fAmpMatchIN']
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomXHM_Inspiral_Amp_CollocationPoints: "
+            f"IMRPhenomXHMInspiralAmpFreqsVersion = {AmpFreqsVersion} is not valid. "
+            f"Recommended version is 102021."
+        )
+
+    # Evaluate fits at collocation points
+    for i in range(pWFHM['nCollocPtsInspAmp']):
+        pAmp_out['CollocationPointsValuesAmplitudeInsp'][i] = jnp.abs(
+            pAmp['InspiralAmpFits'][pWFHM['modeInt'] * pWFHM['nCollocPtsInspAmp'] + i](
+                pWF22, pWFHM['IMRPhenomXHMInspiralAmpFitsVersion']
+            )
+        )
+
+    # Apply veto if requested
+    if pWFHM.get('InspiralAmpVeto', 0) == 1:
+        pWFHM_out['IMRPhenomXHMInspiralAmpVersion'] = 13
+
+    return pAmp_out, pWFHM_out
+
+
+def IMRPhenomXHM_Inspiral_Amp_Coefficients(
+    pAmp: dict,
+    powers_of_Mf_inspcollpoints: list,
+    pWFHM: dict
+) -> dict:
+    """
+    Compute inspiral amplitude reconstruction coefficients.
+
+    This function computes polynomial coefficients for the inspiral amplitude
+    reconstruction based on the collocation point values and the PN amplitude.
+    Different reconstruction schemes are used depending on which collocation
+    points pass the veto criteria.
+
+    Parameters
+    ----------
+    pAmp : dict
+        Amplitude coefficients structure containing:
+        - CollocationPointsValuesAmplitudeInsp: Amplitude values at collocation points
+        - PNAmplitudeInsp: PN amplitude values at collocation points
+        - PNdominant: Dominant PN term normalization
+    powers_of_Mf_inspcollpoints : list
+        List of power dictionaries for each collocation point plus matching frequency
+    pWFHM : dict
+        Waveform structure containing:
+        - IMRPhenomXHMInspiralAmpVersion: Version flag determining reconstruction scheme
+
+    Returns
+    -------
+    dict
+        Updated pAmp dictionary with InspiralCoefficient array computed
+    """
+    N_MAX_COEFFICIENTS_AMPLITUDE_INS = 10  # Maximum number of coefficients
+    pAmp_out = pAmp.copy()
+
+    # Initialize coefficients
+    pAmp_out['InspiralCoefficient'] = [0.0] * N_MAX_COEFFICIENTS_AMPLITUDE_INS
+
+    # Get power structures
+    powers_of_f1 = powers_of_Mf_inspcollpoints[0]
+    powers_of_f2 = powers_of_Mf_inspcollpoints[1]
+    powers_of_f3 = powers_of_Mf_inspcollpoints[2]
+    powers_of_finsp = powers_of_Mf_inspcollpoints[3]
+
+    # Compute normalized residuals at collocation points
+    v1 = (pAmp['CollocationPointsValuesAmplitudeInsp'][0] - pAmp['PNAmplitudeInsp'][0]) / \
+         pAmp['PNdominant'] / powers_of_f1['m_seven_sixths']
+    v2 = (pAmp['CollocationPointsValuesAmplitudeInsp'][1] - pAmp['PNAmplitudeInsp'][1]) / \
+         pAmp['PNdominant'] / powers_of_f2['m_seven_sixths']
+    v3 = (pAmp['CollocationPointsValuesAmplitudeInsp'][2] - pAmp['PNAmplitudeInsp'][2]) / \
+         pAmp['PNdominant'] / powers_of_f3['m_seven_sixths']
+
+    InspAmpVersion = pWFHM['IMRPhenomXHMInspiralAmpVersion']
+
+    if InspAmpVersion == 1:
+        # Use only first collocation point (constant reconstruction)
+        pAmp_out['InspiralCoefficient'][0] = (
+            (powers_of_finsp['seven_thirds'] * v1) / powers_of_f1['seven_thirds']
+        )
+
+    elif InspAmpVersion == 2:
+        # Use only second collocation point
+        pAmp_out['InspiralCoefficient'][0] = (
+            (powers_of_finsp['seven_thirds'] * v2) / powers_of_f2['seven_thirds']
+        )
+
+    elif InspAmpVersion == 3:
+        # Use only third collocation point
+        pAmp_out['InspiralCoefficient'][0] = (
+            (powers_of_finsp['seven_thirds'] * v3) / powers_of_f3['seven_thirds']
+        )
+
+    elif InspAmpVersion == 12:
+        # Use first and second collocation points (linear reconstruction)
+        pAmp_out['InspiralCoefficient'][0] = (
+            powers_of_finsp['seven_thirds'] *
+            (-(powers_of_f2['eight_thirds'] * v1) + powers_of_f1['eight_thirds'] * v2) /
+            (powers_of_f1['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f2['one_third']) *
+             powers_of_f2['seven_thirds'])
+        )
+        pAmp_out['InspiralCoefficient'][1] = (
+            powers_of_finsp['eight_thirds'] *
+            (powers_of_f1['m_seven_thirds'] * v1 - powers_of_f2['m_seven_thirds'] * v2) /
+            (powers_of_f1['one_third'] - powers_of_f2['one_third'])
+        )
+
+    elif InspAmpVersion == 13:
+        # Use first and third collocation points
+        pAmp_out['InspiralCoefficient'][0] = (
+            powers_of_finsp['seven_thirds'] *
+            (-(powers_of_f3['eight_thirds'] * v1) + powers_of_f1['eight_thirds'] * v3) /
+            (powers_of_f1['seven_thirds'] * (powers_of_f1['one_third'] - powers_of_f3['one_third']) *
+             powers_of_f3['seven_thirds'])
+        )
+        pAmp_out['InspiralCoefficient'][1] = (
+            powers_of_finsp['eight_thirds'] *
+            (powers_of_f1['m_seven_thirds'] * v1 - powers_of_f3['m_seven_thirds'] * v3) /
+            (powers_of_f1['one_third'] - powers_of_f3['one_third'])
+        )
+
+    elif InspAmpVersion == 23:
+        # Use second and third collocation points
+        pAmp_out['InspiralCoefficient'][0] = (
+            powers_of_finsp['seven_thirds'] *
+            (-(powers_of_f3['eight_thirds'] * v2) + powers_of_f2['eight_thirds'] * v3) /
+            (powers_of_f2['seven_thirds'] * (powers_of_f2['one_third'] - powers_of_f3['one_third']) *
+             powers_of_f3['seven_thirds'])
+        )
+        pAmp_out['InspiralCoefficient'][1] = (
+            powers_of_finsp['eight_thirds'] *
+            (powers_of_f1['m_seven_thirds'] * v1 - powers_of_f3['m_seven_thirds'] * v3) /
+            (powers_of_f1['one_third'] - powers_of_f3['one_third'])
+        )
+
+    elif InspAmpVersion == 123:
+        # Use all three collocation points (quadratic reconstruction)
+        denom = (powers_of_f1['seven_thirds'] *
+                 (powers_of_f1['one_third'] - powers_of_f2['one_third']) *
+                 powers_of_f2['seven_thirds'] *
+                 (powers_of_f1['one_third'] - powers_of_f3['one_third']) *
+                 (powers_of_f2['one_third'] - powers_of_f3['one_third']) *
+                 powers_of_f3['seven_thirds'])
+
+        pAmp_out['InspiralCoefficient'][0] = (
+            powers_of_finsp['seven_thirds'] *
+            (-(powers_of_f1['three'] * powers_of_f3['eight_thirds'] * v2) +
+             powers_of_f1['eight_thirds'] * powers_of_f3['three'] * v2 +
+             powers_of_f2['three'] * (powers_of_f3['eight_thirds'] * v1 - powers_of_f1['eight_thirds'] * v3) +
+             powers_of_f2['eight_thirds'] * (-(powers_of_f3['three'] * v1) + powers_of_f1['three'] * v3)) /
+            denom
+        )
+
+        pAmp_out['InspiralCoefficient'][1] = (
+            powers_of_finsp['eight_thirds'] *
+            (powers_of_f1['three'] * powers_of_f3['seven_thirds'] * v2 -
+             powers_of_f1['seven_thirds'] * powers_of_f3['three'] * v2 +
+             powers_of_f2['three'] * (-(powers_of_f3['seven_thirds'] * v1) + powers_of_f1['seven_thirds'] * v3) +
+             powers_of_f2['seven_thirds'] * (powers_of_f3['three'] * v1 - powers_of_f1['three'] * v3)) /
+            denom
+        )
+
+        pAmp_out['InspiralCoefficient'][2] = (
+            powers_of_finsp['three'] *
+            (powers_of_f1['seven_thirds'] * (-powers_of_f1['one_third'] + powers_of_f3['one_third']) *
+             powers_of_f3['seven_thirds'] * v2 +
+             powers_of_f2['seven_thirds'] * (-(powers_of_f3['eight_thirds'] * v1) + powers_of_f1['eight_thirds'] * v3) +
+             powers_of_f2['eight_thirds'] * (powers_of_f3['seven_thirds'] * v1 - powers_of_f1['seven_thirds'] * v3)) /
+            denom
+        )
+
+    return pAmp_out
+
+
+def IMRPhenomXHM_Get_Inspiral_Amp_Coefficients(pAmp: dict, pWFHM: dict, pWF22: dict) -> dict:
+    """
+    Main function to compute all inspiral amplitude coefficients.
+
+    This is the top-level function that orchestrates the computation of inspiral
+    amplitude coefficients. It:
+    1. Computes collocation point frequencies and values
+    2. Initializes power structures for all collocation points
+    3. Evaluates PN amplitude at collocation points
+    4. Computes reconstruction coefficients
+
+    Parameters
+    ----------
+    pAmp : dict
+        Amplitude coefficients structure containing fit function arrays
+    pWFHM : dict
+        Waveform structure for the higher mode containing:
+        - nCollocPtsInspAmp: Number of collocation points (typically 3)
+        - Various version flags and parameters
+    pWF22 : dict
+        Waveform structure for the 22 mode
+
+    Returns
+    -------
+    dict
+        Updated pAmp dictionary with all inspiral amplitude coefficients computed:
+        - CollocationPointsFreqsAmplitudeInsp: Collocation point frequencies
+        - CollocationPointsValuesAmplitudeInsp: Amplitude values at collocation points
+        - PNAmplitudeInsp: PN amplitude at collocation points
+        - InspiralCoefficient: Reconstruction polynomial coefficients
+        - fcutInsp_seven_thirds, fcutInsp_eight_thirds, fcutInsp_three: Power terms
+    """
+    # Get collocation points
+    pAmp_updated, pWFHM_updated = IMRPhenomXHM_Inspiral_Amp_CollocationPoints(pAmp, pWFHM, pWF22)
+
+    # Initialize power structures for collocation points + matching frequency
+    powers_of_Mf_inspcollpoints = []
+    for i in range(pWFHM['nCollocPtsInspAmp']):
+        powers_of_Mf_inspcollpoints.append(
+            compute_powers_of_f(pAmp_updated['CollocationPointsFreqsAmplitudeInsp'][i])
+        )
+
+    # Add power structure for matching frequency
+    powers_of_Mf_inspcollpoints.append(compute_powers_of_f(pAmp_updated['fAmpMatchIN']))
+
+    # Store specific powers for matching frequency
+    pAmp_updated['fcutInsp_seven_thirds'] = powers_of_Mf_inspcollpoints[pWFHM['nCollocPtsInspAmp']]['seven_thirds']
+    pAmp_updated['fcutInsp_eight_thirds'] = powers_of_Mf_inspcollpoints[pWFHM['nCollocPtsInspAmp']]['eight_thirds']
+    pAmp_updated['fcutInsp_three'] = powers_of_Mf_inspcollpoints[pWFHM['nCollocPtsInspAmp']]['three']
+
+    # Initialize PN amplitude array
+    pAmp_updated['PNAmplitudeInsp'] = [0.0] * pWFHM['nCollocPtsInspAmp']
+
+    # Evaluate PN amplitude at collocation points
+    for i in range(pWFHM['nCollocPtsInspAmp']):
+        pAmp_updated['PNAmplitudeInsp'][i] = IMRPhenomXHM_Inspiral_PNAmp_Ansatz(
+            powers_of_Mf_inspcollpoints[i], pWFHM_updated, pAmp_updated
+        )
+
+    # Compute reconstruction coefficients
+    pAmp_final = IMRPhenomXHM_Inspiral_Amp_Coefficients(
+        pAmp_updated, powers_of_Mf_inspcollpoints, pWFHM_updated
+    )
+
+    return pAmp_final
+

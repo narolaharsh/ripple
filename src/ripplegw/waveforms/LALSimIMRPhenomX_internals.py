@@ -18,7 +18,7 @@ from .LALSimIMRPhenomX_PNR_internals import (
 from .LALSimIMRPhenomX_inspiral import (IMRPhenomX_Inspiral_Phase_22_d13, IMRPhenomX_Inspiral_Phase_22_d23, IMRPhenomX_Inspiral_Phase_22_v3, IMRPhenomX_Inspiral_Phase_22_d43, IMRPhenomX_Inspiral_Phase_22_d53)
 
 from .LALSimIMRPhenomX_qnm import evaluate_QNMfit_fring22, evaluate_QNMfit_fdamp22
-from .LALSimIMRPhenomX_precession import XLALSimIMRPhenomXUtilsHztoMf
+
 
 from .LALSimIMRPhenomX_inspiral import IMRPhenomX_Inspiral_Phase_22_AnsatzInt
 from .LALSimIMRPhenomX_intermediate import IMRPhenomX_Intermediate_Phase_22_AnsatzInt
@@ -1609,3 +1609,25 @@ def IMRPhenomX_TimeShift_22(pPhase: dict, pWF: dict) -> float:
 
 def IMRPhenomX_Phase_22_ConnectionCoefficients():
     return #TODO
+
+
+
+def XLALSimIMRPhenomXUtilsHztoMf(fHz: float, Mtot_Msun: float) -> float:
+    """
+    Convert frequency from Hz to geometric units (Mf).
+
+    Parameters
+    ----------
+    fHz : float
+        Frequency in Hz
+    Mtot_Msun : float
+        Total mass in solar masses
+
+    Returns
+    -------
+    float
+        Geometric frequency Mf
+    """
+    # Mtot in seconds = Mtot_Msun * MTSUN_SI
+    MTSUN_SI = 4.925491025543575903411922162094833998e-6  # seconds
+    return fHz * Mtot_Msun * MTSUN_SI
