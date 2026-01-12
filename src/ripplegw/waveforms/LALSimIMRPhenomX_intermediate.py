@@ -932,6 +932,110 @@ def IMRPhenomX_Intermediate_Amp_22_delta5(d1: float, d4: float, V1: float, V2: f
     return retVal
 
 
+def IMRPhenomX_Intermediate_Phase_22_Ansatz(
+    ff: float,
+    powers_of_f: 'IMRPhenomX_UsefulPowers',
+    pWF: dict,
+    pPhase: dict
+) -> float:
+    """
+    Compute the derivative of the intermediate phase ansatz (dPhi/df).
+
+    This function evaluates the derivative of the intermediate regime phase ansatz
+    for the 22 mode. The ansatz includes polynomial terms in inverse powers of
+    frequency and a Lorentzian term that provides smooth connection to the ringdown.
+
+    Translated from LALSimIMRPhenomX_intermediate.c
+
+    Parameters
+    ----------
+    ff : float
+        Frequency in geometric units
+    powers_of_f : IMRPhenomX_UsefulPowers
+        Pre-computed powers of frequency for efficiency. Should have attributes:
+            - m_one: f^(-1) = 1/f
+            - m_two: f^(-2) = 1/f^2
+            - m_three: f^(-3) = 1/f^3
+            - m_four: f^(-4) = 1/f^4
+    pWF : dict
+        Waveform parameter structure containing:
+            - IMRPhenomXIntermediatePhaseVersion: Version flag (104 or 105)
+            - fRING: Ring-down frequency
+            - fDAMP: Damping frequency
+    pPhase : dict
+        Phase coefficient structure containing:
+            - b0: Constant term coefficient
+            - b1: Coefficient for 1/f term
+            - b2: Coefficient for 1/f^2 term
+            - b3: Coefficient for 1/f^3 term (only for version 105)
+            - b4: Coefficient for 1/f^4 term
+            - cLGR: GR Lorentzian coefficient
+
+    Returns
+    -------
+    float
+        Derivative of intermediate phase (dPhi/df) at frequency ff
+
+    Raises
+    ------
+    ValueError
+        If IMRPhenomXIntermediatePhaseVersion is not valid (104 or 105)
+
+    Notes
+    -----
+    Version 104 uses 4 coefficients: b0, b1, b2, b4 (canonical, recommended)
+    Version 105 uses 5 coefficients: b0, b1, b2, b3, b4 (canonical)
+
+    The Lorentzian term is: (4*cL) / ((4*fda^2) + (ff - frd)^2)
+    where cL = -a_RD * dphase0, ensuring GR coefficient variations in ringdown
+    decouple from the intermediate regime.
+    """
+    # Handle powers_of_f as either object or dictionary
+    if isinstance(powers_of_f, dict):
+        invff1 = powers_of_f['m_one']
+        invff2 = powers_of_f['m_two']
+        invff3 = powers_of_f['m_three']
+        invff4 = powers_of_f['m_four']
+    else:
+        invff1 = powers_of_f.m_one
+        invff2 = powers_of_f.m_two
+        invff3 = powers_of_f.m_three
+        invff4 = powers_of_f.m_four
+
+    fda = pWF['fDAMP']
+    frd = pWF['fRING']
+    # We pass the GR Lorentzian term to make sure that variations to the GR
+    # coefficients in the ringdown decouple from the intermediate regime
+    cL = pPhase['cLGR']
+
+    IntPhaseVersion = pWF['IMRPhenomXIntermediatePhaseVersion']
+
+    if IntPhaseVersion == 104:  # Canonical, 4 coefficients
+        # This is the Lorentzian term where cL = - a_{RD} dphase0
+        LorentzianTerm = (4.0 * cL) / ((4.0 * fda * fda) + (ff - frd) * (ff - frd))
+
+        # Return a polynomial embedded in the background from the merger
+        phaseOut = (pPhase['b0'] + pPhase['b1'] * invff1 + pPhase['b2'] * invff2 +
+                    pPhase['b4'] * invff4 + LorentzianTerm)
+
+    elif IntPhaseVersion == 105:  # Canonical, 5 coefficients
+        # This is the Lorentzian term where cL = - a_{RD} dphase0
+        LorentzianTerm = (4.0 * cL) / ((4.0 * fda * fda) + (ff - frd) * (ff - frd))
+
+        # Return a polynomial embedded in the background from the merger
+        phaseOut = (pPhase['b0'] + pPhase['b1'] * invff1 + pPhase['b2'] * invff2 +
+                    pPhase['b3'] * invff3 + pPhase['b4'] * invff4 + LorentzianTerm)
+
+    else:
+        raise ValueError(
+            f"Error in IMRPhenomX_Intermediate_Phase_22_Ansatz: "
+            f"IMRPhenomXIntermediatePhaseVersion = {IntPhaseVersion} is not valid. "
+            f"Recommended flag is 104."
+        )
+
+    return phaseOut
+
+
 def IMRPhenomX_Intermediate_Phase_22_AnsatzInt(
     f: float,
     powers_of_f: 'IMRPhenomX_UsefulPowers',

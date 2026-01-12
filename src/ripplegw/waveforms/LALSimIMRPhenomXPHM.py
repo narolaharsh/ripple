@@ -90,37 +90,28 @@ def IMRPhenomXPHM_hplushcross(frequency_array, pWF, pPrec, lalParams):
             ########             TWISTING UP         #############
             #Transform modes from the precessing L-frame to inertial J-frame.
 
-            MBandPrecVersion = 0
+            coarseFreqs = XLALSimIMRPhenomXPHMMultibandingGrid(ell, emmprime, pWF, lalParams)
+            v = jnp.cbrt(jnp.pi * coarseFreqs * 2  / emmprime)
+            vangles = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v, pWF, pPrec)
 
-            if MBandPrecVersion==0:
-                print('Not using multibanding for angles')
-                ########   Not  using MBAND FOR ANGLES     #############
-                
-            elif MBandPrecVersion==1:
-                ########        USING MBAND FOR ANGLES     #############
+            alpha_offset_mprime, epsilon_offset_mprime = Get_alpha_epsilon_offset(emmprime, pPrec)
 
-                coarseFreqs = XLALSimIMRPhenomXPHMMultibandingGrid(ell, emmprime, pWF, lalParams)
-                v = jnp.cbrt(jnp.pi * coarseFreqs * 2  / emmprime)
-                vangles = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(v, pWF, pPrec)
+            valpha = vangles[0] - alpha_offset_mprime
+            vepsilon = vangles[1] - epsilon_offset_mprime
+            cos_beta = vangles[2]
 
-                alpha_offset_mprime, epsilon_offset_mprime = Get_alpha_epsilon_offset(emmprime, pPrec)
+            #cBetah, sBetah = IMRPhenomXWignerdCoefficients_cosbeta(cos_beta)
+            #vbeta = jnp.acos(cBetah)
 
-                valpha = vangles[0] - alpha_offset_mprime
-                vepsilon = vangles[1] - epsilon_offset_mprime
-                cos_beta = vangles[2]
+            # j < len(coarseFreqs)-1 and finecount < istop
+            # For loop for interpolatio #TODO
 
-                cBetah, sBetah = IMRPhenomXWignerdCoefficients_cosbeta(cos_beta)
-                vbeta = jnp.acos(cBetah)
+            #Now we have the complex exponentials of the three Euler angles alpha, beta, epsilon evaluated in the fine frequency grid.
+            #Next step is do the twisting up with these.
 
-                # j < len(coarseFreqs)-1 and finecount < istop
-                # For loop for interpolatio #TODO
+            #/************** TWISTING UP in the fine grid *****************/
 
-                #Now we have the complex exponentials of the three Euler angles alpha, beta, epsilon evaluated in the fine frequency grid.
-                #Next step is do the twisting up with these.
-
-                #/************** TWISTING UP in the fine grid *****************/
-
-            IMRPhenomXPHMTwistUp(Mf, hlmcoprec, pWF, pPrec, ell, emmprime)
+            #IMRPhenomXPHMTwistUp(Mf, hlmcoprec, pWF, pPrec, ell, emmprime)
 
     
     
@@ -194,21 +185,21 @@ def XLALSimIMRPhenomXPHMMultibandingGrid(
     thresholdMB = 0.001#lalParams['PhenomXPHMThresholdMband']
 
     # Compute the coarse frequency array. It is stored in a list of grids.
-    iStart = int(pWF.fMin / pWF.deltaF)
+    iStart = int(pWF['fMin'] / pWF['deltaF'])
 
     # Final grid spacing, adimensional (NR) units
-    evaldMf = XLALSimIMRPhenomXUtilsHztoMf(pWF.deltaF, pWF.Mtot)
+    evaldMf = XLALSimIMRPhenomXUtilsHztoMf(pWF['deltaF'], pWF['Mtot'])
 
     # Variable for the Multibanding criteria. See eq. 2.8-2.9 of arXiv:2001.10897.
     dfpower = 11.0 / 6.0
     pi_m_one_sixth = jnp.power(jnp.pi, -1.0/6)
     dfcoefficient = (8.0 * jnp.sqrt(3.0 / 5.0) * jnp.pi * pi_m_one_sixth *
                      jnp.sqrt(2.0) * jnp.cbrt(2.0) / (jnp.cbrt(emmprime) * emmprime) *
-                     jnp.sqrt(thresholdMB * pWF.eta))
+                     jnp.sqrt(thresholdMB * pWF['eta']))
 
     # Variables for the coarse frequency grid
-    Mfmin = XLALSimIMRPhenomXUtilsHztoMf(iStart * pWF.deltaF, pWF.Mtot)
-    Mfmax = XLALSimIMRPhenomXUtilsHztoMf(pWF.f_max_prime, pWF.Mtot)
+    Mfmin = XLALSimIMRPhenomXUtilsHztoMf(iStart * pWF['deltaF'], pWF['Mtot'])
+    Mfmax = XLALSimIMRPhenomXUtilsHztoMf(pWF['f_max_prime'], pWF['Mtot'])
 
     dfmerger = 0.0
     dfringdown = 0.0
@@ -218,18 +209,21 @@ def XLALSimIMRPhenomXPHMMultibandingGrid(
     # In JAX, we'll need to handle this differently than malloc
     # This is a placeholder that would need proper implementation
     allGrids = []  # List of grid dictionaries
-
+    pPhase22 = IMRPhenomXGetPhaseCoefficients(pWF)
+    pAmp22 = {}
+    print('jax debug 4...22 mode complete ell emm', ell, emmprime)
     if ell == 2 and emmprime == 2:
+        
         MfMECO = pWF['fMECO']
         MfLorentzianEnd = pWF['fRING'] + 2 * pWF['fDAMP']
 
         # Get phase and amplitude coefficients for 22 mode
         #pPhase22 = IMRPhenomXGetPhaseCoefficients(pWF)
-        pAmp22 = IMRPhenomXGetAmplitudeCoefficients(pWF)
+        pAmp22 = IMRPhenomXGetAmplitudeCoefficients(pWF, pAmp)
 
-        dfmerger = deltaF_mergerBin(pWF.fDAMP, pPhase22.cLovfda / pWF.eta, thresholdMB)
-        dfringdown = deltaF_ringdownBin(pWF.fDAMP, pPhase22.cLovfda / pWF.eta,
-                                        pAmp22.gamma2 / (pAmp22.gamma3 * pWF.fDAMP), thresholdMB)
+        dfmerger = deltaF_mergerBin(pWF['fDAMP'], pPhase22['cLovfda'] / pWF['eta'], thresholdMB)
+        dfringdown = deltaF_ringdownBin(pWF['fDAMP'], pPhase22['cLovfda'] / pWF['eta'],
+                                        pAmp22['gamma2'] / (pAmp22['gamma3'] * pWF['fDAMP']), thresholdMB)
     else:
         # Initialize QNMs and populate pWFHM for higher modes
         qnms = IMRPhenomXHM_Initialize_QNMs()
@@ -237,21 +231,21 @@ def XLALSimIMRPhenomXPHMMultibandingGrid(
 
         # Get phase and amplitude coefficients
         #FIXME These two statements need to be double checked
-        pPhase22 = IMRPhenomXGetPhaseCoefficients(pWF)
+        
 
         pAmp = IMRPhenomXHM_FillAmpFitsArray()
         pPhase = IMRPhenomXHM_FillPhaseFitsArray()
-
-        if pWFHM.MixingOn == 1:
+        print("jax debug 5 pWFHM['MixingOn']", pWFHM['MixingOn'])
+        if pWFHM['MixingOn'] == 1:
             pPhase = GetSpheroidalCoefficients(pPhase, pPhase22, pWFHM, pWF) #What does this function return?
             pAmp22 = IMRPhenomXGetAmplitudeCoefficients(pWF)
 
 
         IMRPhenomXHM_GetAmplitudeCoefficients(pAmp, pPhase, pAmp22, pPhase22, pWFHM, pWF)
         IMRPhenomXHM_GetPhaseCoefficients(pAmp, pPhase, pAmp22, pPhase22, pWFHM, pWF, lalParams)
-
-        MfMECO = pWFHM.fMECOlm
-        MfLorentzianEnd = pWFHM.fRING + 2 * pWFHM.fDAMP
+        print('jax debug 7...')
+        MfMECO = pWFHM['fMECOlm']
+        MfLorentzianEnd = pWFHM['fRING'] + 2 * pWFHM['fDAMP']
 
         dfmerger, dfringdown = deltaF_MergerRingdown(thresholdMB, pWFHM, pAmp, pPhase)
 

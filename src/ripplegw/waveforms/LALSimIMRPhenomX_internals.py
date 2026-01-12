@@ -4,7 +4,7 @@ IMRPhenomX internal functions converted to JAX.
 This module contains the core initialization and setup functions for the
 IMRPhenomX waveform model, converted from the LALSimulation C code to JAX.
 """
-
+import jax
 import jax.numpy as jnp
 from typing import Dict, Any, Optional
 from ..constants import MSUN, MRSUN, MTSUN_SI, PI
@@ -690,20 +690,29 @@ def IMRPhenomXGetPhaseCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(f"IMRPhenomXRingdownPhaseVersion {pWF['IMRPhenomXRingdownPhaseVersion']} is not valid")
 
 
-    RDv4 = IMRPhenomX_Ringdown_Phase_22_v4(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
-    CollocationValuesPhaseRD = jnp.zeros(5)
-    CollocationValuesPhaseRD[0] = IMRPhenomX_Ringdown_Phase_22_d12(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
-    CollocationValuesPhaseRD[1] = IMRPhenomX_Ringdown_Phase_22_d24(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
-    CollocationValuesPhaseRD[2] = IMRPhenomX_Ringdown_Phase_22_d34(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
-    CollocationValuesPhaseRD[3] = RDv4
-    CollocationValuesPhaseRD[4] = IMRPhenomX_Ringdown_Phase_22_d54(pWF['eta'], pWF['S'], pWF['dchi1'], pWF['delta'], pWF['pWF->IMRPhenomXRingdownPhaseVersion'])
+    RDv4 = IMRPhenomX_Ringdown_Phase_22_v4(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownPhaseVersion'])
+    
+    jax.debug.print("jax debug 2 pWF['eta'] {}, pWF['STotR'] {}, pWF['dchi'] {}, pWF['delta'] {}, pWF['IMRPhenomXRingdownPhaseVersion'] {}", pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownPhaseVersion'])
+    _CollocationValuesPhaseRD_0 = IMRPhenomX_Ringdown_Phase_22_d12(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownPhaseVersion'])
+    _CollocationValuesPhaseRD_1 = IMRPhenomX_Ringdown_Phase_22_d24(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownPhaseVersion'])
+    _CollocationValuesPhaseRD_2 = IMRPhenomX_Ringdown_Phase_22_d34(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownPhaseVersion'])
+    _CollocationValuesPhaseRD_3 = RDv4
+    _CollocationValuesPhaseRD_4 = IMRPhenomX_Ringdown_Phase_22_d54(pWF['eta'], pWF['STotR'], pWF['dchi'], pWF['delta'], pWF['IMRPhenomXRingdownPhaseVersion'])
+    jax.debug.print("jax debug 3 RDv4 ... {}", RDv4)
+
 
     # Accumulate collocation values: v_j = d_{j4} + v4
-    CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[4].set(CollocationValuesPhaseRD[4] + CollocationValuesPhaseRD[3])
-    CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[2].set(CollocationValuesPhaseRD[2] + CollocationValuesPhaseRD[3])
-    CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[1].set(CollocationValuesPhaseRD[1] + CollocationValuesPhaseRD[3])
-    CollocationValuesPhaseRD = CollocationValuesPhaseRD.at[0].set(CollocationValuesPhaseRD[0] + CollocationValuesPhaseRD[1])
+    CollocationValuesPhaseRD_4 = _CollocationValuesPhaseRD_4  + _CollocationValuesPhaseRD_3
+    CollocationValuesPhaseRD_2 = _CollocationValuesPhaseRD_2+ _CollocationValuesPhaseRD_3
+    CollocationValuesPhaseRD_1 = _CollocationValuesPhaseRD_1 + _CollocationValuesPhaseRD_3
+    CollocationValuesPhaseRD_0 = _CollocationValuesPhaseRD_0 + _CollocationValuesPhaseRD_1
 
+    CollocationValuesPhaseRD = jnp.array([CollocationValuesPhaseRD_0, 
+                                          CollocationValuesPhaseRD_1,
+                                          CollocationValuesPhaseRD_2,
+                                          _CollocationValuesPhaseRD_3,
+                                          CollocationValuesPhaseRD_4])
+    
     pPhase['CollocationValuesPhaseRD'] = CollocationValuesPhaseRD
 
     # Set up the linear system for ringdown: A x = b
@@ -779,20 +788,24 @@ def IMRPhenomXGetPhaseCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
     # Placeholder for calibrated inspiral values (NEEDS ACTUAL IMPLEMENTATION)
     CollocationValuesPhaseIns = jnp.zeros(NCollocationPointsPhaseIns)
     # These functions need to be imported from LALSimIMRPhenomX_inspiral.c
-    CollocationValuesPhaseIns[0] = IMRPhenomX_Inspiral_Phase_22_d13(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
-    CollocationValuesPhaseIns[1] = IMRPhenomX_Inspiral_Phase_22_d23(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
-    CollocationValuesPhaseIns[2] = IMRPhenomX_Inspiral_Phase_22_v3(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
-    CollocationValuesPhaseIns[3] = IMRPhenomX_Inspiral_Phase_22_d43(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
-    if NPseudoPN == 5:
-         CollocationValuesPhaseIns[4] = IMRPhenomX_Inspiral_Phase_22_d53(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    _CollocationValuesPhaseIns_0 = IMRPhenomX_Inspiral_Phase_22_d13(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    _CollocationValuesPhaseIns_1 = IMRPhenomX_Inspiral_Phase_22_d23(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    _CollocationValuesPhaseIns_2 = IMRPhenomX_Inspiral_Phase_22_v3(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    _CollocationValuesPhaseIns_3 = IMRPhenomX_Inspiral_Phase_22_d43(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
+    #if NPseudoPN == 5:
+    #     _CollocationValuesPhaseIns_4 = IMRPhenomX_Inspiral_Phase_22_d53(pWF['eta'],pWF['chiPNHat'],pWF['dchi'],pWF['delta'],pWF['IMRPhenomXInspiralPhaseVersion'])
 
     # Accumulate: v_j = d_j3 + v_3
-    CollocationValuesPhaseIns = CollocationValuesPhaseIns.at[0].set(CollocationValuesPhaseIns[0] + CollocationValuesPhaseIns[2])
-    CollocationValuesPhaseIns = CollocationValuesPhaseIns.at[1].set(CollocationValuesPhaseIns[1] + CollocationValuesPhaseIns[2])
-    CollocationValuesPhaseIns = CollocationValuesPhaseIns.at[3].set(CollocationValuesPhaseIns[3] + CollocationValuesPhaseIns[2])
-    if NPseudoPN == 5:
-        CollocationValuesPhaseIns = CollocationValuesPhaseIns.at[4].set(CollocationValuesPhaseIns[4] + CollocationValuesPhaseIns[2])
-
+    CollocationValuesPhaseIns_0 = _CollocationValuesPhaseIns_0 + _CollocationValuesPhaseIns_2
+    CollocationValuesPhaseIns_1 = _CollocationValuesPhaseIns_1 + _CollocationValuesPhaseIns_2
+    CollocationValuesPhaseIns_3 = _CollocationValuesPhaseIns_3 + _CollocationValuesPhaseIns_2
+    #if NPseudoPN == 5:
+    #    CollocationValuesPhaseIns_4 = _CollocationValuesPhaseIns_4 + _CollocationValuesPhaseIns_2
+    CollocationValuesPhaseIns = jnp.array([CollocationValuesPhaseIns_0,
+                                           CollocationValuesPhaseIns_1,
+                                           _CollocationValuesPhaseIns_2,
+                                           CollocationValuesPhaseIns_3])
+    
     pPhase['CollocationValuesPhaseIns'] = CollocationValuesPhaseIns
 
     # Set up the linear system for inspiral: A x = b
@@ -1036,7 +1049,7 @@ def IMRPhenomX_Initialize_Powers(powers: IMRPhenomX_UsefulPowers, f: float) -> N
 # Main Amplitude Coefficient Function
 # ============================================================================
 
-def IMRPhenomXGetAmplitudeCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
+def IMRPhenomXGetAmplitudeCoefficients(pWF: Dict[str, Any], pAmp: Dict[str, Any]) -> Dict[str, Any]:
     """
     Calculate phenomenological amplitude coefficients for IMRPhenomX.
 
@@ -1090,7 +1103,7 @@ def IMRPhenomXGetAmplitudeCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
     debug = pWF.get('debug', False)
 
     # Initialize amplitude coefficient dictionary
-    pAmp = {}
+    #pAmp = {}
 
     # Extract local spin variables for convenience
     chi1L = pWF['chi1L']
@@ -1106,15 +1119,6 @@ def IMRPhenomXGetAmplitudeCoefficients(pWF: Dict[str, Any]) -> Dict[str, Any]:
     eta = pWF['eta']
     eta2 = pWF['eta2']
     eta3 = pWF['eta3']
-
-    if debug:
-        print(f"chi1L  = {chi1L:.6f}")
-        print(f"chi1L2 = {chi1L2:.6f}")
-        print(f"chi1L3 = {chi1L3:.6f}")
-        print(f"chi2L2 = {chi2L2:.6f}")
-        print(f"delta  = {delta:.6f}")
-        print(f"eta2   = {eta2:.6f}")
-        print(f"eta3   = {eta3:.6f}")
 
     # ========================================================================
     # RINGDOWN AMPLITUDE COEFFICIENTS

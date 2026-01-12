@@ -309,6 +309,8 @@ def IMRPhenomXHM_SetHMWaveformVariables(
 
     # Mode-specific settings
     modeTag = wf['modeTag']
+    print("jax debug 6...modeTag", wf['modeTag'])
+
 
     # Determine modeInt and MixingOn based on modeTag
     def set_mode_21():
@@ -340,9 +342,13 @@ def IMRPhenomXHM_SetHMWaveformVariables(
         [set_mode_21, set_mode_33, set_mode_32, set_mode_44, default_mode]
     )
 
+    modeTag = wf['modeTag']
+
     wf['modeInt'] = modeInt
     wf['MixingOn'] = MixingOn
     wf['Ampzero'] = Ampzero_mode
+    print("jax debug 6...modeTag", wf['modeTag'], wf['MixingOn'])
+
 
     # Version numbers - default to 122019 if not specified in LALParams
     wf['IMRPhenomXHMReleaseVersion'] = LALParams.get('IMRPhenomXHMReleaseVersion', 122019)
@@ -490,16 +496,18 @@ def IMRPhenomXHM_SetHMWaveformVariables(
 
     # Ringdown and damping frequencies
     afinal = wf22['afinal']
-    wf['fRING'] = qnms['fring_lm'][modeInt](afinal) / wf22['Mfinal']
-    wf['fDAMP'] = qnms['fdamp_lm'][modeInt](afinal) / wf22['Mfinal']
+    # Convert modeInt to Python int for indexing (JAX arrays are not hashable)
+    modeInt_idx = int(modeInt)
+    wf['fRING'] = qnms['fring_lm'][modeInt_idx](afinal) / wf22['Mfinal']
+    wf['fDAMP'] = qnms['fdamp_lm'][modeInt_idx](afinal) / wf22['Mfinal']
 
     # Apply precessing corrections if using tuned coprecessing model
     IMRPhenomXPNRUseTunedCoprec = wf22.get('IMRPhenomXPNRUseTunedCoprec', False)
 
     if IMRPhenomXPNRUseTunedCoprec:
         afinal_prec = wf22.get('afinal_prec', afinal)
-        wf['fRING'] = qnms['fring_lm'][modeInt](afinal_prec) / wf22['Mfinal']
-        wf['fDAMP'] = qnms['fdamp_lm'][modeInt](afinal_prec) / wf22['Mfinal']
+        wf['fRING'] = qnms['fring_lm'][modeInt_idx](afinal_prec) / wf22['Mfinal']
+        wf['fDAMP'] = qnms['fdamp_lm'][modeInt_idx](afinal_prec) / wf22['Mfinal']
 
         # Apply effective ringdown frequency shift
         fRINGEffShiftDividedByEmm = wf22.get('fRINGEffShiftDividedByEmm', 0.0)
@@ -715,59 +723,61 @@ def IMRPhenomXHM_FillPhaseFitsArray() -> dict:
     # ******Inspiral Phase Fits for lambda coefficients******
 
     # Mode 21
-    pPhase['InspiralPhaseFits'][0] = IMRPhenomXHM_Insp_Phase_21_lambda
+    pPhase['InspiralPhaseFits'][0] = XHM_inspiral.IMRPhenomXHM_Insp_Phase_21_lambda
 
     # Mode 33
-    pPhase['InspiralPhaseFits'][1] = IMRPhenomXHM_Insp_Phase_33_lambda
+    pPhase['InspiralPhaseFits'][1] = XHM_inspiral.IMRPhenomXHM_Insp_Phase_33_lambda
 
     # Mode 32
-    pPhase['InspiralPhaseFits'][2] = IMRPhenomXHM_Insp_Phase_32_lambda
+    pPhase['InspiralPhaseFits'][2] = XHM_inspiral.IMRPhenomXHM_Insp_Phase_32_lambda
 
     # Mode 44
-    pPhase['InspiralPhaseFits'][3] = IMRPhenomXHM_Insp_Phase_44_lambda
+    pPhase['InspiralPhaseFits'][3] = XHM_inspiral.IMRPhenomXHM_Insp_Phase_44_lambda
 
     # ******Intermediate Phase Fits for collocation points******
 
+
+
     # Mode 21 - 6 collocation points (p1 through p6)
-    pPhase['IntermediatePhaseFits'][0] = IMRPhenomXHM_Inter_Phase_21_p1
-    pPhase['IntermediatePhaseFits'][1] = IMRPhenomXHM_Inter_Phase_21_p2
-    pPhase['IntermediatePhaseFits'][2] = IMRPhenomXHM_Inter_Phase_21_p3
-    pPhase['IntermediatePhaseFits'][3] = IMRPhenomXHM_Inter_Phase_21_p4
-    pPhase['IntermediatePhaseFits'][4] = IMRPhenomXHM_Inter_Phase_21_p5
-    pPhase['IntermediatePhaseFits'][5] = IMRPhenomXHM_Inter_Phase_21_p6
+    pPhase['IntermediatePhaseFits'][0] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_21_p1
+    pPhase['IntermediatePhaseFits'][1] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_21_p2
+    pPhase['IntermediatePhaseFits'][2] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_21_p3
+    pPhase['IntermediatePhaseFits'][3] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_21_p4
+    pPhase['IntermediatePhaseFits'][4] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_21_p5
+    pPhase['IntermediatePhaseFits'][5] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_21_p6
 
     # Mode 33 - 6 collocation points (p1 through p6)
-    pPhase['IntermediatePhaseFits'][6] = IMRPhenomXHM_Inter_Phase_33_p1
-    pPhase['IntermediatePhaseFits'][7] = IMRPhenomXHM_Inter_Phase_33_p2
-    pPhase['IntermediatePhaseFits'][8] = IMRPhenomXHM_Inter_Phase_33_p3
-    pPhase['IntermediatePhaseFits'][9] = IMRPhenomXHM_Inter_Phase_33_p4
-    pPhase['IntermediatePhaseFits'][10] = IMRPhenomXHM_Inter_Phase_33_p5
-    pPhase['IntermediatePhaseFits'][11] = IMRPhenomXHM_Inter_Phase_33_p6
+    pPhase['IntermediatePhaseFits'][6] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_33_p1
+    pPhase['IntermediatePhaseFits'][7] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_33_p2
+    pPhase['IntermediatePhaseFits'][8] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_33_p3
+    pPhase['IntermediatePhaseFits'][9] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_33_p4
+    pPhase['IntermediatePhaseFits'][10] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_33_p5
+    pPhase['IntermediatePhaseFits'][11] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_33_p6
 
     # Mode 32 - 6 collocation points (p1 through p6)
-    pPhase['IntermediatePhaseFits'][12] = IMRPhenomXHM_Inter_Phase_32_p1
-    pPhase['IntermediatePhaseFits'][13] = IMRPhenomXHM_Inter_Phase_32_p2
-    pPhase['IntermediatePhaseFits'][14] = IMRPhenomXHM_Inter_Phase_32_p3
-    pPhase['IntermediatePhaseFits'][15] = IMRPhenomXHM_Inter_Phase_32_p4
-    pPhase['IntermediatePhaseFits'][16] = IMRPhenomXHM_Inter_Phase_32_p5
-    pPhase['IntermediatePhaseFits'][17] = IMRPhenomXHM_Inter_Phase_32_p6
+    pPhase['IntermediatePhaseFits'][12] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_32_p1
+    pPhase['IntermediatePhaseFits'][13] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_32_p2
+    pPhase['IntermediatePhaseFits'][14] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_32_p3
+    pPhase['IntermediatePhaseFits'][15] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_32_p4
+    pPhase['IntermediatePhaseFits'][16] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_32_p5
+    pPhase['IntermediatePhaseFits'][17] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_32_p6
 
     # Mode 44 - 6 collocation points (p1 through p6)
-    pPhase['IntermediatePhaseFits'][18] = IMRPhenomXHM_Inter_Phase_44_p1
-    pPhase['IntermediatePhaseFits'][19] = IMRPhenomXHM_Inter_Phase_44_p2
-    pPhase['IntermediatePhaseFits'][20] = IMRPhenomXHM_Inter_Phase_44_p3
-    pPhase['IntermediatePhaseFits'][21] = IMRPhenomXHM_Inter_Phase_44_p4
-    pPhase['IntermediatePhaseFits'][22] = IMRPhenomXHM_Inter_Phase_44_p5
-    pPhase['IntermediatePhaseFits'][23] = IMRPhenomXHM_Inter_Phase_44_p6
+    pPhase['IntermediatePhaseFits'][18] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_44_p1
+    pPhase['IntermediatePhaseFits'][19] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_44_p2
+    pPhase['IntermediatePhaseFits'][20] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_44_p3
+    pPhase['IntermediatePhaseFits'][21] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_44_p4
+    pPhase['IntermediatePhaseFits'][22] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_44_p5
+    pPhase['IntermediatePhaseFits'][23] = XHM_intermediate.IMRPhenomXHM_Inter_Phase_44_p6
 
     # ******Ringdown Phase Fits (32 Spheroidal)******
 
     # Mode 32 - 5 collocation points for spheroidal ringdown phase
-    pPhase['RingdownPhaseFits'][0] = IMRPhenomXHM_RD_Phase_32_p1
-    pPhase['RingdownPhaseFits'][1] = IMRPhenomXHM_RD_Phase_32_p2
-    pPhase['RingdownPhaseFits'][2] = IMRPhenomXHM_RD_Phase_32_p3
-    pPhase['RingdownPhaseFits'][3] = IMRPhenomXHM_RD_Phase_32_p4
-    pPhase['RingdownPhaseFits'][4] = IMRPhenomXHM_RD_Phase_32_p5
+    pPhase['RingdownPhaseFits'][0] = XHM_ringdown.IMRPhenomXHM_RD_Phase_32_p1
+    pPhase['RingdownPhaseFits'][1] = XHM_ringdown.IMRPhenomXHM_RD_Phase_32_p2
+    pPhase['RingdownPhaseFits'][2] = XHM_ringdown.IMRPhenomXHM_RD_Phase_32_p3
+    pPhase['RingdownPhaseFits'][3] = XHM_ringdown.IMRPhenomXHM_RD_Phase_32_p4
+    pPhase['RingdownPhaseFits'][4] = XHM_ringdown.IMRPhenomXHM_RD_Phase_32_p5
 
     return pPhase
 
