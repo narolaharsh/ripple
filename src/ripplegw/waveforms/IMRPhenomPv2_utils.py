@@ -1,20 +1,17 @@
 import jax
 import jax.numpy as jnp
-from ripplegw import Mc_eta_to_ms
 
 from typing import Tuple
-from ..constants import gt, MSUN
+from ..constants import MTSUN
 import numpy as np
-from .IMRPhenomD import Phase as PhDPhase
-from .IMRPhenomD import Amp as PhDAmp
 from .IMRPhenomD_utils import (
-    get_coeffs,
-    get_transition_frequencies,
     EradRational0815,
     FinalSpin0815_s,
 )
-from ..typing import Array
+from jaxtyping import Array
 from .IMRPhenomD_QNMdata import QNMData_a, QNMData_fRD, QNMData_fdamp
+
+MAX_TOL_ATAN = 1.0e-15
 
 
 # helper functions for LALtoPhenomP:
@@ -81,7 +78,7 @@ def convert_spins(
     den = A2 * m2_2  # warning: this assumes m2 > m1
     chip = num / den
 
-    m_sec = M * gt
+    m_sec = M * MTSUN
     piM = jnp.pi * m_sec
     v_ref = (piM * f_ref) ** (1 / 3)
     L0 = M * M * L2PNR(v_ref, eta)
@@ -92,7 +89,12 @@ def convert_spins(
 
     thetaJ_sf = jnp.arccos(J0z_sf / J0)
 
-    phiJ_sf = jnp.arctan2(J0y_sf, J0x_sf)
+    no_inplane_J0 = (jnp.abs(J0x_sf) < MAX_TOL_ATAN) & (jnp.abs(J0y_sf) < MAX_TOL_ATAN)
+    phiJ_sf = jnp.where(
+        no_inplane_J0,
+        jnp.pi / 2.0 - phiRef,  # This is the aligned-spin case
+        jnp.arctan2(J0y_sf, J0x_sf),
+    )
 
     phi_aligned = -phiJ_sf
 
@@ -117,7 +119,12 @@ def convert_spins(
     tmp_x, tmp_y, tmp_z = ROTATEY(-thetaJ_sf, tmp_x, tmp_y, tmp_z)
     tmp_x, tmp_y, tmp_z = ROTATEZ(kappa, tmp_x, tmp_y, tmp_z)
 
-    alpha0 = jnp.arctan2(tmp_y, tmp_x)
+    no_inplane_LN = (jnp.abs(tmp_x) < MAX_TOL_ATAN) & (jnp.abs(tmp_y) < MAX_TOL_ATAN)
+    alpha0 = jnp.where(
+        no_inplane_LN,
+        jnp.pi,  # This is the aligned-spin case
+        jnp.arctan2(tmp_y, tmp_x),
+    )
 
     # Finally we determine thetaJ, by rotating N
     tmp_x, tmp_y, tmp_z = Nx_sf, Ny_sf, Nz_sf
@@ -165,7 +172,7 @@ def convert_spins(
     return chi1_l, chi2_l, chip, thetaJN, alpha0, phi_aligned, zeta_polariz
 
 
-def SpinWeightedY(theta, phi, s, l, m):
+def SpinWeightedY(theta, phi, s, l, m):  # noqa: E741
     "copied from SphericalHarmonics.c in LAL"
     if s == -2:
         if l == 2:
@@ -363,8 +370,8 @@ def FinalSpin_inplane(m1, m2, chi1_l, chi2_l, chip):
 def phP_get_fRD_fdamp(m1, m2, chi1_l, chi2_l, chip):
     # m1 > m2 should hold here
     finspin = FinalSpin_inplane(m1, m2, chi1_l, chi2_l, chip)
-    m1_s = m1 * gt
-    m2_s = m2 * gt
+    m1_s = m1 * MTSUN
+    m2_s = m2 * MTSUN
     M_s = m1_s + m2_s
     eta_s = m1_s * m2_s / (M_s**2.0)
     Erad = EradRational0815(eta_s, chi1_l, chi2_l)
@@ -387,11 +394,11 @@ def phP_get_transition_frequencies(
     f_RD, f_damp = phP_get_fRD_fdamp(m1, m2, chi1, chi2, chip)
 
     # Phase transition frequencies
-    f1 = 0.018 / (M * gt)
+    f1 = 0.018 / (M * MTSUN)
     f2 = 0.5 * f_RD
 
     # Amplitude transition frequencies
-    f3 = 0.014 / (M * gt)
+    f3 = 0.014 / (M * MTSUN)
     f4_gammaneg_gtr_1 = lambda f_RD_, f_damp_, gamma3_, gamma2_: jnp.abs(
         f_RD_ + (-f_damp_ * gamma3_) / gamma2_
     )
