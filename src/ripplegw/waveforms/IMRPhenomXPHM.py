@@ -958,7 +958,8 @@ class IMRPhenomXPHM(WaveFormModel):
         t0 = (alpha1 + alpha2/(fpeak*fpeak) + alpha3/(fpeak**(1./4.)) + alpha4/(fdamp*(1. + (fpeak - alpha5*fring)*(fpeak - alpha5*fring)/(fdamp*fdamp))))/eta
         
         phiRef = completePhase(fRef, C1MRD, C2MRD, 1., 1.)
-        phi0   = 0.5*phiRef + kwargs['Phicoal']
+        phi0   = 0.5*phiRef #+ kwargs['Phicoal'] 
+        #FIXME Need to swtich on kwargs['Phicoal'] at some point
         
         # Now compute all the modes, they are 6, we parallelize
         
@@ -1040,11 +1041,14 @@ class IMRPhenomXPHM(WaveFormModel):
         modes = np.expand_dims(modes, len(modes.shape))
         Y, Ymstar = SpinWeighted_SphericalHarmonic(iota)
         Y, Ymstar = Y.T, np.conj(Ymstar).T
-        
+        print("Shapes of amplitude arrays", np.shape(AmplsAllModes)) #shape 1968 x 6
+        print("Shapes of phase arrasy", np.shape(PhisAllModes)) # shape 1968 x 6
         hp = np.sum(AmplsAllModes*np.exp(-1j*PhisAllModes)*(0.5*(Y + ((-1)**ells)*Ymstar)), axis=-1)
         hc = -np.sum(AmplsAllModes*np.exp(-1j*PhisAllModes)*(-1j* 0.5 * (Y - ((-1)**ells)* Ymstar)), axis=-1)
         
-        return hp, hc
+        hlm = AmplsAllModes * np.exp(-1j*PhisAllModes) * np.power(-1, ells)
+
+        return hp, hc, hlm
 
         
     def _finalspin(self, eta, chi1, chi2):
