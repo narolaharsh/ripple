@@ -4,11 +4,17 @@ import jax.numpy as jnp
 from jax import vmap
 import numpy as np
 from .IMRPhenomD_QNMdata import fM_CUT
-from ..constants import EulerGamma, gt, m_per_Mpc, C, PI
+from ..constants import EulerGamma, gt, m_per_Mpc, C, PI, MSUN, MTSUN_SI
 from ..typing import Array
 from ripplegw import Mc_eta_to_ms
 from .spherical_harmonics import (compute_sminus2_l2, compute_sminus2_l3, compute_sminus2_l4)
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from .LALSimIMRPhenomX_precession import (IMRPhenomX_Return_phi_zeta_costhetaL_MSA, IMRPhenomXGetAndSetPrecessionVariables)
+from .LALSimIMRPhenomX_internals import IMRPhenomXSetWaveformVariables
+from .LALSimIMRPhenomXPHM import Get_alpha_epsilon_offset
+
+
 
 uGpc = 3.085677581491367278913937957796471611e25 # meters
 GMsun_over_c2 = 1.476625061404649406193430731479084713e3 # meters
@@ -1180,3 +1186,368 @@ class IMRPhenomXPHM(WaveFormModel):
         """
         return self.fcutPar/(kwargs['Mc']*GMsun_over_c3/(kwargs['eta']**(3./5.)))
 
+
+
+    def generate_precession_struct(self, pWF, m1, m2, 
+                                   chi1x, chi1y, chi1z, 
+                                   chi2x, chi2y, chi2z, lalParams):
+        m1_SI = m1 * MSUN
+        m2_SI = m2 * MSUN
+        pPrec = IMRPhenomXGetAndSetPrecessionVariables(pWF, 
+                                                       m1_SI, 
+                                                       m2_SI,
+                                                       chi1x,
+                                                       chi1y,
+                                                       chi1z,
+                                                       chi2x, 
+                                                       chi2y, 
+                                                       chi2z, lalParams, 
+                                                       debug_flag=False)
+        
+        return pPrec
+    
+    def generate_waveform_struct(self, m1, m2, chi1z, chi2z,
+                                 distance, inclination, phi0,  
+                                 duration, minimum_frequency, 
+                                 maximum_frequency, 
+                                 reference_frequency):
+        # distance input is in Gpc. Need to convert it to meters
+        lalParams = {}
+        m1_SI = m1*MSUN
+        m2_SI = m2*MSUN
+        deltaF = 1/duration
+        distance *= 3.08567758128e25
+
+
+        pWF = IMRPhenomXSetWaveformVariables(m1_SI,
+                                             m2_SI,
+                                             chi1z, 
+                                             chi2z,
+                                             deltaF,
+                                             reference_frequency, 
+                                             phi0,
+                                             minimum_frequency, 
+                                             maximum_frequency,
+                                             distance,
+                                             inclination,
+                                             lalParams,
+                                             debug = False)
+
+
+        return pWF
+    
+
+    def twistup(self, Mf, pWF, pPrec):
+        "Copy of lalsimulation IMRPhenomXPHMTwistUp"
+        "Function to twist up hlms"
+
+        # Check if we are using multibanding for angles. 
+        # Default in lalsimulation is True but I will force it to False
+
+        # Check PrecVersion
+        # Available options 101, 102, 103, 104, 220, 221, 222, 223, 224, 310, 311, 320, 321, 330
+        # I will use 223 which is default in lalsimulation
+
+        mprime = 2
+
+
+        v = jnp.cbrt(np.pi * Mf * 2.0 / mprime)
+        
+        vangles = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v)
+
+        alpha_offset_mprime, epsilon_offset_mprime = Get_alpha_epsilon_offset(mprime, pPrec)
+
+
+        alpha = vangles[0] - alpha_offset_mprime
+        epsilon = vangles[1] - epsilon_offset_mprime
+        cos_beta = vangles[2]
+
+        cBetah, sBetah = IMRPhenomXWignerdCoefficients_cosbeta(cos_beta)
+
+
+        cexp_i_alpha = np.exp(1j*alpha)
+
+        beta_powers = BetaPowers.from_half_angle_trig(cBetah, sBetah)
+
+        #eps_phase_hP_lmprime = np.exp(-1j*mprime*epsilon) * hlmprime / 2.0
+        ## hlmprime is the 22 aligned spin waveform....
+        print("cexp i alpha", cexp_i_alpha[: 10])
+        hp_twist_22, hc_twist_22 = twist_22(cexp_i_alpha, pPrec, beta_powers)
+
+
+        #hp += eps_phase_hP_lmprime * hp_twist_22
+        #hc += eps_phase_hP_lmprime * hc_twist_22
+
+        return -1j*mprime*epsilon, hp_twist_22, hc_twist_22
+
+
+
+    
+    def generate_xphm(self, m1, m2, chi1x, chi1y, chi1z, chi2x, chi2y, chi2z, distance, inclination, phi0, duration, minimum_frequency, maximum_frequency, reference_frequency):
+
+        pWF = self.generate_waveform_struct(m1, m2, chi1z, chi2z,
+                                 distance, inclination, phi0,  
+                                 duration, minimum_frequency, 
+                                 maximum_frequency, 
+                                 reference_frequency)
+        
+        lalParams = {'IMRPhenomXPrecVersion': 223, 
+                     'PNRUseTunedAngles': 0,
+                     'AntisymmetricWaveform': 0,
+                     'PNRUseTunedCoprec': 0,
+                     'ExpansionOrder': -1}
+        
+        pPrec = self.generate_precession_struct(pWF, m1, m2, chi1x, chi1y, chi1z, chi2x, chi2y, chi2z, lalParams)
+
+        f = jnp.arange(minimum_frequency, maximum_frequency, 1/duration)
+        Mf = XLALSimIMRPhenomXUtilsHztoMf(f, m1+m2)
+
+        Mc = component_masses_to_chirp_mass(m1, m2)
+        eta = m1 * m2 / np.power(m1+m2, 2)
+
+        hp_base, hc_base, hlm = self.hphc(f,
+                         Mc = Mc,
+                         eta = eta,
+                         dL = distance,
+                         theta = None,
+                         phi = None,
+                         iota = inclination,
+                         tcoal = np.array([GPSt_to_LMST(3600, lat=0.,   long=0.)]),
+                         Phicoal = phi0,
+                         chi1x = chi1x,
+                         chi1y = chi1y,
+                         chi1z = chi1z,
+                         chi2x = chi2x,
+                         chi2y = chi2y,
+                         chi2z = chi2z)
+
+        eps_phase, hp_twist, hc_twist = self.twistup(Mf, pWF, pPrec)
+
+
+        hp = hlm[:, 1]  * hp_twist * np.exp(eps_phase) / 2.0
+        hc = hlm[:, 1] * hc_twist * np.exp(eps_phase) / 2.0
+
+        print('Mf....', Mf)
+        return  hp, hc
+        
+
+
+def twist_22(cexp_i_alpha, pPrec, beta_powers):
+
+    hp_sum = 0j
+    hc_sum = 0j
+
+    # Complex exponential powers of alpha
+    cexp_2i_alpha = cexp_i_alpha * cexp_i_alpha
+
+    cexp_mi_alpha = 1.0 / cexp_i_alpha
+    cexp_m2i_alpha = cexp_mi_alpha * cexp_mi_alpha
+
+    cexp_im_alpha_l2 = jnp.stack([cexp_m2i_alpha, cexp_mi_alpha, jnp.ones_like(cexp_i_alpha), cexp_i_alpha, cexp_2i_alpha], axis=0)
+
+    Y2mA = jnp.array([pPrec.Y2m2, pPrec.Y2m1, pPrec.Y20, pPrec.Y21, pPrec.Y22])
+
+    # Wigner-d coefficients
+    # d^2_{-2,2}, d^2_{-1,2}, d^2_{0,2}, d^2_{1,2}, d^2_{2,2}
+    d22 = jnp.array([
+        beta_powers.sBetah4,
+        2.0 * beta_powers.cBetah * beta_powers.sBetah3,
+        jnp.sqrt(6) * beta_powers.sBetah2 * beta_powers.cBetah2,
+        2.0 * beta_powers.cBetah3 * beta_powers.sBetah,
+        beta_powers.cBetah4
+    ])
+
+    # Exploit symmetry d^2_{-m,-2} = (-1)^m d^2_{-m,2}. See eq. A2 of Precessing paper
+    # d^2_{-2,-2}, d^2_{-1,-2}, d^2_{0,-2}, d^2_{1,-2}, d^2_{2,-2}
+    d2m2 = jnp.array([d22[4], -d22[3], d22[2], -d22[1], d22[0]])
+
+
+
+    for m in range(-2, 2+1):
+        A2m2emm = cexp_im_alpha_l2[-m+2] * d2m2[m+2] * Y2mA[m+2]
+        A22emmstar = cexp_im_alpha_l2[m+2] * d22[m+2] * jnp.conj(Y2mA[m+2])
+
+        hp_sum += A2m2emm
+        hc_sum += (1j*A2m2emm)
+
+    print('hpsum', hp_sum)
+    print('hcsum', hc_sum)
+
+
+    return hp_sum, hc_sum
+
+
+
+
+@dataclass
+class BetaPowers:
+    """
+    Stores powers of cos(beta/2) and sin(beta/2) for Wigner-d coefficient calculations.
+
+    Attributes:
+        cBetah: cos(beta/2)
+        cBetah2: cos^2(beta/2)
+        cBetah3: cos^3(beta/2)
+        cBetah4: cos^4(beta/2)
+        cBetah5: cos^5(beta/2)
+        cBetah6: cos^6(beta/2)
+        cBetah7: cos^7(beta/2)
+        cBetah8: cos^8(beta/2)
+        sBetah: sin(beta/2)
+        sBetah2: sin^2(beta/2)
+        sBetah3: sin^3(beta/2)
+        sBetah4: sin^4(beta/2)
+        sBetah5: sin^5(beta/2)
+        sBetah6: sin^6(beta/2)
+        sBetah7: sin^7(beta/2)
+        sBetah8: sin^8(beta/2)
+    """
+    cBetah: float
+    cBetah2: float
+    cBetah3: float
+    cBetah4: float
+    cBetah5: float
+    cBetah6: float
+    cBetah7: float
+    cBetah8: float
+    sBetah: float
+    sBetah2: float
+    sBetah3: float
+    sBetah4: float
+    sBetah5: float
+    sBetah6: float
+    sBetah7: float
+    sBetah8: float
+
+    @classmethod
+    def from_half_angle_trig(cls, cBetah: float, sBetah: float):
+        """
+        Constructs a BetaPowers instance from cos(beta/2) and sin(beta/2).
+
+        Args:
+            cBetah: cos(beta/2)
+            sBetah: sin(beta/2)
+
+        Returns:
+            BetaPowers instance with all power values computed
+        """
+        cBetah2 = cBetah * cBetah
+        cBetah3 = cBetah * cBetah2
+        cBetah4 = cBetah * cBetah3
+        cBetah5 = cBetah * cBetah4
+        cBetah6 = cBetah * cBetah5
+        cBetah7 = cBetah * cBetah6
+        cBetah8 = cBetah * cBetah7
+
+        sBetah2 = sBetah * sBetah
+        sBetah3 = sBetah * sBetah2
+        sBetah4 = sBetah * sBetah3
+        sBetah5 = sBetah * sBetah4
+        sBetah6 = sBetah * sBetah5
+        sBetah7 = sBetah * sBetah6
+        sBetah8 = sBetah * sBetah7
+
+        return cls(
+            cBetah=cBetah,
+            cBetah2=cBetah2,
+            cBetah3=cBetah3,
+            cBetah4=cBetah4,
+            cBetah5=cBetah5,
+            cBetah6=cBetah6,
+            cBetah7=cBetah7,
+            cBetah8=cBetah8,
+            sBetah=sBetah,
+            sBetah2=sBetah2,
+            sBetah3=sBetah3,
+            sBetah4=sBetah4,
+            sBetah5=sBetah5,
+            sBetah6=sBetah6,
+            sBetah7=sBetah7,
+            sBetah8=sBetah8,
+        )
+
+        return None
+    
+
+
+
+def IMRPhenomXWignerdCoefficients_cosbeta(cos_beta):
+    """
+    Compute cos(beta/2) and sin(beta/2) from cos(beta).
+    
+    Uses half-angle formulas:
+    - cos(beta/2) = sqrt((1 + cos(beta)) / 2)
+    - sin(beta/2) = sqrt((1 - cos(beta)) / 2)
+    
+    Parameters
+    ----------
+    cos_beta : float or array
+        cos(beta)
+    
+    Returns
+    -------
+    cos_beta_half : float or array
+        cos(beta/2), always non-negative
+    sin_beta_half : float or array
+        sin(beta/2), always non-negative
+    """
+    # Note that the results here are indeed always non-negative
+    cos_beta_half = jnp.sqrt(jnp.abs(1.0 + cos_beta) / 2.0)  # cos(beta/2)
+    sin_beta_half = jnp.sqrt(jnp.abs(1.0 - cos_beta) / 2.0)  # sin(beta/2)
+    
+    return cos_beta_half, sin_beta_half
+
+
+
+
+def component_masses_to_chirp_mass(mass_1, mass_2):
+    return (mass_1 * mass_2) ** 0.6 / (mass_1 + mass_2) ** 0.2
+
+
+
+
+
+def XLALSimIMRPhenomXUtilsHztoMf(fHz: float, Mtot_Msun: float) -> float:
+    """
+    Convert frequency from Hz to geometric units (Mf).
+
+    Parameters
+    ----------
+    fHz : float
+        Frequency in Hz
+    Mtot_Msun : float
+        Total mass in solar masses
+
+    Returns
+    -------
+    float
+        Geometric frequency Mf
+    """
+    # Mtot in seconds = Mtot_Msun * MTSUN_SI
+    return fHz * Mtot_Msun * MTSUN_SI
+
+
+
+
+def GPSt_to_LMST(t_GPS, lat, long):
+    """
+    Compute the Local Mean Sidereal Time (LMST) in units of fraction of day, from GPS time and location (given as latitude and longitude in degrees)
+    
+    :param array or float t_GPS: GPS time(s) to convert, in seconds.
+    :param float lat: Latitude of the chosen location, in :math:`\\rm deg`.
+    :param float long: Longitude of the chosen location, in :math:`\\rm deg`.
+    
+    :return: Local Mean Sidereal Time(s).
+    :rtype: array or float
+    
+    """
+    from astropy.coordinates import EarthLocation
+    import astropy.time as aspyt
+    import astropy.units as u
+    # Uncomment the next two lines in case of troubles with IERS
+    #import astropy
+    #astropy.utils.iers.conf.iers_degraded_accuracy='ignore'
+    loc = EarthLocation(lat=lat*u.deg, lon=long*u.deg)
+    t = aspyt.Time(t_GPS, format='gps', location=(loc))
+    LMST = t.sidereal_time('mean').value
+    return jnp.array(LMST/24.)
