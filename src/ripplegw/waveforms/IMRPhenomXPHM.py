@@ -1044,6 +1044,7 @@ class IMRPhenomXPHM(WaveFormModel):
             PhisAllModes = np.where(fgrid < Map_fiPhi, completePhase((fgrid*Map_ai + Map_bi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_ai, np.where(fgrid < Map_fr, - PhDBconst + PhDBAterm + completePhase((fgrid*Map_amPhi + Map_bmPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_amPhi, - PhDCconst + tmpphaseC + completePhase((fgrid*Map_arPhi + Map_brPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_arPhi))
             
         PhisAllModes = PhisAllModes - np.expand_dims(t0, len(t0.shape))*(fgrid - np.expand_dims(fRef, len(fRef.shape))) - mms*np.expand_dims(phi0, len(phi0.shape)) + self.complShiftm[mms]
+        print('complShiftm', self.complShiftm[mms], ells)
         modes = np.expand_dims(modes, len(modes.shape))
         Y, Ymstar = SpinWeighted_SphericalHarmonic(iota)
         Y, Ymstar = Y.T, np.conj(Ymstar).T
@@ -1271,8 +1272,12 @@ class IMRPhenomXPHM(WaveFormModel):
 
         #eps_phase_hP_lmprime = np.exp(-1j*mprime*epsilon) * hlmprime / 2.0
         ## hlmprime is the 22 aligned spin waveform....
-        print("cexp i alpha", cexp_i_alpha[: 10])
         hp_twist_22, hc_twist_22 = twist_22(cexp_i_alpha, pPrec, beta_powers)
+        
+
+
+        
+
 
 
         #hp += eps_phase_hP_lmprime * hp_twist_22
@@ -1324,18 +1329,28 @@ class IMRPhenomXPHM(WaveFormModel):
         eps_phase, hp_twist, hc_twist = self.twistup(Mf, pWF, pPrec)
 
 
+        _f = XLALSimIMRPhenomXUtilsMftoHz(Mf, 36+29)
+
+
+        with open('ripple_angles_debug.txt', 'w') as f:
+            f.write("# f_Hz  epsilon hp_real hp_imag hc_real hc_imag\n")
+            for i in range(len(_f)):
+                f.write(f"{_f[i]:.3f} {hlm[i, 1]} {jnp.real(hp_twist[i])} {jnp.imag(hp_twist[i])} {jnp.real(hc_twist[i])} {jnp.imag(hc_twist[i])} \n")
+
+
         hp = hlm[:, 1]  * hp_twist * np.exp(eps_phase) / 2.0
         hc = hlm[:, 1] * hc_twist * np.exp(eps_phase) / 2.0
 
-        print('Mf....', Mf)
+
         return  hp, hc
         
 
 
 def twist_22(cexp_i_alpha, pPrec, beta_powers):
 
-    hp_sum = 0j
-    hc_sum = 0j
+
+    hp_sum = np.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+    hc_sum = np.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
 
     # Complex exponential powers of alpha
     cexp_2i_alpha = cexp_i_alpha * cexp_i_alpha
@@ -1349,6 +1364,7 @@ def twist_22(cexp_i_alpha, pPrec, beta_powers):
 
     # Wigner-d coefficients
     # d^2_{-2,2}, d^2_{-1,2}, d^2_{0,2}, d^2_{1,2}, d^2_{2,2}
+
     d22 = jnp.array([
         beta_powers.sBetah4,
         2.0 * beta_powers.cBetah * beta_powers.sBetah3,
@@ -1364,15 +1380,12 @@ def twist_22(cexp_i_alpha, pPrec, beta_powers):
 
 
     for m in range(-2, 2+1):
+        
         A2m2emm = cexp_im_alpha_l2[-m+2] * d2m2[m+2] * Y2mA[m+2]
+        #print(f"m {m} and A2m2emm {A2m2emm[0]}")
         A22emmstar = cexp_im_alpha_l2[m+2] * d22[m+2] * jnp.conj(Y2mA[m+2])
-
-        hp_sum += A2m2emm
-        hc_sum += (1j*A2m2emm)
-
-    print('hpsum', hp_sum)
-    print('hcsum', hc_sum)
-
+        hp_sum += (A2m2emm + A22emmstar)
+        hc_sum += 1j*(A2m2emm - A22emmstar) 
 
     return hp_sum, hc_sum
 
@@ -1525,6 +1538,39 @@ def XLALSimIMRPhenomXUtilsHztoMf(fHz: float, Mtot_Msun: float) -> float:
     """
     # Mtot in seconds = Mtot_Msun * MTSUN_SI
     return fHz * Mtot_Msun * MTSUN_SI
+
+
+
+
+
+def XLALSimIMRPhenomXUtilsMftoHz(Mf: float, Mtot_Msun: float) -> float:
+    """
+    Convert frequency from geometric units (Mf) to Hz.
+
+    This function converts dimensionless geometric frequency Mf to physical
+    frequency in Hz using the total mass of the binary system.
+
+    Parameters
+    ----------
+    Mf : float
+        Dimensionless geometric frequency (Mf = f * M * G / c^3)
+    Mtot_Msun : float
+        Total mass of the binary system in solar masses
+
+    Returns
+    -------
+    float
+        Frequency in Hz
+
+    Notes
+    -----
+    The conversion formula is:
+        f_Hz = Mf / (Mtot_Msun * MTSUN_SI)
+
+    where MTSUN_SI is the solar mass expressed in seconds (~4.925e-06 s).
+    """
+    # Mtot in seconds = Mtot_Msun * MTSUN_SI
+    return Mf / (Mtot_Msun * MTSUN_SI)
 
 
 
