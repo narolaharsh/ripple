@@ -283,6 +283,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
     Omegazeta5_coeff: float = field(init=False, default=0.0)
     phiz_0: float = field(init=False, default=0.0)
     zeta_0: float = field(init=False, default=0.0)
+    zeta_polarization: float = field(init=False, default=0.0)
 
 
     def __post_init__(self):
@@ -896,6 +897,7 @@ class IMRPhenomXGetAndSetPrecessionVariables:
 
         #Now get the angle zeta
         zeta_polarization = jnp.atan2(XdotQArun, XdotPArun)
+        object.__setattr__(self, 'zeta_polarization', zeta_polarization)
 
         #/* ********** PN Euler Angle Coefficients ********** */
         #/*

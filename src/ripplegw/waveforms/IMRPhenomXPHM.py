@@ -739,7 +739,10 @@ class IMRPhenomXPHM(WaveFormModel):
     
         # Compute the real and imag parts of the complex ringdown frequency for the (l,m) mode as in LALSimIMRPhenomHM.c line 189
         # These are all fits of the different modes. We directly exploit the fact that the relevant HM in this WF are 6
-        modes = np.array([21,22,32,33,43,44])
+        #modes = np.array([21,22,32,33,43,44]) #
+        modes = np.array([21,22,32,33,44])
+        
+        
         ells = np.floor(modes/10).astype('int')
         mms = modes - ells*10
         # Domain mapping for dimnesionless BH spin
@@ -1044,12 +1047,11 @@ class IMRPhenomXPHM(WaveFormModel):
             PhisAllModes = np.where(fgrid < Map_fiPhi, completePhase((fgrid*Map_ai + Map_bi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_ai, np.where(fgrid < Map_fr, - PhDBconst + PhDBAterm + completePhase((fgrid*Map_amPhi + Map_bmPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_amPhi, - PhDCconst + tmpphaseC + completePhase((fgrid*Map_arPhi + Map_brPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_arPhi))
             
         PhisAllModes = PhisAllModes - np.expand_dims(t0, len(t0.shape))*(fgrid - np.expand_dims(fRef, len(fRef.shape))) - mms*np.expand_dims(phi0, len(phi0.shape)) + self.complShiftm[mms]
-        print('complShiftm', self.complShiftm[mms], ells)
+
         modes = np.expand_dims(modes, len(modes.shape))
         Y, Ymstar = SpinWeighted_SphericalHarmonic(iota)
         Y, Ymstar = Y.T, np.conj(Ymstar).T
-        print("Shapes of amplitude arrays", np.shape(AmplsAllModes)) #shape 1968 x 6
-        print("Shapes of phase arrasy", np.shape(PhisAllModes)) # shape 1968 x 6
+
         hp = np.sum(AmplsAllModes*np.exp(-1j*PhisAllModes)*(0.5*(Y + ((-1)**ells)*Ymstar)), axis=-1)
         hc = -np.sum(AmplsAllModes*np.exp(-1j*PhisAllModes)*(-1j* 0.5 * (Y - ((-1)**ells)* Ymstar)), axis=-1)
         
@@ -1238,7 +1240,7 @@ class IMRPhenomXPHM(WaveFormModel):
         return pWF
     
 
-    def twistup(self, Mf, pWF, pPrec):
+    def twistup(self, Mf, pWF, pPrec, hlm):
         "Copy of lalsimulation IMRPhenomXPHMTwistUp"
         "Function to twist up hlms"
 
@@ -1249,41 +1251,58 @@ class IMRPhenomXPHM(WaveFormModel):
         # Available options 101, 102, 103, 104, 220, 221, 222, 223, 224, 310, 311, 320, 321, 330
         # I will use 223 which is default in lalsimulation
 
-        mprime = 2
+        # Modes 21, 22, 32, 33, 43, 44 in that order
+
+        def compute_twist_for_mode(mode_idx):
+            # mode_idx: 0->21, 1->22, 2->32, 3->33, 4->43, 5->44
+            ells = jnp.array([2, 2, 3, 3, 4, 4])
+            emms = jnp.array([1, 2, 2, 3, 3, 4])
+
+            ell = ells[mode_idx]
+            emm = emms[mode_idx]
+
+            v = jnp.cbrt(jnp.pi * Mf * 2.0 / emm)
+
+            vangles = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v)
+
+            alpha_offset_emm, epsilon_offset_emm = Get_alpha_epsilon_offset(emm, pPrec)
+
+            alpha = vangles[0] - alpha_offset_emm
+            epsilon = vangles[1] - epsilon_offset_emm
+            cos_beta = vangles[2]
+
+            cBetah, sBetah = IMRPhenomXWignerdCoefficients_cosbeta(cos_beta)
+
+            cexp_i_alpha = jnp.exp(1j * alpha)
+
+            beta_powers = BetaPowers.from_half_angle_trig(cBetah, sBetah)
+
+            # Select the appropriate twist function based on mode_idx
+            # Order: 21, 22, 32, 33, 43, 44
+            hp_twist, hc_twist = jax.lax.switch(
+                mode_idx,
+                [
+                    lambda: twist_21(cexp_i_alpha, pPrec, beta_powers),
+                    lambda: twist_22(cexp_i_alpha, pPrec, beta_powers),
+                    lambda: twist_32(cexp_i_alpha, pPrec, beta_powers),
+                    lambda: twist_33(cexp_i_alpha, pPrec, beta_powers),
+                    #lambda: twist_43(cexp_i_alpha, pPrec, beta_powers),
+                    lambda: twist_44(cexp_i_alpha, pPrec, beta_powers),
+                ]
+            )
+
+            return hp_twist, hc_twist, epsilon*emm
+
+        mode_indices = jnp.arange(5)  # 0 to 5 for modes 21, 22, 32, 33, 43, 44
+        hp_twist_all_modes, hc_twist_all_modes, epsilon_all_modes = jax.vmap(
+            compute_twist_for_mode
+        )(mode_indices)
 
 
-        v = jnp.cbrt(np.pi * Mf * 2.0 / mprime)
+        _hp = jnp.sum(hlm * hp_twist_all_modes.T * jnp.exp(-1j * epsilon_all_modes.T) / 2, axis=1)
+        _hc = jnp.sum(hlm * hc_twist_all_modes.T * jnp.exp(-1j * epsilon_all_modes.T) / 2, axis=1)
         
-        vangles = IMRPhenomX_Return_phi_zeta_costhetaL_MSA(pPrec, pWF, v)
-
-        alpha_offset_mprime, epsilon_offset_mprime = Get_alpha_epsilon_offset(mprime, pPrec)
-
-
-        alpha = vangles[0] - alpha_offset_mprime
-        epsilon = vangles[1] - epsilon_offset_mprime
-        cos_beta = vangles[2]
-
-        cBetah, sBetah = IMRPhenomXWignerdCoefficients_cosbeta(cos_beta)
-
-
-        cexp_i_alpha = np.exp(1j*alpha)
-
-        beta_powers = BetaPowers.from_half_angle_trig(cBetah, sBetah)
-
-        #eps_phase_hP_lmprime = np.exp(-1j*mprime*epsilon) * hlmprime / 2.0
-        ## hlmprime is the 22 aligned spin waveform....
-        hp_twist_22, hc_twist_22 = twist_22(cexp_i_alpha, pPrec, beta_powers)
-        
-
-
-        
-
-
-
-        #hp += eps_phase_hP_lmprime * hp_twist_22
-        #hc += eps_phase_hP_lmprime * hc_twist_22
-
-        return -1j*mprime*epsilon, hp_twist_22, hc_twist_22
+        return _hp, _hc
 
 
 
@@ -1326,22 +1345,21 @@ class IMRPhenomXPHM(WaveFormModel):
                          chi2y = chi2y,
                          chi2z = chi2z)
 
-        eps_phase, hp_twist, hc_twist = self.twistup(Mf, pWF, pPrec)
+        _hp, _hc = self.twistup(Mf, pWF, pPrec, hlm)
 
 
         _f = XLALSimIMRPhenomXUtilsMftoHz(Mf, 36+29)
 
+        zeta_polarization = pPrec.zeta_polarization
 
-        with open('ripple_angles_debug.txt', 'w') as f:
+        hp, hc = apply_polarization_rotation(zeta_polarization, _hp, _hc)
+        with open('ripple_angles_debug.dat', 'w') as f:
             f.write("# f_Hz  epsilon hp_real hp_imag hc_real hc_imag\n")
             for i in range(len(_f)):
-                f.write(f"{_f[i]:.3f} {hlm[i, 1]} {jnp.real(hp_twist[i])} {jnp.imag(hp_twist[i])} {jnp.real(hc_twist[i])} {jnp.imag(hc_twist[i])} \n")
+                f.write(f"{_f[i]:.3f} {jnp.real(hp[i]):.5e} {jnp.imag(hp[i]):.5e} {jnp.real(hc[i]):.5e} {jnp.imag(hc[i]):.5e}\n")
 
 
-        hp = hlm[:, 1]  * hp_twist * np.exp(eps_phase) / 2.0
-        hc = hlm[:, 1] * hc_twist * np.exp(eps_phase) / 2.0
-
-
+        
         return  hp, hc
         
 
@@ -1349,8 +1367,8 @@ class IMRPhenomXPHM(WaveFormModel):
 def twist_22(cexp_i_alpha, pPrec, beta_powers):
 
 
-    hp_sum = np.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
-    hc_sum = np.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+    hp_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+    hc_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
 
     # Complex exponential powers of alpha
     cexp_2i_alpha = cexp_i_alpha * cexp_i_alpha
@@ -1390,6 +1408,368 @@ def twist_22(cexp_i_alpha, pPrec, beta_powers):
     return hp_sum, hc_sum
 
 
+
+def twist_21(cexp_i_alpha, pPrec, beta_powers):
+    """
+    Compute the twisting contributions for l=2, m'=1 mode.
+
+    This function computes the sum over m of the Wigner-d matrix elements
+    and spherical harmonics for the (2,1) mode, following eq. 3.5-3.7
+    in the Precessing paper.
+
+    Args:
+        cexp_i_alpha: Complex exponential e^{i*alpha} (array over frequencies)
+        pPrec: Precession parameters object containing Y2m spherical harmonics
+        beta_powers: BetaPowers object containing powers of cos(beta/2) and sin(beta/2)
+
+    Returns:
+        hp_sum: Plus polarization contribution
+        hc_sum: Cross polarization contribution
+    """
+    hp_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+    hc_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+
+    # Complex exponential powers of alpha
+    cexp_2i_alpha = cexp_i_alpha * cexp_i_alpha
+    cexp_mi_alpha = 1.0 / cexp_i_alpha
+    cexp_m2i_alpha = cexp_mi_alpha * cexp_mi_alpha
+
+    cexp_im_alpha_l2 = jnp.stack([cexp_m2i_alpha, cexp_mi_alpha, jnp.ones_like(cexp_i_alpha), cexp_i_alpha, cexp_2i_alpha], axis=0)
+
+    Y2mA = jnp.array([pPrec.Y2m2, pPrec.Y2m1, pPrec.Y20, pPrec.Y21, pPrec.Y22])
+
+    # Wigner-d coefficients for m'=1
+    # d^2_{-2,1}, d^2_{-1,1}, d^2_{0,1}, d^2_{1,1}, d^2_{2,1}
+    d21 = jnp.array([
+        2.0 * beta_powers.cBetah * beta_powers.sBetah3,
+        3.0 * beta_powers.cBetah2 * beta_powers.sBetah2 - beta_powers.sBetah4,
+        jnp.sqrt(6) * (beta_powers.cBetah3 * beta_powers.sBetah - beta_powers.cBetah * beta_powers.sBetah3),
+        beta_powers.cBetah2 * (beta_powers.cBetah2 - 3.0 * beta_powers.sBetah2),
+        -2.0 * beta_powers.cBetah3 * beta_powers.sBetah
+    ])
+
+    # Exploit symmetry d^2_{-m,-1} = -(-1)^m d^2_{m,1}. See eq. A2 of Precessing paper.
+    # d^2_{-2,-1}, d^2_{-1,-1}, d^2_{0,-1}, d^2_{1,-1}, d^2_{2,-1}
+    d2m1 = jnp.array([-d21[4], d21[3], -d21[2], d21[1], -d21[0]])
+
+    for m in range(-2, 2+1):
+        # Transfer functions, see eqs. 3.5-3.7 in Precessing paper.
+        A2m1emm = cexp_im_alpha_l2[-m+2] * d2m1[m+2] * Y2mA[m+2]
+        A21emmstar = cexp_im_alpha_l2[m+2] * d21[m+2] * jnp.conj(Y2mA[m+2])
+        hp_sum += (A2m1emm + A21emmstar)
+        hc_sum += 1j * (A2m1emm - A21emmstar)
+
+    return hp_sum, hc_sum
+
+
+def twist_33(cexp_i_alpha, pPrec, beta_powers):
+    """
+    Compute the twisting contributions for l=3, m'=3 mode.
+
+    This function computes the sum over m of the Wigner-d matrix elements
+    and spherical harmonics for the (3,3) mode, following eq. 3.5-3.7
+    in the Precessing paper.
+
+    Args:
+        cexp_i_alpha: Complex exponential e^{i*alpha} (array over frequencies)
+        pPrec: Precession parameters object containing Y3m spherical harmonics
+        beta_powers: BetaPowers object containing powers of cos(beta/2) and sin(beta/2)
+
+    Returns:
+        hp_sum: Plus polarization contribution
+        hc_sum: Cross polarization contribution
+    """
+    hp_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+    hc_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+
+    # Complex exponential powers of alpha
+    cexp_2i_alpha = cexp_i_alpha * cexp_i_alpha
+    cexp_3i_alpha = cexp_i_alpha * cexp_2i_alpha
+    cexp_mi_alpha = 1.0 / cexp_i_alpha
+    cexp_m2i_alpha = cexp_mi_alpha * cexp_mi_alpha
+    cexp_m3i_alpha = cexp_mi_alpha * cexp_m2i_alpha
+
+    cexp_im_alpha_l3 = jnp.stack([cexp_m3i_alpha, cexp_m2i_alpha, cexp_mi_alpha, jnp.ones_like(cexp_i_alpha), cexp_i_alpha, cexp_2i_alpha, cexp_3i_alpha], axis=0)
+
+    Y3mA = jnp.array([pPrec.Y3m3, pPrec.Y3m2, pPrec.Y3m1, pPrec.Y30, pPrec.Y31, pPrec.Y32, pPrec.Y33])
+
+    # Wigner-d coefficients for m'=3
+    # d^3_{-3,3}, d^3_{-2,3}, d^3_{-1,3}, d^3_{0,3}, d^3_{1,3}, d^3_{2,3}, d^3_{3,3}
+    sqrt6 = jnp.sqrt(6.0)
+    sqrt15 = jnp.sqrt(15.0)
+    sqrt5 = jnp.sqrt(5.0)
+
+    d33 = jnp.array([
+        beta_powers.sBetah6,
+        sqrt6 * beta_powers.cBetah * beta_powers.sBetah5,
+        sqrt15 * beta_powers.cBetah2 * beta_powers.sBetah4,
+        2.0 * sqrt5 * beta_powers.cBetah3 * beta_powers.sBetah3,
+        sqrt15 * beta_powers.cBetah4 * beta_powers.sBetah2,
+        sqrt6 * beta_powers.cBetah5 * beta_powers.sBetah,
+        beta_powers.cBetah6
+    ])
+
+    # Exploit symmetry d^3_{-m,-3} = -(-1)^m d^3_{m,3}. See eq. A2 of Precessing paper.
+    # d^3_{-3,-3}, d^3_{-2,-3}, d^3_{-1,-3}, d^3_{0,-3}, d^3_{1,-3}, d^3_{2,-3}, d^3_{3,-3}
+    d3m3 = jnp.array([d33[6], -d33[5], d33[4], -d33[3], d33[2], -d33[1], d33[0]])
+
+    for m in range(-3, 3+1):
+        # Transfer functions
+        A3m3emm = cexp_im_alpha_l3[-m+3] * d3m3[m+3] * Y3mA[m+3]
+        A33emmstar = cexp_im_alpha_l3[m+3] * d33[m+3] * jnp.conj(Y3mA[m+3])
+        hp_sum += (A3m3emm - A33emmstar)
+        hc_sum += 1j * (A3m3emm + A33emmstar)
+
+    return hp_sum, hc_sum
+
+
+def twist_32(cexp_i_alpha, pPrec, beta_powers):
+    """
+    Compute the twisting contributions for l=3, m'=2 mode.
+
+    This function computes the sum over m of the Wigner-d matrix elements
+    and spherical harmonics for the (3,2) mode, following eq. 3.5-3.7
+    in the Precessing paper.
+
+    Args:
+        cexp_i_alpha: Complex exponential e^{i*alpha} (array over frequencies)
+        pPrec: Precession parameters object containing Y3m spherical harmonics
+        beta_powers: BetaPowers object containing powers of cos(beta/2) and sin(beta/2)
+
+    Returns:
+        hp_sum: Plus polarization contribution
+        hc_sum: Cross polarization contribution
+    """
+    hp_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+    hc_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+
+    # Complex exponential powers of alpha
+    cexp_2i_alpha = cexp_i_alpha * cexp_i_alpha
+    cexp_3i_alpha = cexp_i_alpha * cexp_2i_alpha
+    cexp_mi_alpha = 1.0 / cexp_i_alpha
+    cexp_m2i_alpha = cexp_mi_alpha * cexp_mi_alpha
+    cexp_m3i_alpha = cexp_mi_alpha * cexp_m2i_alpha
+
+    cexp_im_alpha_l3 = jnp.stack([cexp_m3i_alpha, cexp_m2i_alpha, cexp_mi_alpha, jnp.ones_like(cexp_i_alpha), cexp_i_alpha, cexp_2i_alpha, cexp_3i_alpha], axis=0)
+
+    Y3mA = jnp.array([pPrec.Y3m3, pPrec.Y3m2, pPrec.Y3m1, pPrec.Y30, pPrec.Y31, pPrec.Y32, pPrec.Y33])
+
+    # Wigner-d coefficients for m'=2
+    # d^3_{-3,2}, d^3_{-2,2}, d^3_{-1,2}, d^3_{0,2}, d^3_{1,2}, d^3_{2,2}, d^3_{3,2}
+    sqrt6 = jnp.sqrt(6.0)
+    sqrt10 = jnp.sqrt(10.0)
+    sqrt30 = jnp.sqrt(30.0)
+
+    cBetah = beta_powers.cBetah
+    cBetah2 = beta_powers.cBetah2
+    cBetah3 = beta_powers.cBetah3
+    cBetah4 = beta_powers.cBetah4
+    cBetah5 = beta_powers.cBetah5
+    sBetah = beta_powers.sBetah
+    sBetah2 = beta_powers.sBetah2
+    sBetah3 = beta_powers.sBetah3
+    sBetah4 = beta_powers.sBetah4
+    sBetah5 = beta_powers.sBetah5
+
+    d32 = jnp.array([
+        sqrt6 * cBetah * sBetah5,
+        sBetah4 * (5.0 * cBetah2 - sBetah2),
+        sqrt10 * sBetah3 * (2.0 * cBetah3 - cBetah * sBetah2),
+        sqrt30 * cBetah2 * (cBetah2 - sBetah2) * sBetah2,
+        sqrt10 * cBetah3 * (cBetah2 * sBetah - 2.0 * sBetah3),
+        cBetah4 * (cBetah2 - 5.0 * sBetah2),
+        -1.0 * sqrt6 * cBetah5 * sBetah
+    ])
+
+    # Exploit symmetry d^3_{-m,-2} = (-1)^m d^3_{m,2}. See eq. A2 of Precessing paper.
+    # d^3_{-3,-2}, d^3_{-2,-2}, d^3_{-1,-2}, d^3_{0,-2}, d^3_{1,-2}, d^3_{2,-2}, d^3_{3,-2}
+    d3m2 = jnp.array([-d32[6], d32[5], -d32[4], d32[3], -d32[2], d32[1], -d32[0]])
+
+    for m in range(-3, 3+1):
+        # Transfer functions, see eqs. 3.5-3.7 in Precessing paper.
+        A3m2emm = cexp_im_alpha_l3[-m+3] * d3m2[m+3] * Y3mA[m+3]
+        A32emmstar = cexp_im_alpha_l3[m+3] * d32[m+3] * jnp.conj(Y3mA[m+3])
+        hp_sum += (A3m2emm - A32emmstar)
+        hc_sum += 1j * (A3m2emm + A32emmstar)
+
+    return hp_sum, hc_sum
+
+
+def twist_44(cexp_i_alpha, pPrec, beta_powers):
+    """
+    Compute the twisting contributions for l=4, m'=4 mode.
+
+    This function computes the sum over m of the Wigner-d matrix elements
+    and spherical harmonics for the (4,4) mode, following eq. 3.5-3.7
+    in the Precessing paper.
+
+    Args:
+        cexp_i_alpha: Complex exponential e^{i*alpha} (array over frequencies)
+        pPrec: Precession parameters object containing Y4m spherical harmonics
+        beta_powers: BetaPowers object containing powers of cos(beta/2) and sin(beta/2)
+
+    Returns:
+        hp_sum: Plus polarization contribution
+        hc_sum: Cross polarization contribution
+    """
+    hp_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+    hc_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+
+    # Complex exponential powers of alpha
+    cexp_2i_alpha = cexp_i_alpha * cexp_i_alpha
+    cexp_3i_alpha = cexp_i_alpha * cexp_2i_alpha
+    cexp_4i_alpha = cexp_i_alpha * cexp_3i_alpha
+    cexp_mi_alpha = 1.0 / cexp_i_alpha
+    cexp_m2i_alpha = cexp_mi_alpha * cexp_mi_alpha
+    cexp_m3i_alpha = cexp_mi_alpha * cexp_m2i_alpha
+    cexp_m4i_alpha = cexp_mi_alpha * cexp_m3i_alpha
+
+    cexp_im_alpha_l4 = jnp.stack([cexp_m4i_alpha, cexp_m3i_alpha, cexp_m2i_alpha, cexp_mi_alpha, jnp.ones_like(cexp_i_alpha), cexp_i_alpha, cexp_2i_alpha, cexp_3i_alpha, cexp_4i_alpha], axis=0)
+
+    Y4mA = jnp.array([pPrec.Y4m4, pPrec.Y4m3, pPrec.Y4m2, pPrec.Y4m1, pPrec.Y40, pPrec.Y41, pPrec.Y42, pPrec.Y43, pPrec.Y44])
+
+    # Wigner-d coefficients for m'=4
+    # d^4_{-4,4}, d^4_{-3,4}, d^4_{-2,4}, d^4_{-1,4}, d^4_{0,4}, d^4_{1,4}, d^4_{2,4}, d^4_{3,4}, d^4_{4,4}
+    sqrt2 = jnp.sqrt(2.0)
+    sqrt7 = jnp.sqrt(7.0)
+    sqrt14 = jnp.sqrt(14.0)
+    sqrt70 = jnp.sqrt(70.0)
+
+    d44 = jnp.array([
+        beta_powers.sBetah8,
+        2.0 * sqrt2 * beta_powers.cBetah * beta_powers.sBetah7,
+        2.0 * sqrt7 * beta_powers.cBetah2 * beta_powers.sBetah6,
+        2.0 * sqrt14 * beta_powers.cBetah3 * beta_powers.sBetah5,
+        sqrt70 * beta_powers.cBetah4 * beta_powers.sBetah4,
+        2.0 * sqrt14 * beta_powers.cBetah5 * beta_powers.sBetah3,
+        2.0 * sqrt7 * beta_powers.cBetah6 * beta_powers.sBetah2,
+        2.0 * sqrt2 * beta_powers.cBetah7 * beta_powers.sBetah,
+        beta_powers.cBetah8
+    ])
+
+    # Exploit symmetry d^4_{-m,-4} = (-1)^m d^4_{m,4}. See eq. A2 of Precessing paper.
+    # d^4_{-4,-4}, d^4_{-3,-4}, d^4_{-2,-4}, d^4_{-1,-4}, d^4_{0,-4}, d^4_{1,-4}, d^4_{2,-4}, d^4_{3,-4}, d^4_{4,-4}
+    d4m4 = jnp.array([d44[8], -d44[7], d44[6], -d44[5], d44[4], -d44[3], d44[2], -d44[1], d44[0]])
+
+    for m in range(-4, 4+1):
+        # Transfer functions, see eqs. 3.5-3.7 in Precessing paper.
+        A4m4emm = cexp_im_alpha_l4[-m+4] * d4m4[m+4] * Y4mA[m+4]
+        A44emmstar = cexp_im_alpha_l4[m+4] * d44[m+4] * jnp.conj(Y4mA[m+4])
+        hp_sum += (A4m4emm + A44emmstar)
+        hc_sum += 1j * (A4m4emm - A44emmstar)
+
+    return hp_sum, hc_sum
+
+
+def twist_43(cexp_i_alpha, pPrec, beta_powers):
+    """
+    Compute the twisting contributions for l=4, m'=3 mode.
+
+    This function computes the sum over m of the Wigner-d matrix elements
+    and spherical harmonics for the (4,3) mode, following eq. 3.5-3.7
+    in the Precessing paper.
+
+    Args:
+        cexp_i_alpha: Complex exponential e^{i*alpha} (array over frequencies)
+        pPrec: Precession parameters object containing Y4m spherical harmonics
+        beta_powers: BetaPowers object containing powers of cos(beta/2) and sin(beta/2)
+
+    Returns:
+        hp_sum: Plus polarization contribution
+        hc_sum: Cross polarization contribution
+    """
+    hp_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+    hc_sum = jnp.zeros_like(cexp_i_alpha, dtype=cexp_i_alpha.dtype)
+
+    # Complex exponential powers of alpha
+    cexp_2i_alpha = cexp_i_alpha * cexp_i_alpha
+    cexp_3i_alpha = cexp_i_alpha * cexp_2i_alpha
+    cexp_4i_alpha = cexp_i_alpha * cexp_3i_alpha
+    cexp_mi_alpha = 1.0 / cexp_i_alpha
+    cexp_m2i_alpha = cexp_mi_alpha * cexp_mi_alpha
+    cexp_m3i_alpha = cexp_mi_alpha * cexp_m2i_alpha
+    cexp_m4i_alpha = cexp_mi_alpha * cexp_m3i_alpha
+
+    cexp_im_alpha_l4 = jnp.stack([cexp_m4i_alpha, cexp_m3i_alpha, cexp_m2i_alpha, cexp_mi_alpha, jnp.ones_like(cexp_i_alpha), cexp_i_alpha, cexp_2i_alpha, cexp_3i_alpha, cexp_4i_alpha], axis=0)
+
+    Y4mA = jnp.array([pPrec.Y4m4, pPrec.Y4m3, pPrec.Y4m2, pPrec.Y4m1, pPrec.Y40, pPrec.Y41, pPrec.Y42, pPrec.Y43, pPrec.Y44])
+
+    # Wigner-d coefficients for m'=3
+    # d^4_{-4,3}, d^4_{-3,3}, d^4_{-2,3}, d^4_{-1,3}, d^4_{0,3}, d^4_{1,3}, d^4_{2,3}, d^4_{3,3}, d^4_{4,3}
+    sqrt2 = jnp.sqrt(2.0)
+    sqrt7 = jnp.sqrt(7.0)
+    sqrt14 = jnp.sqrt(14.0)
+    sqrt35_over_2 = 5.916079783099616  # 2*sqrt(35/4) = sqrt(35)
+
+    cBetah = beta_powers.cBetah
+    cBetah2 = beta_powers.cBetah2
+    cBetah3 = beta_powers.cBetah3
+    cBetah4 = beta_powers.cBetah4
+    cBetah5 = beta_powers.cBetah5
+    cBetah6 = beta_powers.cBetah6
+    cBetah7 = beta_powers.cBetah7
+    cBetah8 = beta_powers.cBetah8
+    sBetah = beta_powers.sBetah
+    sBetah2 = beta_powers.sBetah2
+    sBetah3 = beta_powers.sBetah3
+    sBetah4 = beta_powers.sBetah4
+    sBetah5 = beta_powers.sBetah5
+    sBetah6 = beta_powers.sBetah6
+    sBetah7 = beta_powers.sBetah7
+    sBetah8 = beta_powers.sBetah8
+
+    d43 = jnp.array([
+        2.0 * sqrt2 * cBetah * sBetah7,
+        7.0 * cBetah2 * sBetah6 - sBetah8,
+        sqrt14 * (3.0 * cBetah3 * sBetah5 - cBetah * sBetah7),
+        sqrt7 * (5.0 * cBetah4 * sBetah4 - 3.0 * cBetah2 * sBetah6),
+        2.0 * sqrt35_over_2 * (cBetah5 * sBetah3 - cBetah3 * sBetah5),
+        sqrt7 * (3.0 * cBetah6 * sBetah2 - 5.0 * cBetah4 * sBetah4),
+        sqrt14 * (cBetah7 * sBetah - 3.0 * cBetah5 * sBetah3),
+        cBetah8 - 7.0 * cBetah6 * sBetah2,
+        -2.0 * sqrt2 * cBetah7 * sBetah
+    ])
+
+    # Exploit symmetry d^4_{-m,-3} = -(-1)^m d^4_{m,3}. See eq. A2 of Precessing paper.
+    # d^4_{-4,-3}, d^4_{-3,-3}, d^4_{-2,-3}, d^4_{-1,-3}, d^4_{0,-3}, d^4_{1,-3}, d^4_{2,-3}, d^4_{3,-3}, d^4_{4,-3}
+    d4m3 = jnp.array([-d43[8], d43[7], -d43[6], d43[5], -d43[4], d43[3], -d43[2], d43[1], -d43[0]])
+
+    for m in range(-4, 4+1):
+        # Transfer functions, see eqs. 3.5-3.7 in Precessing paper.
+        A4m3emm = cexp_im_alpha_l4[-m+4] * d4m3[m+4] * Y4mA[m+4]
+        A43emmstar = cexp_im_alpha_l4[m+4] * d43[m+4] * jnp.conj(Y4mA[m+4])
+        hp_sum += (A4m3emm + A43emmstar)
+        hc_sum += 1j * (A4m3emm - A43emmstar)
+
+    return hp_sum, hc_sum
+
+
+def apply_polarization_rotation(zeta_polarization, _hp, _hc):
+    """Apply polarization rotation to waveform components.
+    
+    Parameters
+    ----------
+    zeta_polarization : float
+        Polarization angle.
+    _hp : array_like
+        Plus polarization component (unrotated).
+    _hc : array_like
+        Cross polarization component (unrotated).
+    
+    Returns
+    -------
+    hp : array_like
+        Rotated plus polarization.
+    hc : array_like
+        Rotated cross polarization.
+    """
+    cosPolFac = jnp.cos(2.0 * zeta_polarization)
+    sinPolFac = jnp.sin(2.0 * zeta_polarization)
+    
+    hp = cosPolFac * _hp + sinPolFac * _hc
+    hc = cosPolFac * _hc - sinPolFac * _hp
+    
+    return hp, hc
 
 
 @dataclass
