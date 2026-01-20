@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax import vmap
 import numpy as np
 from .IMRPhenomD_QNMdata import fM_CUT
-from ..constants import EulerGamma, gt, m_per_Mpc, C, PI, MSUN, MTSUN_SI
+from ..constants import C, PI, MSUN, MTSUN_SI
 from ..typing import Array
 from ripplegw import Mc_eta_to_ms
 from .spherical_harmonics import (compute_sminus2_l2, compute_sminus2_l3, compute_sminus2_l4)
@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from .LALSimIMRPhenomX_precession import (IMRPhenomX_Return_phi_zeta_costhetaL_MSA, IMRPhenomXGetAndSetPrecessionVariables)
 from .LALSimIMRPhenomX_internals import IMRPhenomXSetWaveformVariables
 from .LALSimIMRPhenomXPHM import Get_alpha_epsilon_offset
+jax.config.update("jax_enable_x64", True)
 
 
 
@@ -728,6 +729,7 @@ class IMRPhenomXPHM(WaveFormModel):
         # This is MfRef, needed to recover LAL, which sets fRef to f_min if fRef=0
         fRef  = np.amin(fgrid, axis=0)
         if self.fRef is not None:
+            print("Ripple debug...fRef is not None", self.fRef)
             fRef = M*GMsun_over_c3*self.fRef
         # As in arXiv:1508.07253 eq. (4) and LALSimIMRPhenomD_internals.c line 97
         chiPN = (chi_s * (1.0 - eta * 76.0 / 113.0) + Seta * chi_a)
@@ -935,6 +937,8 @@ class IMRPhenomXPHM(WaveFormModel):
                 return Overallamp*amp0*(infreqs**(-7./6.))*np.where(infreqs < self.AMP_fJoin_INS, 1. + (infreqs**(2./3.))*Acoeffs['two_thirds'] + (infreqs**(4./3.)) * Acoeffs['four_thirds'] + (infreqs**(5./3.)) *  Acoeffs['five_thirds'] + (infreqs**(7./3.)) * Acoeffs['seven_thirds'] + (infreqs**(8./3.)) * Acoeffs['eight_thirds'] + infreqs * (Acoeffs['one'] + infreqs * Acoeffs['two'] + infreqs*infreqs * Acoeffs['three']), np.where(infreqs < fpeak, delta0 + infreqs*delta1 + infreqs*infreqs*(delta2 + infreqs*delta3 + infreqs*infreqs*delta4), np.exp(-(infreqs - fring)*gamma2/(fdamp*gamma3))* (fdamp*gamma3*gamma1) / ((infreqs - fring)*(infreqs - fring) + fdamp*gamma3*fdamp*gamma3)))
         
         def completePhase(infreqs, C1MRDuse, C2MRDuse, RhoUse, TauUse):
+            self.apply_fcut = True
+            print("Ripple debug what is fCut", self.apply_fcut)
             if self.apply_fcut:
                 return np.where(infreqs < self.PHI_fJoin_INS, PhiInspcoeffs['initial_phasing'] + PhiInspcoeffs['two_thirds']*(infreqs**(2./3.)) + PhiInspcoeffs['third']*(infreqs**(1./3.)) + PhiInspcoeffs['third_log']*(infreqs**(1./3.))*np.log(np.pi*infreqs)/3. + PhiInspcoeffs['log']*np.log(np.pi*infreqs)/3. + PhiInspcoeffs['min_third']*(infreqs**(-1./3.)) + PhiInspcoeffs['min_two_thirds']*(infreqs**(-2./3.)) + PhiInspcoeffs['min_one']/infreqs + PhiInspcoeffs['min_four_thirds']*(infreqs**(-4./3.)) + PhiInspcoeffs['min_five_thirds']*(infreqs**(-5./3.)) + (PhiInspcoeffs['one']*infreqs + PhiInspcoeffs['four_thirds']*(infreqs**(4./3.)) + PhiInspcoeffs['five_thirds']*(infreqs**(5./3.)) + PhiInspcoeffs['two']*infreqs*infreqs)/eta, np.where(infreqs<fMRDJoinPh, (beta1*infreqs - beta3/(3.*infreqs*infreqs*infreqs) + beta2*np.log(infreqs))/eta + C1Int + C2Int*infreqs, np.where(infreqs < self.fcutPar, (-(alpha2/infreqs) + (4.0/3.0) * (alpha3 * (infreqs**(3./4.))) + alpha1 * infreqs + alpha4 * RhoUse * np.arctan((infreqs - alpha5 * fring)/(fdamp * RhoUse * TauUse)))/eta + C1MRDuse + C2MRDuse*infreqs,0.)))
             else:
@@ -1344,6 +1348,19 @@ class IMRPhenomXPHM(WaveFormModel):
                          chi2x = chi2x,
                          chi2y = chi2y,
                          chi2z = chi2z)
+        
+        # Save each mode to a dat file
+        modes = [21, 22, 32, 33, 44]
+        for i, mode in enumerate(modes):
+            ell = mode // 10
+            emm = mode % 10
+            filename = f"ripple_htildelm_{ell}{emm}.dat"
+            with open(filename, 'w') as fp:
+                fp.write("# freq amp phase\n")
+                amp = np.abs(hlm[:, i])
+                phase = np.angle(hlm[:, i])
+                for idx in range(len(f)):
+                    fp.write(f"{f[idx]:.3f} {amp[idx]:.6e} {phase[idx]:.6e}\n")
 
         _hp, _hc = self.twistup(Mf, pWF, pPrec, hlm)
 
