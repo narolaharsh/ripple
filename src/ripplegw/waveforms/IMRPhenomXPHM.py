@@ -17,12 +17,14 @@ jax.config.update("jax_enable_x64", True)
 
 
 
-uGpc = 3.085677581491367278913937957796471611e25 # meters
-GMsun_over_c2 = 1.476625061404649406193430731479084713e3 # meters
+uGpc = 3.085677581491367278913937957796471611e25 
+#3.085677581491367278913937957796471611e25 # meters
+GMsun_over_c2 = MTSUN_SI * C
+#1.476625061404649406193430731479084713e3 # meters
 GMsun_over_c2_Gpc = GMsun_over_c2/uGpc 
 
 
-GMsun_over_c3 = 4.925491025543575903411922162094833998e-6 
+#MTSUN_SI = 4.925491025543575903411922162094833998e-6 
 
 
 
@@ -342,11 +344,11 @@ class IMRPhenomXPHM(WaveFormModel):
         m1ByM = 0.5 * (1.0 + Seta)
         m2ByM = 0.5 * (1.0 - Seta)
         # We work in dimensionless frequency M*f, not f
-        fgrid = M*GMsun_over_c3*f
+        fgrid = M*MTSUN_SI*f
         # This is MfRef, needed to recover LAL, which sets fRef to f_min if fRef=0
         fRef  = np.amin(fgrid, axis=0)
         if self.fRef is not None:
-            fRef = M*GMsun_over_c3*self.fRef
+            fRef = M*MTSUN_SI*self.fRef
         # As in arXiv:1508.07253 eq. (4) and LALSimIMRPhenomD_internals.c line 97
         chiPN = (chi_s * (1.0 - eta * 76.0 / 113.0) + Seta * chi_a)
         xi = - 1.0 + chiPN
@@ -537,7 +539,7 @@ class IMRPhenomXPHM(WaveFormModel):
         chi_s = 0.5 * (chi1 + chi2)
         chi_a = 0.5 * (chi1 - chi2)
         # We work in dimensionless frequency M*f, not f
-        fgrid = M*GMsun_over_c3*f
+        fgrid = M*MTSUN_SI*f
         # As in arXiv:1508.07253 eq. (4) and LALSimIMRPhenomD_internals.c line 97
         chiPN = (chi_s * (1.0 - eta * 76.0 / 113.0) + Seta * chi_a)
         xi = -1.0 + chiPN
@@ -609,7 +611,7 @@ class IMRPhenomXPHM(WaveFormModel):
         
         # Defined as in LALSimulation - LALSimIMRPhenomUtils.c line 70. Final units are correctly Hz^-1
         # there is a 2 * sqrt(5/(64*pi)) missing w.r.t the standard coefficient, which comes from the (2,2) shperical harmonic
-        Overallamp = M * GMsun_over_c2_Gpc * M * GMsun_over_c3 / kwargs['dL']
+        Overallamp = M * GMsun_over_c2_Gpc * M * MTSUN_SI / kwargs['dL']
         
         def completeAmpl(infreqs):
             if self.apply_fcut:
@@ -725,12 +727,12 @@ class IMRPhenomXPHM(WaveFormModel):
         m1ByM = 0.5 * (1.0 + Seta)
         m2ByM = 0.5 * (1.0 - Seta)
         # We work in dimensionless frequency M*f, not f
-        fgrid = M*GMsun_over_c3*f
+        fgrid = M*MTSUN_SI*f
         # This is MfRef, needed to recover LAL, which sets fRef to f_min if fRef=0
         fRef  = np.amin(fgrid, axis=0)
         if self.fRef is not None:
             print("Ripple debug...fRef is not None", self.fRef)
-            fRef = M*GMsun_over_c3*self.fRef
+            fRef = M*MTSUN_SI*self.fRef
         # As in arXiv:1508.07253 eq. (4) and LALSimIMRPhenomD_internals.c line 97
         chiPN = (chi_s * (1.0 - eta * 76.0 / 113.0) + Seta * chi_a)
         xi = - 1.0 + chiPN
@@ -928,17 +930,17 @@ class IMRPhenomXPHM(WaveFormModel):
         
         # Defined as in LALSimulation - LALSimIMRPhenomUtils.c line 70. Final units are correctly Hz^-1
         # there is a 2 * sqrt(5/(64*pi)) missing w.r.t the standard coefficient, which comes from the (2,2) shperical harmonic
-        Overallamp = M * GMsun_over_c2_Gpc * M * GMsun_over_c3 / kwargs['dL']
+
+        Overallamp = M * GMsun_over_c2_Gpc * M * MTSUN_SI / kwargs['dL']
         
         def completeAmpl(infreqs):
+            print(f"Ripple debug overallamp {Overallamp[0]:.10e}")
             if self.apply_fcut:
                 return Overallamp*amp0*(infreqs**(-7./6.))*np.where(infreqs < self.AMP_fJoin_INS, 1. + (infreqs**(2./3.))*Acoeffs['two_thirds'] + (infreqs**(4./3.)) * Acoeffs['four_thirds'] + (infreqs**(5./3.)) *  Acoeffs['five_thirds'] + (infreqs**(7./3.)) * Acoeffs['seven_thirds'] + (infreqs**(8./3.)) * Acoeffs['eight_thirds'] + infreqs * (Acoeffs['one'] + infreqs * Acoeffs['two'] + infreqs*infreqs * Acoeffs['three']), np.where(infreqs < fpeak, delta0 + infreqs*delta1 + infreqs*infreqs*(delta2 + infreqs*delta3 + infreqs*infreqs*delta4), np.where(infreqs < self.fcutPar,np.exp(-(infreqs - fring)*gamma2/(fdamp*gamma3))* (fdamp*gamma3*gamma1) / ((infreqs - fring)*(infreqs - fring) + fdamp*gamma3*fdamp*gamma3), 0.)))
             else:
                 return Overallamp*amp0*(infreqs**(-7./6.))*np.where(infreqs < self.AMP_fJoin_INS, 1. + (infreqs**(2./3.))*Acoeffs['two_thirds'] + (infreqs**(4./3.)) * Acoeffs['four_thirds'] + (infreqs**(5./3.)) *  Acoeffs['five_thirds'] + (infreqs**(7./3.)) * Acoeffs['seven_thirds'] + (infreqs**(8./3.)) * Acoeffs['eight_thirds'] + infreqs * (Acoeffs['one'] + infreqs * Acoeffs['two'] + infreqs*infreqs * Acoeffs['three']), np.where(infreqs < fpeak, delta0 + infreqs*delta1 + infreqs*infreqs*(delta2 + infreqs*delta3 + infreqs*infreqs*delta4), np.exp(-(infreqs - fring)*gamma2/(fdamp*gamma3))* (fdamp*gamma3*gamma1) / ((infreqs - fring)*(infreqs - fring) + fdamp*gamma3*fdamp*gamma3)))
         
         def completePhase(infreqs, C1MRDuse, C2MRDuse, RhoUse, TauUse):
-            self.apply_fcut = True
-            print("Ripple debug what is fCut", self.apply_fcut)
             if self.apply_fcut:
                 return np.where(infreqs < self.PHI_fJoin_INS, PhiInspcoeffs['initial_phasing'] + PhiInspcoeffs['two_thirds']*(infreqs**(2./3.)) + PhiInspcoeffs['third']*(infreqs**(1./3.)) + PhiInspcoeffs['third_log']*(infreqs**(1./3.))*np.log(np.pi*infreqs)/3. + PhiInspcoeffs['log']*np.log(np.pi*infreqs)/3. + PhiInspcoeffs['min_third']*(infreqs**(-1./3.)) + PhiInspcoeffs['min_two_thirds']*(infreqs**(-2./3.)) + PhiInspcoeffs['min_one']/infreqs + PhiInspcoeffs['min_four_thirds']*(infreqs**(-4./3.)) + PhiInspcoeffs['min_five_thirds']*(infreqs**(-5./3.)) + (PhiInspcoeffs['one']*infreqs + PhiInspcoeffs['four_thirds']*(infreqs**(4./3.)) + PhiInspcoeffs['five_thirds']*(infreqs**(5./3.)) + PhiInspcoeffs['two']*infreqs*infreqs)/eta, np.where(infreqs<fMRDJoinPh, (beta1*infreqs - beta3/(3.*infreqs*infreqs*infreqs) + beta2*np.log(infreqs))/eta + C1Int + C2Int*infreqs, np.where(infreqs < self.fcutPar, (-(alpha2/infreqs) + (4.0/3.0) * (alpha3 * (infreqs**(3./4.))) + alpha1 * infreqs + alpha4 * RhoUse * np.arctan((infreqs - alpha5 * fring)/(fdamp * RhoUse * TauUse)))/eta + C1MRDuse + C2MRDuse*infreqs,0.)))
             else:
@@ -1169,7 +1171,7 @@ class IMRPhenomXPHM(WaveFormModel):
         :rtype: array
         
         """
-        Mtot_sec = kwargs['Mc']*GMsun_over_c3/(kwargs['eta']**(3./5.))
+        Mtot_sec = kwargs['Mc']*MTSUN_SI/(kwargs['eta']**(3./5.))
         v = (np.pi*Mtot_sec*f)**(1./3.)
         eta  = kwargs['eta']
         eta2 = eta*eta
@@ -1191,7 +1193,7 @@ class IMRPhenomXPHM(WaveFormModel):
         :rtype: array
         
         """
-        return self.fcutPar/(kwargs['Mc']*GMsun_over_c3/(kwargs['eta']**(3./5.)))
+        return self.fcutPar/(kwargs['Mc']*MTSUN_SI/(kwargs['eta']**(3./5.)))
 
 
 
