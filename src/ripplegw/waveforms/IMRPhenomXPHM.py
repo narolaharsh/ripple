@@ -934,7 +934,7 @@ class IMRPhenomXPHM(WaveFormModel):
         Overallamp = M * GMsun_over_c2_Gpc * M * MTSUN_SI / kwargs['dL']
         
         def completeAmpl(infreqs):
-            print(f"Ripple debug overallamp {Overallamp[0]:.10e}")
+            print(f"Ripple debug overallamp {Overallamp[0]:.10e} and amp0 {amp0[0]:.10e}")
             if self.apply_fcut:
                 return Overallamp*amp0*(infreqs**(-7./6.))*np.where(infreqs < self.AMP_fJoin_INS, 1. + (infreqs**(2./3.))*Acoeffs['two_thirds'] + (infreqs**(4./3.)) * Acoeffs['four_thirds'] + (infreqs**(5./3.)) *  Acoeffs['five_thirds'] + (infreqs**(7./3.)) * Acoeffs['seven_thirds'] + (infreqs**(8./3.)) * Acoeffs['eight_thirds'] + infreqs * (Acoeffs['one'] + infreqs * Acoeffs['two'] + infreqs*infreqs * Acoeffs['three']), np.where(infreqs < fpeak, delta0 + infreqs*delta1 + infreqs*infreqs*(delta2 + infreqs*delta3 + infreqs*infreqs*delta4), np.where(infreqs < self.fcutPar,np.exp(-(infreqs - fring)*gamma2/(fdamp*gamma3))* (fdamp*gamma3*gamma1) / ((infreqs - fring)*(infreqs - fring) + fdamp*gamma3*fdamp*gamma3), 0.)))
             else:
@@ -973,7 +973,11 @@ class IMRPhenomXPHM(WaveFormModel):
         t0 = (alpha1 + alpha2/(fpeak*fpeak) + alpha3/(fpeak**(1./4.)) + alpha4/(fdamp*(1. + (fpeak - alpha5*fring)*(fpeak - alpha5*fring)/(fdamp*fdamp))))/eta
         
         phiRef = completePhase(fRef, C1MRD, C2MRD, 1., 1.)
+        #phiRef = np.array([-12.9526175789])
         phi0   = 0.5*phiRef #+ kwargs['Phicoal'] 
+        print(f"ripple debug phiRef {phiRef[0]:.10f}")
+        print(f"ripple debug fref {fRef[0]:.10f}")
+        print(f"ripple debug C1MRD {C1MRD} and C2MRD {C2MRD}")
         #FIXME Need to swtich on kwargs['Phicoal'] at some point
         
         # Now compute all the modes, they are 6, we parallelize
@@ -1053,6 +1057,7 @@ class IMRPhenomXPHM(WaveFormModel):
             PhisAllModes = np.where(fgrid < Map_fiPhi, completePhase((fgrid*Map_ai + Map_bi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_ai, np.where(fgrid < Map_fr, - PhDBconst + PhDBAterm + completePhase((fgrid*Map_amPhi + Map_bmPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_amPhi, - PhDCconst + tmpphaseC + completePhase((fgrid*Map_arPhi + Map_brPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_arPhi))
             
         PhisAllModes = PhisAllModes - np.expand_dims(t0, len(t0.shape))*(fgrid - np.expand_dims(fRef, len(fRef.shape))) - mms*np.expand_dims(phi0, len(phi0.shape)) + self.complShiftm[mms]
+
 
         modes = np.expand_dims(modes, len(modes.shape))
         Y, Ymstar = SpinWeighted_SphericalHarmonic(iota)
@@ -1351,31 +1356,14 @@ class IMRPhenomXPHM(WaveFormModel):
                          chi2y = chi2y,
                          chi2z = chi2z)
         
-        # Save each mode to a dat file
-        modes = [21, 22, 32, 33, 44]
-        for i, mode in enumerate(modes):
-            ell = mode // 10
-            emm = mode % 10
-            filename = f"ripple_htildelm_{ell}{emm}.dat"
-            with open(filename, 'w') as fp:
-                fp.write("# freq amp phase\n")
-                amp = np.abs(hlm[:, i])
-                phase = np.angle(hlm[:, i])
-                for idx in range(len(f)):
-                    fp.write(f"{f[idx]:.3f} {amp[idx]:.6e} {phase[idx]:.6e}\n")
 
         _hp, _hc = self.twistup(Mf, pWF, pPrec, hlm)
 
 
-        _f = XLALSimIMRPhenomXUtilsMftoHz(Mf, 36+29)
-
         zeta_polarization = pPrec.zeta_polarization
 
         hp, hc = apply_polarization_rotation(zeta_polarization, _hp, _hc)
-        with open('ripple_angles_debug.dat', 'w') as f:
-            f.write("# f_Hz  epsilon hp_real hp_imag hc_real hc_imag\n")
-            for i in range(len(_f)):
-                f.write(f"{_f[i]:.3f} {jnp.real(hp[i]):.5e} {jnp.imag(hp[i]):.5e} {jnp.real(hc[i]):.5e} {jnp.imag(hc[i]):.5e}\n")
+       
 
 
         
