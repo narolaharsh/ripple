@@ -1057,7 +1057,7 @@ class IMRPhenomXPHM(WaveFormModel):
         
         hlm = AmplsAllModes * np.exp(-1j*PhisAllModes) * np.power(-1, ells)
 
-        return hp, hc, hlm
+        return hlm
 
         
     def _finalspin(self, eta, chi1, chi2):
@@ -1329,7 +1329,7 @@ class IMRPhenomXPHM(WaveFormModel):
         Mc = component_masses_to_chirp_mass(m1, m2)
         eta = m1 * m2 / np.power(m1+m2, 2)
 
-        hp_base, hc_base, hlm = self.hphc(f,
+        hlm = self.hphc(f,
                          Mc = Mc,
                          eta = eta,
                          dL = distance,
