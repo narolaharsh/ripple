@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from jax import vmap
 import numpy as np
-from .IMRPhenomD_QNMdata import fM_CUT
+from .IMRPhenomD_QNMdata import fM_CUT, QNMData_a, QNMData_fRD, QNMData_fdamp
 from ..constants import C, PI, MSUN, MTSUN_SI
 from ..typing import Array
 from ripplegw import Mc_eta_to_ms
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from .LALSimIMRPhenomX_precession import (IMRPhenomX_Return_phi_zeta_costhetaL_MSA, IMRPhenomXGetAndSetPrecessionVariables)
 from .LALSimIMRPhenomX_internals import IMRPhenomXSetWaveformVariables
 from .LALSimIMRPhenomXPHM import Get_alpha_epsilon_offset
-jax.config.update("jax_enable_x64", True)
+
 
 
 
@@ -403,7 +403,7 @@ class IMRPhenomXPHM(WaveFormModel):
         # Now translate into inspiral coefficients, label with the power in front of which they appear
         PhiInspcoeffs = {}
         
-        PhiInspcoeffs['initial_phasing'] = TF2coeffs['five']*TF2OverallAmpl
+        PhiInspcoeffs['initial_phasing'] = TF2coeffs['five']*TF2OverallAmpl - np.pi/4
         PhiInspcoeffs['two_thirds'] = TF2coeffs['seven']*TF2OverallAmpl*(np.pi**(2./3.))
         PhiInspcoeffs['third'] = TF2coeffs['six']*TF2OverallAmpl*(np.pi**(1./3.))
         PhiInspcoeffs['third_log'] = TF2coeffs['six_log']*TF2OverallAmpl*(np.pi**(1./3.))
@@ -555,7 +555,7 @@ class IMRPhenomXPHM(WaveFormModel):
         gamma2 = 1.010344404799477 + 0.0008993122007234548*eta + (0.283949116804459 - 4.049752962958005*eta + 13.207828172665366*eta2 + (0.10396278486805426 - 7.025059158961947*eta + 24.784892370130475*eta2)*xi + (0.03093202475605892 - 2.6924023896851663*eta + 9.609374464684983*eta2)*xi*xi)*xi
         gamma3 = 1.3081615607036106 - 0.005537729694807678*eta +(-0.06782917938621007 - 0.6689834970767117*eta + 3.403147966134083*eta2 + (-0.05296577374411866 - 0.9923793203111362*eta + 4.820681208409587*eta2)*xi + (-0.006134139870393713 - 0.38429253308696365*eta + 1.7561754421985984*eta2)*xi*xi)*xi
         # Compute fpeak, from arXiv:1508.07253 eq. (20), we remove the square root term in case it is complex
-        fpeak = np.where(gamma2 >= 1.0, np.fabs(fring - (fdamp*gamma3)/gamma2), fring + (fdamp*(-1.0 + np.sqrt(1.0 - gamma2*gamma2))*gamma3)/gamma2)
+        fpeak = np.where(gamma2 >= 1.0, np.fabs(fring - (fdamp*gamma3)/gamma2), np.fabs(fring + (fdamp*(-1.0 + np.sqrt(1.0 - gamma2*gamma2))*gamma3)/gamma2))
         # Compute coefficients rho appearing in arXiv:1508.07253 eq. (30), the numerical coefficients are in Tab. 5
         rho1 = 3931.8979897196696 - 17395.758706812805*eta + (3132.375545898835 + 343965.86092361377*eta - 1.2162565819981997e6*eta2 + (-70698.00600428853 + 1.383907177859705e6*eta - 3.9662761890979446e6*eta2)*xi + (-60017.52423652596 + 803515.1181825735*eta - 2.091710365941658e6*eta2)*xi*xi)*xi
         rho2 = -40105.47653771657 + 112253.0169706701*eta + (23561.696065836168 - 3.476180699403351e6*eta + 1.137593670849482e7*eta2 + (754313.1127166454 - 1.308476044625268e7*eta + 3.6444584853928134e7*eta2)*xi + (596226.612472288 - 7.4277901143564405e6*eta + 1.8928977514040343e7*eta2)*xi*xi)*xi
@@ -775,6 +775,28 @@ class IMRPhenomXPHM(WaveFormModel):
         fring = (np.real(tmpRDfr)/(2.*np.pi*finMass))
         fdamp = (np.imag(tmpRDfr)/(2.*np.pi*finMass))
 
+        # Compute PhenomD-style fring and fdamp using spline interpolation (for t0 calculation)
+        # This matches LALSim's IMRPhenomDComputet0 which uses fring/fdamp from QNM data tables
+        # Need to use PhenomPv2FinalSpin which includes chip contribution for precessing systems
+        chi1x = kwargs.get('chi1x', np.zeros_like(eta))
+        chi1y = kwargs.get('chi1y', np.zeros_like(eta))
+        chi2x = kwargs.get('chi2x', np.zeros_like(eta))
+        chi2y = kwargs.get('chi2y', np.zeros_like(eta))
+        # Compute chip as in LALSimIMRPhenomUtils.c XLALSimPhenomUtilsChiP
+        S1_perp = m1ByM * m1ByM * np.sqrt(chi1x * chi1x + chi1y * chi1y)
+        S2_perp = m2ByM * m2ByM * np.sqrt(chi2x * chi2x + chi2y * chi2y)
+        A1 = 2.0 + 1.5 * m2ByM / m1ByM
+        A2 = 2.0 + 1.5 * m1ByM / m2ByM
+        ASp1 = A1 * S1_perp
+        ASp2 = A2 * S2_perp
+        chip = np.where(ASp2 > ASp1, ASp2 / (A2 * m2ByM * m2ByM), ASp1 / (A1 * m1ByM * m1ByM))
+        # Compute final spin with chip contribution as in XLALSimPhenomUtilsPhenomPv2FinalSpin
+        q_factor = np.where(m1ByM >= m2ByM, m1ByM, m2ByM)
+        Sperp = chip * q_factor * q_factor
+        finspin_phenomD = np.sign(aeff) * np.sqrt(Sperp * Sperp + aeff * aeff)
+        fring_phenomD = np.interp(finspin_phenomD, np.array(QNMData_a), np.array(QNMData_fRD)) / finMass
+        fdamp_phenomD = np.interp(finspin_phenomD, np.array(QNMData_a), np.array(QNMData_fdamp)) / finMass
+
         # Compute sigma coefficients appearing in arXiv:1508.07253 eq. (28)
         # They derive from a fit, whose numerical coefficients are in arXiv:1508.07253 Tab. 5
         sigma1 = 2096.551999295543 + 1463.7493168261553*eta + (1312.5493286098522 + 18307.330017082117*eta - 43534.1440746107*eta2 + (-833.2889543511114 + 32047.31997183187*eta - 108609.45037520859*eta2)*xi + (452.25136398112204 + 8353.439546391714*eta - 44531.3250037322*eta2)*xi*xi)*xi
@@ -819,7 +841,7 @@ class IMRPhenomXPHM(WaveFormModel):
         # Now translate into inspiral coefficients, label with the power in front of which they appear
         PhiInspcoeffs = {}
         
-        PhiInspcoeffs['initial_phasing'] = TF2coeffs['five']*TF2OverallAmpl
+        PhiInspcoeffs['initial_phasing'] = TF2coeffs['five']*TF2OverallAmpl - (np.pi/4)
         PhiInspcoeffs['two_thirds'] = TF2coeffs['seven']*TF2OverallAmpl*(np.pi**(2./3.))
         PhiInspcoeffs['third'] = TF2coeffs['six']*TF2OverallAmpl*(np.pi**(1./3.))
         PhiInspcoeffs['third_log'] = TF2coeffs['six_log']*TF2OverallAmpl*(np.pi**(1./3.))
@@ -868,13 +890,15 @@ class IMRPhenomXPHM(WaveFormModel):
         
         C2MRD = DPhiIntTempVal - DPhiMRDVal
         C1MRD = PhiIntTempVal - PhiMRJoinTemp/eta - C2MRD*fMRDJoinPh
-        
+
         # Compute coefficients gamma appearing in arXiv:1508.07253 eq. (19), the numerical coefficients are in Tab. 5
         gamma1 = 0.006927402739328343 + 0.03020474290328911*eta + (0.006308024337706171 - 0.12074130661131138*eta + 0.26271598905781324*eta2 + (0.0034151773647198794 - 0.10779338611188374*eta + 0.27098966966891747*eta2)*xi+ (0.0007374185938559283 - 0.02749621038376281*eta + 0.0733150789135702*eta2)*xi*xi)*xi
         gamma2 = 1.010344404799477 + 0.0008993122007234548*eta + (0.283949116804459 - 4.049752962958005*eta + 13.207828172665366*eta2 + (0.10396278486805426 - 7.025059158961947*eta + 24.784892370130475*eta2)*xi + (0.03093202475605892 - 2.6924023896851663*eta + 9.609374464684983*eta2)*xi*xi)*xi
         gamma3 = 1.3081615607036106 - 0.005537729694807678*eta +(-0.06782917938621007 - 0.6689834970767117*eta + 3.403147966134083*eta2 + (-0.05296577374411866 - 0.9923793203111362*eta + 4.820681208409587*eta2)*xi + (-0.006134139870393713 - 0.38429253308696365*eta + 1.7561754421985984*eta2)*xi*xi)*xi
         # Compute fpeak, from arXiv:1508.07253 eq. (20), we remove the square root term in case it is complex
-        fpeak = np.where(gamma2 >= 1.0, np.fabs(fring - (fdamp*gamma3)/gamma2), fring + (fdamp*(-1.0 + np.sqrt(1.0 - gamma2*gamma2))*gamma3)/gamma2)
+        fpeak = np.where(gamma2 >= 1.0, np.fabs(fring - (fdamp*gamma3)/gamma2), np.fabs(fring + (fdamp*(-1.0 + np.sqrt(1.0 - gamma2*gamma2))*gamma3)/gamma2))
+        # Compute fpeak using PhenomD-style fring/fdamp for t0 calculation (to match LALSim's IMRPhenomDComputet0)
+        fpeak_phenomD = np.where(gamma2 >= 1.0, np.fabs(fring_phenomD - (fdamp_phenomD*gamma3)/gamma2), np.fabs(fring_phenomD + (fdamp_phenomD*(-1.0 + np.sqrt(1.0 - gamma2*gamma2))*gamma3)/gamma2))
         # Compute coefficients rho appearing in arXiv:1508.07253 eq. (30), the numerical coefficients are in Tab. 5
         rho1 = 3931.8979897196696 - 17395.758706812805*eta + (3132.375545898835 + 343965.86092361377*eta - 1.2162565819981997e6*eta2 + (-70698.00600428853 + 1.383907177859705e6*eta - 3.9662761890979446e6*eta2)*xi + (-60017.52423652596 + 803515.1181825735*eta - 2.091710365941658e6*eta2)*xi*xi)*xi
         rho2 = -40105.47653771657 + 112253.0169706701*eta + (23561.696065836168 - 3.476180699403351e6*eta + 1.137593670849482e7*eta2 + (754313.1127166454 - 1.308476044625268e7*eta + 3.6444584853928134e7*eta2)*xi + (596226.612472288 - 7.4277901143564405e6*eta + 1.8928977514040343e7*eta2)*xi*xi)*xi
@@ -934,7 +958,6 @@ class IMRPhenomXPHM(WaveFormModel):
         Overallamp = M * GMsun_over_c2_Gpc * M * MTSUN_SI / kwargs['dL']
         
         def completeAmpl(infreqs):
-            print(f"Ripple debug overallamp {Overallamp[0]:.10e} and amp0 {amp0[0]:.10e}")
             if self.apply_fcut:
                 return Overallamp*amp0*(infreqs**(-7./6.))*np.where(infreqs < self.AMP_fJoin_INS, 1. + (infreqs**(2./3.))*Acoeffs['two_thirds'] + (infreqs**(4./3.)) * Acoeffs['four_thirds'] + (infreqs**(5./3.)) *  Acoeffs['five_thirds'] + (infreqs**(7./3.)) * Acoeffs['seven_thirds'] + (infreqs**(8./3.)) * Acoeffs['eight_thirds'] + infreqs * (Acoeffs['one'] + infreqs * Acoeffs['two'] + infreqs*infreqs * Acoeffs['three']), np.where(infreqs < fpeak, delta0 + infreqs*delta1 + infreqs*infreqs*(delta2 + infreqs*delta3 + infreqs*infreqs*delta4), np.where(infreqs < self.fcutPar,np.exp(-(infreqs - fring)*gamma2/(fdamp*gamma3))* (fdamp*gamma3*gamma1) / ((infreqs - fring)*(infreqs - fring) + fdamp*gamma3*fdamp*gamma3), 0.)))
             else:
@@ -970,14 +993,11 @@ class IMRPhenomXPHM(WaveFormModel):
             return Ylm, Ylminm
         
         # Time shift so that peak amplitude is approximately at t=0
-        t0 = (alpha1 + alpha2/(fpeak*fpeak) + alpha3/(fpeak**(1./4.)) + alpha4/(fdamp*(1. + (fpeak - alpha5*fring)*(fpeak - alpha5*fring)/(fdamp*fdamp))))/eta
-        
+        # Use PhenomD-style fring/fdamp/fpeak to match LALSim's IMRPhenomDComputet0
+        t0 = (alpha1 + alpha2/(fpeak_phenomD*fpeak_phenomD) + alpha3/(fpeak_phenomD**(1./4.)) + alpha4/(fdamp_phenomD*(1. + (fpeak_phenomD - alpha5*fring_phenomD)*(fpeak_phenomD - alpha5*fring_phenomD)/(fdamp_phenomD*fdamp_phenomD))))/eta
+
         phiRef = completePhase(fRef, C1MRD, C2MRD, 1., 1.)
-        #phiRef = np.array([-12.9526175789])
-        phi0   = 0.5*phiRef #+ kwargs['Phicoal'] 
-        print(f"ripple debug phiRef {phiRef[0]:.10f}")
-        print(f"ripple debug fref {fRef[0]:.10f}")
-        print(f"ripple debug C1MRD {C1MRD} and C2MRD {C2MRD}")
+        phi0   = 0.5*phiRef #+ kwargs['Phicoal']
         #FIXME Need to swtich on kwargs['Phicoal'] at some point
         
         # Now compute all the modes, they are 6, we parallelize
@@ -1055,9 +1075,17 @@ class IMRPhenomXPHM(WaveFormModel):
             C1MRDHM, C2MRDHM, Rholm, Taulm = C1MRDHM.T, C2MRDHM.T, Rholm.T, Taulm.T
             PhDBconst, PhDCconst, PhDBAterm, tmpphaseC = PhDBconst.T, PhDCconst.T, PhDBAterm.T, tmpphaseC.T
             PhisAllModes = np.where(fgrid < Map_fiPhi, completePhase((fgrid*Map_ai + Map_bi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_ai, np.where(fgrid < Map_fr, - PhDBconst + PhDBAterm + completePhase((fgrid*Map_amPhi + Map_bmPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_amPhi, - PhDCconst + tmpphaseC + completePhase((fgrid*Map_arPhi + Map_brPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_arPhi))
-            
+        
+        # override  #FIXME
+        #t0 = np.array([4.0433245095008095e+02])
         PhisAllModes = PhisAllModes - np.expand_dims(t0, len(t0.shape))*(fgrid - np.expand_dims(fRef, len(fRef.shape))) - mms*np.expand_dims(phi0, len(phi0.shape)) + self.complShiftm[mms]
 
+        # Save PhisAllModes to dat file for debugging (frequency + modes as columns)
+        freqs_flat = fgrid.flatten()
+        n_modes = PhisAllModes.shape[1] if len(PhisAllModes.shape) > 1 else 1
+        phases_2d = PhisAllModes.reshape(-1, n_modes)  # shape: (nfreqs, n_modes)
+        save_data = np.column_stack([freqs_flat, phases_2d])
+        np.savetxt('PhisAllModes_ripple.dat', save_data, header='f 21 22 32 33 43')
 
         modes = np.expand_dims(modes, len(modes.shape))
         Y, Ymstar = SpinWeighted_SphericalHarmonic(iota)
