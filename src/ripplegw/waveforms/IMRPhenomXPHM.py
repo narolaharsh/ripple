@@ -600,9 +600,10 @@ class IMRPhenomXPHM(WaveFormModel):
                 return Overallamp*amp0*(infreqs**(-7./6.))*np.where(infreqs < self.AMP_fJoin_INS, 1. + (infreqs**(2./3.))*Acoeffs['two_thirds'] + (infreqs**(4./3.)) * Acoeffs['four_thirds'] + (infreqs**(5./3.)) *  Acoeffs['five_thirds'] + (infreqs**(7./3.)) * Acoeffs['seven_thirds'] + (infreqs**(8./3.)) * Acoeffs['eight_thirds'] + infreqs * (Acoeffs['one'] + infreqs * Acoeffs['two'] + infreqs*infreqs * Acoeffs['three']), np.where(infreqs < fpeak, delta0 + infreqs*delta1 + infreqs*infreqs*(delta2 + infreqs*delta3 + infreqs*infreqs*delta4), np.exp(-(infreqs - fring)*gamma2/(fdamp*gamma3))* (fdamp*gamma3*gamma1) / ((infreqs - fring)*(infreqs - fring) + fdamp*gamma3*fdamp*gamma3)))
         
         def completePhase(infreqs, C1MRDuse, C2MRDuse, RhoUse, TauUse):
-            print(f"ripple debug fcutpar {XLALSimIMRPhenomXUtilsMftoHz(self.fcutPar, mass_1+mass_2)}")
-            print(f"ripple debug fcutpar {XLALSimIMRPhenomXUtilsMftoHz(self.PHI_fJoin_INS, mass_1+mass_2)}")
-            print(f"ripple debug fcutpar {XLALSimIMRPhenomXUtilsMftoHz(fMRDJoinPh, mass_1+mass_2)}")
+            #print(f"ripple debug end of insp {XLALSimIMRPhenomXUtilsMftoHz(self.PHI_fJoin_INS, mass_1+mass_2)}")
+            #print(f"ripple debug end or merger {XLALSimIMRPhenomXUtilsMftoHz(fMRDJoinPh, mass_1+mass_2)}")
+            #print(f"ripple debug end of ringdown {XLALSimIMRPhenomXUtilsMftoHz(self.fcutPar, mass_1+mass_2)}")
+
 
             if self.apply_fcut:
                 # Compute phase for each frequency regime
@@ -783,9 +784,9 @@ class IMRPhenomXPHM(WaveFormModel):
 
         PhisAllModes = PhisAllModes - np.expand_dims(t0, len(t0.shape))*(fgrid - np.expand_dims(fRef, len(fRef.shape))) - mms*np.expand_dims(phi0, len(phi0.shape)) + self.complShiftm[mms]
 
-        print(f"ripple debug t0 value {t0}")
-        print(f"ripple debug phi0 {phi0}")
-        print(f"ripple debug self.complShiftm[mms] {self.complShiftm[mms]}")
+        #print(f"ripple debug t0 value {t0}")
+        #print(f"ripple debug phi0 {phi0}")
+        #print(f"ripple debug self.complShiftm[mms] {self.complShiftm[mms]}")
 
 
         modes = np.expand_dims(modes, len(modes.shape))
@@ -1076,7 +1077,7 @@ class IMRPhenomXPHM(WaveFormModel):
                          theta = None,
                          phi = None,
                          iota = inclination,
-                         tcoal = np.array([GPSt_to_LMST(3600, lat=0.,   long=0.)]),
+                         tcoal = np.array([GPSt_to_LMST(3600, lat=0.,   long=0.)]), ## FIXME
                          Phicoal = phi0,
                          chi1x = chi1x,
                          chi1y = chi1y,
