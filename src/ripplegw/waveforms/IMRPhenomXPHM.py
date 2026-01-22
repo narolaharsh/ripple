@@ -332,6 +332,8 @@ class IMRPhenomXPHM(WaveFormModel):
         """
         # This function retuns directly the full plus and cross polarisations, avoiding for loops over the modes
         M = kwargs['Mc']/(kwargs['eta']**(3./5.))
+        mass_ratio = symmetric_mass_ratio_to_mass_ratio(kwargs['eta'])
+        mass_1, mass_2 = chirp_mass_and_mass_ratio_to_component_masses(kwargs['Mc'], mass_ratio)
         eta = kwargs['eta']
         eta2 = eta*eta # These can speed up a bit, we call them multiple times
         etaInv = 1./eta
@@ -404,24 +406,32 @@ class IMRPhenomXPHM(WaveFormModel):
         # Compute PhenomD-style fring and fdamp using spline interpolation (for t0 calculation)
         # This matches LALSim's IMRPhenomDComputet0 which uses fring/fdamp from QNM data tables
         # Need to use PhenomPv2FinalSpin which includes chip contribution for precessing systems
-        chi1x = kwargs.get('chi1x', np.zeros_like(eta))
-        chi1y = kwargs.get('chi1y', np.zeros_like(eta))
-        chi2x = kwargs.get('chi2x', np.zeros_like(eta))
-        chi2y = kwargs.get('chi2y', np.zeros_like(eta))
+        #chi1x = kwargs.get('chi1x', np.zeros_like(eta))
+        #chi1y = kwargs.get('chi1y', np.zeros_like(eta))
+        #chi2x = kwargs.get('chi2x', np.zeros_like(eta))
+        #chi2y = kwargs.get('chi2y', np.zeros_like(eta))
         # Compute chip as in LALSimIMRPhenomUtils.c XLALSimPhenomUtilsChiP
-        S1_perp = m1ByM * m1ByM * np.sqrt(chi1x * chi1x + chi1y * chi1y)
-        S2_perp = m2ByM * m2ByM * np.sqrt(chi2x * chi2x + chi2y * chi2y)
-        A1 = 2.0 + 1.5 * m2ByM / m1ByM
-        A2 = 2.0 + 1.5 * m1ByM / m2ByM
-        ASp1 = A1 * S1_perp
-        ASp2 = A2 * S2_perp
-        chip = np.where(ASp2 > ASp1, ASp2 / (A2 * m2ByM * m2ByM), ASp1 / (A1 * m1ByM * m1ByM))
+        #S1_perp = m1ByM * m1ByM * np.sqrt(chi1x * chi1x + chi1y * chi1y)
+        #S2_perp = m2ByM * m2ByM * np.sqrt(chi2x * chi2x + chi2y * chi2y)
+        #A1 = 2.0 + 1.5 * m2ByM / m1ByM
+        #A2 = 2.0 + 1.5 * m1ByM / m2ByM
+        #ASp1 = A1 * S1_perp
+        #ASp2 = A2 * S2_perp
+        from .LALSimIMRPhenomUtils import XLALSimPhenomUtilsChiP
+        chip = XLALSimPhenomUtilsChiP(mass_1, mass_2, 
+                                      kwargs['chi1x'], kwargs['chi1y'], 
+                                      kwargs['chi2x'], kwargs['chi2y'])
+        #np.where(ASp2 > ASp1, ASp2 / (A2 * m2ByM * m2ByM), ASp1 / (A1 * m1ByM * m1ByM))
         # Compute final spin with chip contribution as in XLALSimPhenomUtilsPhenomPv2FinalSpin
         q_factor = np.where(m1ByM >= m2ByM, m1ByM, m2ByM)
         Sperp = chip * q_factor * q_factor
         finspin_phenomD = np.sign(aeff) * np.sqrt(Sperp * Sperp + aeff * aeff)
+   
+
         fring_phenomD = np.interp(finspin_phenomD, np.array(QNMData_a), np.array(QNMData_fRD)) / finMass
         fdamp_phenomD = np.interp(finspin_phenomD, np.array(QNMData_a), np.array(QNMData_fdamp)) / finMass
+
+
 
         # Compute sigma coefficients appearing in arXiv:1508.07253 eq. (28)
         # They derive from a fit, whose numerical coefficients are in arXiv:1508.07253 Tab. 5
@@ -590,8 +600,62 @@ class IMRPhenomXPHM(WaveFormModel):
                 return Overallamp*amp0*(infreqs**(-7./6.))*np.where(infreqs < self.AMP_fJoin_INS, 1. + (infreqs**(2./3.))*Acoeffs['two_thirds'] + (infreqs**(4./3.)) * Acoeffs['four_thirds'] + (infreqs**(5./3.)) *  Acoeffs['five_thirds'] + (infreqs**(7./3.)) * Acoeffs['seven_thirds'] + (infreqs**(8./3.)) * Acoeffs['eight_thirds'] + infreqs * (Acoeffs['one'] + infreqs * Acoeffs['two'] + infreqs*infreqs * Acoeffs['three']), np.where(infreqs < fpeak, delta0 + infreqs*delta1 + infreqs*infreqs*(delta2 + infreqs*delta3 + infreqs*infreqs*delta4), np.exp(-(infreqs - fring)*gamma2/(fdamp*gamma3))* (fdamp*gamma3*gamma1) / ((infreqs - fring)*(infreqs - fring) + fdamp*gamma3*fdamp*gamma3)))
         
         def completePhase(infreqs, C1MRDuse, C2MRDuse, RhoUse, TauUse):
+            print(f"ripple debug fcutpar {XLALSimIMRPhenomXUtilsMftoHz(self.fcutPar, mass_1+mass_2)}")
+            print(f"ripple debug fcutpar {XLALSimIMRPhenomXUtilsMftoHz(self.PHI_fJoin_INS, mass_1+mass_2)}")
+            print(f"ripple debug fcutpar {XLALSimIMRPhenomXUtilsMftoHz(fMRDJoinPh, mass_1+mass_2)}")
+
             if self.apply_fcut:
-                return np.where(infreqs < self.PHI_fJoin_INS, PhiInspcoeffs['initial_phasing'] + PhiInspcoeffs['two_thirds']*(infreqs**(2./3.)) + PhiInspcoeffs['third']*(infreqs**(1./3.)) + PhiInspcoeffs['third_log']*(infreqs**(1./3.))*np.log(np.pi*infreqs)/3. + PhiInspcoeffs['log']*np.log(np.pi*infreqs)/3. + PhiInspcoeffs['min_third']*(infreqs**(-1./3.)) + PhiInspcoeffs['min_two_thirds']*(infreqs**(-2./3.)) + PhiInspcoeffs['min_one']/infreqs + PhiInspcoeffs['min_four_thirds']*(infreqs**(-4./3.)) + PhiInspcoeffs['min_five_thirds']*(infreqs**(-5./3.)) + (PhiInspcoeffs['one']*infreqs + PhiInspcoeffs['four_thirds']*(infreqs**(4./3.)) + PhiInspcoeffs['five_thirds']*(infreqs**(5./3.)) + PhiInspcoeffs['two']*infreqs*infreqs)/eta, np.where(infreqs<fMRDJoinPh, (beta1*infreqs - beta3/(3.*infreqs*infreqs*infreqs) + beta2*np.log(infreqs))/eta + C1Int + C2Int*infreqs, np.where(infreqs < self.fcutPar, (-(alpha2/infreqs) + (4.0/3.0) * (alpha3 * (infreqs**(3./4.))) + alpha1 * infreqs + alpha4 * RhoUse * np.arctan((infreqs - alpha5 * fring)/(fdamp * RhoUse * TauUse)))/eta + C1MRDuse + C2MRDuse*infreqs,0.)))
+                # Compute phase for each frequency regime
+                f = infreqs
+                log_pi_f = np.log(np.pi * f)
+
+                # Inspiral phase (f < PHI_fJoin_INS)
+                phi_inspiral = (
+                    PhiInspcoeffs['initial_phasing']
+                    # Positive powers of f
+                    + PhiInspcoeffs['two_thirds'] * f**(2./3.)
+                    + PhiInspcoeffs['third'] * f**(1./3.)
+                    + PhiInspcoeffs['third_log'] * f**(1./3.) * log_pi_f / 3.
+                    + PhiInspcoeffs['log'] * log_pi_f / 3.
+                    # Negative powers of f
+                    + PhiInspcoeffs['min_third'] * f**(-1./3.)
+                    + PhiInspcoeffs['min_two_thirds'] * f**(-2./3.)
+                    + PhiInspcoeffs['min_one'] / f
+                    + PhiInspcoeffs['min_four_thirds'] * f**(-4./3.)
+                    + PhiInspcoeffs['min_five_thirds'] * f**(-5./3.)
+                    # Higher order terms (divided by eta)
+                    + (PhiInspcoeffs['one'] * f
+                       + PhiInspcoeffs['four_thirds'] * f**(4./3.)
+                       + PhiInspcoeffs['five_thirds'] * f**(5./3.)
+                       + PhiInspcoeffs['two'] * f * f) / eta
+                )
+
+                # Intermediate phase (PHI_fJoin_INS <= f < fMRDJoinPh)
+                phi_intermediate = (
+                    (beta1 * f - beta3 / (3. * f**3) + beta2 * np.log(f)) / eta
+                    + C1Int + C2Int * f
+                )
+
+                # Merger-ringdown phase (fMRDJoinPh <= f < fcutPar)
+                phi_mrd = (
+                    (-alpha2 / f
+                     + (4./3.) * alpha3 * f**(3./4.)
+                     + alpha1 * f
+                     + alpha4 * RhoUse * np.arctan((f - alpha5 * fring) / (fdamp * RhoUse * TauUse))
+                    ) / eta
+                    + C1MRDuse + C2MRDuse * f
+                )
+
+                # Combine using nested np.where for frequency regime selection
+                return np.where(
+                    f < self.PHI_fJoin_INS,
+                    phi_inspiral,
+                    np.where(
+                        f < fMRDJoinPh,
+                        phi_intermediate,
+                        np.where(f < self.fcutPar, phi_mrd, 0.)
+                    )
+                )
             else:
                 return np.where(infreqs < self.PHI_fJoin_INS, PhiInspcoeffs['initial_phasing'] + PhiInspcoeffs['two_thirds']*(infreqs**(2./3.)) + PhiInspcoeffs['third']*(infreqs**(1./3.)) + PhiInspcoeffs['third_log']*(infreqs**(1./3.))*np.log(np.pi*infreqs)/3. + PhiInspcoeffs['log']*np.log(np.pi*infreqs)/3. + PhiInspcoeffs['min_third']*(infreqs**(-1./3.)) + PhiInspcoeffs['min_two_thirds']*(infreqs**(-2./3.)) + PhiInspcoeffs['min_one']/infreqs + PhiInspcoeffs['min_four_thirds']*(infreqs**(-4./3.)) + PhiInspcoeffs['min_five_thirds']*(infreqs**(-5./3.)) + (PhiInspcoeffs['one']*infreqs + PhiInspcoeffs['four_thirds']*(infreqs**(4./3.)) + PhiInspcoeffs['five_thirds']*(infreqs**(5./3.)) + PhiInspcoeffs['two']*infreqs*infreqs)/eta, np.where(infreqs<fMRDJoinPh, (beta1*infreqs - beta3/(3.*infreqs*infreqs*infreqs) + beta2*np.log(infreqs))/eta + C1Int + C2Int*infreqs, (-(alpha2/infreqs) + (4.0/3.0) * (alpha3 * (infreqs**(3./4.))) + alpha1 * infreqs + alpha4 * RhoUse * np.arctan((infreqs - alpha5 * fring)/(fdamp * RhoUse * TauUse)))/eta + C1MRDuse + C2MRDuse*infreqs))
  
@@ -621,11 +685,12 @@ class IMRPhenomXPHM(WaveFormModel):
         # Time shift so that peak amplitude is approximately at t=0
         # Use PhenomD-style fring/fdamp/fpeak to match LALSim's IMRPhenomDComputet0
         
+        
         t0 = DPhiMRD(fpeak_phenomD, alpha1, alpha2, alpha3, alpha4, alpha5, fring_phenomD, eta, fdamp_phenomD, 1, 1)
-        print(f'ripple debug t0 from the fuction {t0}')
-        t0 = (alpha1 + alpha2/(fpeak_phenomD*fpeak_phenomD) + alpha3/(fpeak_phenomD**(1./4.)) + alpha4/(fdamp_phenomD*(1. + (fpeak_phenomD - alpha5*fring_phenomD)*(fpeak_phenomD - alpha5*fring_phenomD)/(fdamp_phenomD*fdamp_phenomD))))/eta
+        #t0 = (alpha1 + alpha2/(fpeak_phenomD*fpeak_phenomD) + alpha3/(fpeak_phenomD**(1./4.)) + alpha4/(fdamp_phenomD*(1. + (fpeak_phenomD - alpha5*fring_phenomD)*(fpeak_phenomD - alpha5*fring_phenomD)/(fdamp_phenomD*fdamp_phenomD))))/eta
 
-        phiRef = completePhase(fRef, C1MRD, C2MRD, 1., 1.)
+
+        phiRef = completePhase(fRef, C1MRD, C2MRD, 1., 1.) # Matches exactly with lalsimulation
         phi0   = 0.5*phiRef #+ kwargs['Phicoal']
         #FIXME Need to swtich on kwargs['Phicoal'] at some point
         
@@ -706,12 +771,7 @@ class IMRPhenomXPHM(WaveFormModel):
             PhisAllModes = np.where(fgrid < Map_fiPhi, completePhase((fgrid*Map_ai + Map_bi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_ai, np.where(fgrid < Map_fr, - PhDBconst + PhDBAterm + completePhase((fgrid*Map_amPhi + Map_bmPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_amPhi, - PhDCconst + tmpphaseC + completePhase((fgrid*Map_arPhi + Map_brPhi), C1MRDHM, C2MRDHM, Rholm, Taulm)/Map_arPhi))
         
         # override  #FIXME
-        #t0 = np.array([4.0433245095008095e+02])
-        PhisAllModes = PhisAllModes - np.expand_dims(t0, len(t0.shape))*(fgrid - np.expand_dims(fRef, len(fRef.shape))) - mms*np.expand_dims(phi0, len(phi0.shape)) + self.complShiftm[mms]
-
-        print(f"Ripple debug t0 {t0}")
-        print(f"Ripple debug phi0 {phi0}")
-        print(f"Ripple debug self.complShiftm[mms] {self.complShiftm[mms]}")
+        #t0 = np.array([2.6023655427e+02])
 
         # Save PhisAllModes to dat file for debugging (frequency + modes as columns)
         freqs_flat = fgrid.flatten()
@@ -719,6 +779,14 @@ class IMRPhenomXPHM(WaveFormModel):
         phases_2d = PhisAllModes.reshape(-1, n_modes)  # shape: (nfreqs, n_modes)
         save_data = np.column_stack([freqs_flat, phases_2d])
         np.savetxt('PhisAllModes_ripple.dat', save_data, header='f 21 22 32 33 43')
+
+
+        PhisAllModes = PhisAllModes - np.expand_dims(t0, len(t0.shape))*(fgrid - np.expand_dims(fRef, len(fRef.shape))) - mms*np.expand_dims(phi0, len(phi0.shape)) + self.complShiftm[mms]
+
+        print(f"ripple debug t0 value {t0}")
+        print(f"ripple debug phi0 {phi0}")
+        print(f"ripple debug self.complShiftm[mms] {self.complShiftm[mms]}")
+
 
         modes = np.expand_dims(modes, len(modes.shape))
         Y, Ymstar = SpinWeighted_SphericalHarmonic(iota)
@@ -1645,3 +1713,81 @@ def GPSt_to_LMST(t_GPS, lat, long):
     t = aspyt.Time(t_GPS, format='gps', location=(loc))
     LMST = t.sidereal_time('mean').value
     return jnp.array(LMST/24.)
+
+
+def chirp_mass_and_mass_ratio_to_component_masses(chirp_mass, mass_ratio):
+
+    total_mass = chirp_mass_and_mass_ratio_to_total_mass(chirp_mass=chirp_mass,
+                                                         mass_ratio=mass_ratio)
+    mass_1, mass_2 = (
+        total_mass_and_mass_ratio_to_component_masses(
+            total_mass=total_mass, mass_ratio=mass_ratio)
+    )
+    return mass_1, mass_2
+
+
+def chirp_mass_and_mass_ratio_to_total_mass(chirp_mass, mass_ratio):
+    """
+    Convert chirp mass and mass ratio of a binary to its total mass.
+
+    Parameters
+    ==========
+    chirp_mass: float
+        Chirp mass of the binary
+    mass_ratio: float
+        Mass ratio (mass_2/mass_1) of the binary
+
+    Returns
+    =======
+    mass_1: float
+        Mass of the heavier object
+    mass_2: float
+        Mass of the lighter object
+    """
+
+
+    return chirp_mass * (1 + mass_ratio) ** 1.2 / mass_ratio ** 0.6
+
+
+def total_mass_and_mass_ratio_to_component_masses(mass_ratio, total_mass):
+    """
+    Convert total mass and mass ratio of a binary to its component masses.
+
+    Parameters
+    ==========
+    mass_ratio: float
+        Mass ratio (mass_2/mass_1) of the binary
+    total_mass: float
+        Total mass of the binary
+
+    Returns
+    =======
+    mass_1: float
+        Mass of the heavier object
+    mass_2: float
+        Mass of the lighter object
+    """
+
+    mass_1 = total_mass / (1 + mass_ratio)
+    mass_2 = mass_1 * mass_ratio
+    return mass_1, mass_2
+
+
+def symmetric_mass_ratio_to_mass_ratio(symmetric_mass_ratio):
+    """
+    Convert the symmetric mass ratio to the normal mass ratio.
+
+    Parameters
+    ==========
+    symmetric_mass_ratio: float
+        Symmetric mass ratio of the binary
+
+    Returns
+    =======
+    mass_ratio: float
+        Mass ratio of the binary
+    """
+
+    temp = (1 / symmetric_mass_ratio / 2 - 1)
+    return temp - (temp ** 2 - 1) ** 0.5
+
